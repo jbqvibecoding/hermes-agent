@@ -74,13 +74,14 @@ class MulticaProjector:
             sid = st.get("id")
             if not sid:
                 continue
-            # Approval-gated cards land parked in 'blocked' with a visible marker,
-            # so the operator sees they're waiting for a go-ahead.
+            # Approval-gated cards land parked in the visible 'in_review' column
+            # (semantically "awaiting review/approval") with a ⛔ marker, so the
+            # operator can see them and approve by dragging out of In Review.
             needs_approval = bool(st.get("needs_approval"))
             title = ("⛔ Approval needed: " + st.get("title", sid)) if needs_approval else st.get("title", sid)
             child = self._client.create_issue(
                 title,
-                status="blocked" if needs_approval else "todo",
+                status="in_review" if needs_approval else "todo",
                 parent_issue_id=self._parent_id,
                 assignee_type="agent" if self._assignee_by_subtask.get(sid) else None,
                 assignee_id=self._assignee_by_subtask.get(sid),

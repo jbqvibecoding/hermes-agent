@@ -21,6 +21,11 @@ from typing import Optional
 
 from tools.multica_poller import BoardState
 
+# Statuses that mean an approval-gated card is still parked (not yet approved).
+# The projector parks approval cards in 'in_review'; we also treat blocked/backlog
+# as parked so the gate is robust to where the operator leaves the card.
+_PARKED_STATUSES: frozenset = frozenset({None, "in_review", "blocked", "backlog"})
+
 
 @dataclass
 class ControlSignal:
@@ -53,8 +58,8 @@ def reconcile(
         status = info.get("status")
         if status == "cancelled":
             sig.cancel_subtasks.add(sid)
-        # Approval-gated subtask the human moved out of the parked 'blocked' state.
-        if sid in approval_subtasks and status not in (None, "blocked"):
+        # Approval-gated subtask the human moved out of its parked column.
+        if sid in approval_subtasks and status not in _PARKED_STATUSES:
             sig.approve_subtasks.add(sid)
         # Reassign: the card's assignee maps to a spec different from the plan's.
         assignee_id = info.get("assignee_id")
