@@ -70,12 +70,36 @@ class MerlionApiAdapter(BasePlatformAdapter):
         # run_id -> event queue (None sentinel closes the stream)
         self._run_streams: dict[str, "asyncio.Queue[Optional[dict]]"] = {}
         self._injected_resolver: Optional[AdapterResolver] = None
+        # Optional (run_id, title) -> projector factory. Default builds one from
+        # MULTICA_* env; tests inject a fake. None disables board projection.
+        self._projector_factory: Optional[Callable[[str, str], Any]] = None
 
     # -- executor seam ------------------------------------------------------
 
     def set_executor_resolver(self, resolver: AdapterResolver) -> None:
         """Inject the per-spec adapter resolver (tests / explicit wiring)."""
         self._injected_resolver = resolver
+
+    def set_multica_projector_factory(self, factory: Optional[Callable[[str, str], Any]]) -> None:
+        """Inject a ``(run_id, title) -> projector`` factory (tests / wiring)."""
+        self._projector_factory = factory
+
+    def _build_projector(self, run_id: str, title: str) -> Optional[Any]:
+        """Resolve a board projector: injected factory, else MULTICA_* env, else None."""
+        if self._projector_factory is not None:
+            return self._projector_factory(run_id, title)
+        try:
+            from tools.multica_client import HttpxMulticaTransport, MulticaClient, MulticaConfig
+            from tools.multica_projector import MulticaProjector
+
+            cfg = MulticaConfig.from_env()
+            if cfg is None:
+                return None
+            client = MulticaClient(HttpxMulticaTransport(cfg))
+            return MulticaProjector(client, run_id=run_id, title=title)
+        except Exception:  # projection is additive; never block a run on setup
+            logger.exception("[merlion_api] failed to build Multica projector")
+            return None
 
     def _get_resolver(self) -> AdapterResolver:
         if self._injected_resolver is not None:
@@ -299,8 +323,14 @@ class MerlionApiAdapter(BasePlatformAdapter):
     def _drive_blocking(self, run_id: str, loop: Any, queue: Any, plan: Any) -> None:
         """Drive a run to completion in an executor thread (own sqlite conn)."""
 
+        # Optional board projection: mirror events as Multica cards. Best-effort;
+        # the projector swallows its own errors so it never breaks the run.
+        projector = self._build_projector(run_id, getattr(plan, "brief", run_id))
+
         def push(ev: dict) -> None:
             loop.call_soon_threadsafe(queue.put_nowait, ev)
+            if projector is not None:
+                projector.handle(ev)
 
         conn = orchestrate.open_conn(self._db_path)
         try:
