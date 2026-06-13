@@ -118,6 +118,7 @@ class Platform(Enum):
     SMS = "sms"
     DINGTALK = "dingtalk"
     API_SERVER = "api_server"
+    MERLION_API = "merlion_api"
     WEBHOOK = "webhook"
     MSGRAPH_WEBHOOK = "msgraph_webhook"
     FEISHU = "feishu"
@@ -1530,6 +1531,25 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
         api_server_model_name = os.getenv("API_SERVER_MODEL_NAME", "")
         if api_server_model_name:
             config.platforms[Platform.API_SERVER].extra["model_name"] = api_server_model_name
+
+    # Merlion orchestration API (Hermes-direct /v1/orchestrate/*)
+    merlion_enabled = os.getenv("MERLION_API_ENABLED", "").lower() in {"true", "1", "yes"}
+    merlion_key = os.getenv("MERLION_API_KEY", "")
+    if merlion_enabled or merlion_key:
+        if Platform.MERLION_API not in config.platforms:
+            config.platforms[Platform.MERLION_API] = PlatformConfig()
+        config.platforms[Platform.MERLION_API].enabled = True
+        if merlion_key:
+            config.platforms[Platform.MERLION_API].extra["key"] = merlion_key
+        merlion_port = os.getenv("MERLION_API_PORT")
+        if merlion_port:
+            try:
+                config.platforms[Platform.MERLION_API].extra["port"] = int(merlion_port)
+            except ValueError:
+                pass
+        merlion_host = os.getenv("MERLION_API_HOST")
+        if merlion_host:
+            config.platforms[Platform.MERLION_API].extra["host"] = merlion_host
 
     # Webhook platform
     webhook_enabled = os.getenv("WEBHOOK_ENABLED", "").lower() in {"true", "1", "yes"}

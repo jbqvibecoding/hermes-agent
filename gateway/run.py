@@ -6960,6 +6960,13 @@ class GatewayRunner:
                 return None
             return APIServerAdapter(config)
 
+        elif platform == Platform.MERLION_API:
+            from gateway.platforms.merlion_api import MerlionApiAdapter, check_merlion_requirements
+            if not check_merlion_requirements():
+                logger.warning("Merlion API: aiohttp not installed")
+                return None
+            return MerlionApiAdapter(config)
+
         elif platform == Platform.WEBHOOK:
             from gateway.platforms.webhook import WebhookAdapter, check_webhook_requirements
             if not check_webhook_requirements():
