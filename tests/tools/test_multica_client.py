@@ -65,11 +65,12 @@ def test_create_child_issue_sets_parent():
     assert body["parent_issue_id"] == "iss_parent"
 
 
-def test_update_issue_patches_status():
+def test_update_issue_puts_status():
     t = _FakeTransport()
     mc.MulticaClient(t).update_issue("iss_9", status="done")
     method, path, body = t.calls[0]
-    assert (method, path) == ("PATCH", "/api/issues/iss_9")
+    # Multica's update route is PUT /api/issues/{id} (PATCH returns 405).
+    assert (method, path) == ("PUT", "/api/issues/iss_9")
     assert body == {"status": "done"}
 
 

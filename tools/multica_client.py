@@ -136,8 +136,13 @@ class MulticaClient:
         return self._t.request("POST", "/api/issues", json=body)
 
     def update_issue(self, issue_id: str, *, status: Optional[str] = None, **fields: Any) -> dict:
-        """Patch an issue. Only provided fields are sent (here: usually status)."""
+        """Update an issue. Only provided fields are sent (here: usually status).
+
+        Multica's update route is ``PUT /api/issues/{id}`` (it accepts partial
+        bodies and tracks which fields are present — verified against the live
+        backend; an earlier PATCH attempt returned 405).
+        """
         body: dict[str, Any] = dict(fields)
         if status is not None:
             body["status"] = status
-        return self._t.request("PATCH", f"/api/issues/{issue_id}", json=body)
+        return self._t.request("PUT", f"/api/issues/{issue_id}", json=body)
