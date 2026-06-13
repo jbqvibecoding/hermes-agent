@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS merlion_runs (
 CREATE INDEX IF NOT EXISTS idx_merlion_runs_tenant ON merlion_runs(tenant, created_at);
 """
 
-VALID_RUN_STATUSES: frozenset[str] = frozenset({"planning", "running", "done", "failed"})
+VALID_RUN_STATUSES: frozenset[str] = frozenset(
+    {"planning", "running", "done", "failed", "cancelled"}
+)
 
 
 @dataclass

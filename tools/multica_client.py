@@ -135,6 +135,30 @@ class MulticaClient:
             body["assignee_id"] = assignee_id
         return self._t.request("POST", "/api/issues", json=body)
 
+    def list_issues(self, *, status: Optional[str] = None, limit: int = 500) -> list[dict]:
+        """List workspace issues (for reverse-control polling).
+
+        Returns the issue dicts (id/status/assignee_type/assignee_id/
+        parent_issue_id/updated_at/...). Workspace comes from the transport's
+        header; ``status`` optionally filters server-side.
+        """
+        path = f"/api/issues?limit={int(limit)}"
+        if status:
+            path += f"&status={status}"
+        body = self._t.request("GET", path)
+        if isinstance(body, list):
+            return body
+        return body.get("issues") or body.get("data") or []
+
+    def create_agent(
+        self, name: str, *, runtime_id: str, instructions: Optional[str] = None
+    ) -> dict:
+        """Create an agent row (demo bootstrap for reassign). Returns the agent dict."""
+        agent: dict[str, Any] = {"name": name, "runtime_id": runtime_id}
+        if instructions is not None:
+            agent["instructions"] = instructions
+        return self._t.request("POST", "/api/agents", json=agent)
+
     def update_issue(self, issue_id: str, *, status: Optional[str] = None, **fields: Any) -> dict:
         """Update an issue. Only provided fields are sent (here: usually status).
 

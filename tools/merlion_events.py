@@ -28,6 +28,11 @@ MERLION_EVENTS: frozenset[str] = frozenset(
         "task.failed",
         "task.cancelled",
         "task.reassign",
+        # reverse-control (operator actions on the board → Hermes)
+        "task.reassigned",
+        "task.approved",
+        "task.awaiting_approval",
+        "run.cancelled",
         "message",
         "artifact.created",
         "ack",

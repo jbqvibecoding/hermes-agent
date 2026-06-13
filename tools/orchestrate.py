@@ -30,6 +30,7 @@ from tools import merlion_classify, merlion_events, merlion_plan
 from tools import orchestrate_store as store
 from tools import task_router
 from tools.agent_factory import TAU_HIT
+from tools.multica_reconciler import ControlSignal
 from tools.worker_adapter import OUTCOME_PASS, WorkerAdapter, WorkerTask, run_and_record
 
 def open_conn(db_path: Optional[Any] = None) -> sqlite3.Connection:
@@ -51,12 +52,24 @@ _EST_BY_TIER: dict[str, int] = {"simple": 1, "complex": 2, "very_complex": 3}
 # Department fan-out cap per scale (PRD MAXP-style breadth limit).
 _MAX_DEPTS_BY_SCALE: dict[str, int] = {"small": 3, "org": 6}
 
+# Departments whose work is risk-sensitive → parked for human approval before run.
+_APPROVAL_DEPTS: frozenset[str] = frozenset({"compliance", "infra"})
+# Kanban statuses considered terminal / not-redispatchable.
+_TERMINAL: frozenset[str] = frozenset({"done", "archived", "blocked"})
+
 # Score a spec's fit for a brief (retrieve-only capability signal, 0..1).
 SpecScorer = Callable[[SubagentSpec, str], float]
 # Pick the concrete adapter for a resolved spec (in-process vs OpenClaw worker).
 AdapterResolver = Callable[[SubagentSpec], WorkerAdapter]
 # Emit a run event (SSE/log sink). Receives a plain dict.
 EventSink = Callable[[dict[str, Any]], None]
+# Reverse-control: supplies the latest operator signal from the board each tick.
+ControlSource = Callable[[], ControlSignal]
+
+
+def _needs_approval(dept: str) -> bool:
+    """Whether a department's work is gated on human approval (risk-sensitive)."""
+    return dept in _APPROVAL_DEPTS
 
 
 @dataclass
@@ -66,6 +79,7 @@ class PlanStep:
     subtask: merlion_plan.Subtask
     capability_match: float = 0.0
     needs_generation: bool = False
+    needs_approval: bool = False  # parked until a human approves on the board
 
 
 @dataclass
@@ -102,6 +116,7 @@ def _subtask_preview(step: PlanStep) -> dict[str, Any]:
         "id": st.id, "title": st.title, "dept": st.dept, "spec_id": st.spec_id,
         "est": st.est, "dur": st.dur, "arts": st.arts, "deps": list(st.deps),
         "is_synthesis": st.is_synthesis, "needs_generation": step.needs_generation,
+        "needs_approval": step.needs_approval,
     }
 
 
@@ -216,6 +231,7 @@ def build_plan(
                 ),
                 capability_match=match,
                 needs_generation=spec is None or match < TAU_HIT,
+                needs_approval=_needs_approval(dept),
             )
         )
 
@@ -293,6 +309,13 @@ def initial_events(plan: OrchestrationPlan) -> list[dict[str, Any]]:
                 "spec_id": step.subtask.spec_id, "subtask_id": step.subtask.id,
             }
         )
+        if step.needs_approval:
+            events.append(
+                {
+                    "event": "task.awaiting_approval", "run_id": plan.run_id,
+                    "subtask_id": step.subtask.id, "dept": step.subtask.dept,
+                }
+            )
     return events
 
 
@@ -330,6 +353,7 @@ def advance_run(
     resolve_adapter: AdapterResolver,
     emit: Optional[EventSink] = None,
     max_parallel: int = 4,
+    control: Optional[ControlSource] = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Run one dispatch tick. Returns ``(events, complete)``.
 
@@ -338,6 +362,11 @@ def advance_run(
     completing/failing the kanban task and recording the outcome. The synthesis
     step (no spec) is a deterministic fan-in. ``complete`` is True once every
     step is terminal; the caller stops looping and the run is marked done/failed.
+
+    ``control`` (reverse control) is consulted at the start of every tick: the
+    operator can cancel the whole run, cancel a subtask, approve a parked
+    approval-gated subtask, or reassign a subtask to a different spec — all
+    driven by their actions on the Multica board.
     """
     events: list[dict[str, Any]] = []
 
@@ -346,7 +375,6 @@ def advance_run(
         if emit is not None:
             emit(ev)
 
-    kb.recompute_ready(conn)
     rec = store.get_run(conn, run_id)
     if rec is None:
         return events, True
@@ -354,6 +382,42 @@ def advance_run(
     subtasks: list[dict[str, Any]] = rec.plan.get("subtasks", [])
     by_id = {st["id"]: st for st in subtasks}
 
+    # ---- reverse control: apply the operator's board actions first ----------
+    # The approval gate only applies when a board/control source exists — a
+    # headless run has no one to approve, so it must not deadlock.
+    gate_approval = control is not None
+    signal = control() if control is not None else ControlSignal()
+    pre = {sid: (kb.get_task(conn, tid).status if kb.get_task(conn, tid) else "unknown")
+           for sid, tid in task_map.items()}
+
+    if signal.cancel_run:
+        for sid, tid in task_map.items():
+            if pre.get(sid) in {"todo", "ready", "running"}:
+                kb.block_task(conn, tid, reason="run cancelled by operator")
+        store.update_run(conn, run_id, status="cancelled")
+        _push({"event": "run.cancelled", "run_id": run_id, "status": "cancelled"})
+        return events, True
+
+    for sid in signal.cancel_subtasks:
+        tid = task_map.get(sid)
+        if tid and pre.get(sid) in {"todo", "ready", "running"}:
+            kb.block_task(conn, tid, reason="subtask cancelled by operator")
+            _push({"event": "task.cancelled", "run_id": run_id, "subtask_id": sid,
+                   "task_id": tid, "dept": by_id.get(sid, {}).get("dept")})
+
+    if signal.reassign:
+        changed = False
+        for sid, new_spec in signal.reassign.items():
+            st = by_id.get(sid)
+            if st and st.get("spec_id") != new_spec and pre.get(sid) in {"todo", "ready"}:
+                st["spec_id"] = new_spec
+                changed = True
+                _push({"event": "task.reassigned", "run_id": run_id, "subtask_id": sid,
+                       "task_id": task_map.get(sid), "spec_id": new_spec})
+        if changed:
+            store.update_run(conn, run_id, plan={"task_map": task_map, "subtasks": subtasks})
+
+    kb.recompute_ready(conn)
     statuses = {sid: (kb.get_task(conn, tid).status if kb.get_task(conn, tid) else "unknown")
                 for sid, tid in task_map.items()}
     running = sum(1 for s in statuses.values() if s == "running")
@@ -364,6 +428,10 @@ def advance_run(
         if running >= max_parallel:
             break
         st = by_id.get(sid, {})
+        # Approval gate: a risk-sensitive step waits until the operator approves
+        # it on the board (signal.approve_subtasks), even though kanban says ready.
+        if gate_approval and st.get("needs_approval") and sid not in signal.approve_subtasks:
+            continue
         if not kb.claim_task(conn, tid):
             continue
         running += 1

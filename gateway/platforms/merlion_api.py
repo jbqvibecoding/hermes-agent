@@ -73,6 +73,7 @@ class MerlionApiAdapter(BasePlatformAdapter):
         # Optional (run_id, title) -> projector factory. Default builds one from
         # MULTICA_* env; tests inject a fake. None disables board projection.
         self._projector_factory: Optional[Callable[[str, str], Any]] = None
+        self._agent_to_spec: dict = {}
 
     # -- executor seam ------------------------------------------------------
 
@@ -83,6 +84,38 @@ class MerlionApiAdapter(BasePlatformAdapter):
     def set_multica_projector_factory(self, factory: Optional[Callable[[str, str], Any]]) -> None:
         """Inject a ``(run_id, title) -> projector`` factory (tests / wiring)."""
         self._projector_factory = factory
+
+    def set_multica_agent_spec_map(self, mapping: dict) -> None:
+        """Inject the ``agent_id -> spec_id`` map used to interpret reassigns."""
+        self._agent_to_spec = dict(mapping)
+
+    def _build_control(self, projector: Optional[Any], plan: Any) -> Optional[Callable[[], Any]]:
+        """Build a reverse-control source polling the board, or None if no projector.
+
+        Reuses the projector's client + issue mapping (populated once cards are
+        created) so the poller and projector speak to the same Multica/run.
+        """
+        if projector is None or not getattr(projector, "_issue_by_subtask", None):
+            return None
+        try:
+            from tools.multica_poller import MulticaPoller
+            from tools.multica_reconciler import reconcile
+
+            poller = MulticaPoller(
+                projector._client,
+                parent_issue_id=projector._parent_id,
+                issue_by_subtask=dict(projector._issue_by_subtask),
+            )
+            plan_specs = {s.subtask.id: s.subtask.spec_id for s in plan.steps}
+            approval = {s.subtask.id for s in plan.steps if s.needs_approval}
+            agent_to_spec = dict(self._agent_to_spec)
+            return lambda: reconcile(
+                poller.poll(), plan_specs=plan_specs,
+                approval_subtasks=approval, agent_to_spec=agent_to_spec,
+            )
+        except Exception:
+            logger.exception("[merlion_api] failed to build reverse-control source")
+            return None
 
     def _build_projector(self, run_id: str, title: str) -> Optional[Any]:
         """Resolve a board projector: injected factory, else MULTICA_* env, else None."""
@@ -337,9 +370,12 @@ class MerlionApiAdapter(BasePlatformAdapter):
             for ev in orchestrate.initial_events(plan):
                 push(ev)
             resolver = self._get_resolver()
+            # Reverse control: once the cards exist (mapping populated by the
+            # initial_events above), poll the board for operator actions.
+            control = self._build_control(projector, plan)
             for _ in range(10_000):  # generous tick ceiling; loop exits on complete
                 _events, complete = orchestrate.advance_run(
-                    conn, run_id, resolve_adapter=resolver, emit=push
+                    conn, run_id, resolve_adapter=resolver, emit=push, control=control
                 )
                 if complete:
                     break

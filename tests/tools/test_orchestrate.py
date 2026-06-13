@@ -179,3 +179,112 @@ def test_advance_run_synthesis_fans_in(conn):
     # synthesis step completes (deterministic fan-in, no spec) → task.done for syn
     syn_done = [e for e in events if e["event"] == "task.done" and e["subtask_id"] == "syn"]
     assert syn_done
+
+
+# ---- reverse control ------------------------------------------------------
+
+from tools.multica_reconciler import ControlSignal  # noqa: E402
+
+
+class _RecordingStub:
+    runtime = "in_process"
+
+    def __init__(self, spec, sink):
+        self._spec = spec
+        self._sink = sink
+
+    def run(self, spec, task, contract):
+        self._sink.append(spec.id)
+        return WorkerResult(outcome=OUTCOME_PASS, summary=f"done {spec.id}")
+
+
+def _drive_ctrl(conn, run_id, resolver, control, max_ticks=50):
+    events = []
+    for _ in range(max_ticks):
+        evs, done = orchestrate.advance_run(
+            conn, run_id, resolve_adapter=resolver, control=control
+        )
+        events.extend(evs)
+        if done:
+            return events, True
+    return events, False
+
+
+def test_build_plan_flags_approval_for_risk_depts(conn):
+    _seed_spec(conn, "compliance")
+    _seed_spec(conn, "eng")
+    plan = orchestrate.build_plan(conn, "x", _org(["compliance", "eng"]))
+    by = {s.subtask.dept: s for s in plan.steps}
+    assert by["compliance"].needs_approval is True
+    assert by["eng"].needs_approval is False
+
+
+def test_control_cancel_run_blocks_everything(conn):
+    _seed_spec(conn, "eng")
+    _seed_spec(conn, "finance")
+    plan = orchestrate.build_plan(conn, "x", _org(["eng", "finance"]), run_id="run_kill")
+    orchestrate.start_run(conn, plan)
+    events, complete = _drive_ctrl(
+        conn, "run_kill", lambda s: _StubAdapter(), lambda: ControlSignal(cancel_run=True)
+    )
+    assert complete is True
+    assert any(e["event"] == "run.cancelled" for e in events)
+    assert orchestrate.run_snapshot(conn, "run_kill")["status"] == "cancelled"
+
+
+def test_control_cancel_subtask_stops_only_that_branch(conn):
+    _seed_spec(conn, "eng")
+    _seed_spec(conn, "finance")
+    plan = orchestrate.build_plan(conn, "x", _org(["eng", "finance"]), run_id="run_cx")
+    orchestrate.start_run(conn, plan)
+    events, complete = _drive_ctrl(
+        conn, "run_cx", lambda s: _StubAdapter(),
+        lambda: ControlSignal(cancel_subtasks={"st0"}),
+    )
+    assert complete is True
+    assert any(e["event"] == "task.cancelled" and e["subtask_id"] == "st0" for e in events)
+    snap = {s["id"]: s["status"] for s in orchestrate.run_snapshot(conn, "run_cx")["subtasks"]}
+    assert snap["st0"] == "blocked"     # cancelled branch
+    assert snap["st1"] == "done"         # the other department still ran
+
+
+def test_control_approval_gate_blocks_until_approved(conn):
+    _seed_spec(conn, "compliance")
+    _seed_spec(conn, "eng")
+    plan = orchestrate.build_plan(conn, "x", _org(["compliance", "eng"]), run_id="run_appr")
+    orchestrate.start_run(conn, plan)
+    # st0 = compliance (needs approval). Never approve → run cannot complete.
+    _e, complete = _drive_ctrl(
+        conn, "run_appr", lambda s: _StubAdapter(), lambda: ControlSignal(), max_ticks=8
+    )
+    assert complete is False
+    snap = {s["id"]: s["status"] for s in orchestrate.run_snapshot(conn, "run_appr")["subtasks"]}
+    assert snap["st0"] != "done"   # compliance parked awaiting approval
+    assert snap["st1"] == "done"   # eng ran freely
+
+    # Now approve st0 → it runs and the whole run completes.
+    _e2, complete2 = _drive_ctrl(
+        conn, "run_appr", lambda s: _StubAdapter(),
+        lambda: ControlSignal(approve_subtasks={"st0"}),
+    )
+    assert complete2 is True
+    snap2 = {s["id"]: s["status"] for s in orchestrate.run_snapshot(conn, "run_appr")["subtasks"]}
+    assert snap2["st0"] == "done"
+
+
+def test_control_reassign_routes_to_new_spec(conn):
+    eng = _seed_spec(conn, "eng")
+    finance = _seed_spec(conn, "finance")
+    plan = orchestrate.build_plan(conn, "x", _org(["eng", "finance"]), run_id="run_re")
+    orchestrate.start_run(conn, plan)
+    ran_specs: list[str] = []
+    # reassign st0 (eng) to the finance spec
+    control = lambda: ControlSignal(reassign={"st0": finance.id})  # noqa: E731
+    events, complete = _drive_ctrl(
+        conn, "run_re", lambda s: _RecordingStub(s, ran_specs), control
+    )
+    assert complete is True
+    assert any(e["event"] == "task.reassigned" and e["subtask_id"] == "st0" for e in events)
+    # st0 was reassigned away from eng → the eng spec must never have run.
+    assert eng.id not in ran_specs
+    assert finance.id in ran_specs

@@ -78,3 +78,29 @@ def test_status_map_values_are_valid():
     from tools.multica_projector import _TASK_EVENT_STATUS
 
     assert set(_TASK_EVENT_STATUS.values()) <= mc.VALID_ISSUE_STATUSES
+
+
+def test_list_issues_gets_and_unwraps():
+    t = _FakeTransport(response={"issues": [{"id": "i1", "status": "todo"}], "total": 1})
+    out = mc.MulticaClient(t).list_issues()
+    method, path, _ = t.calls[0]
+    assert method == "GET"
+    assert path.startswith("/api/issues")
+    assert out == [{"id": "i1", "status": "todo"}]
+
+
+def test_list_issues_status_filter_in_query():
+    t = _FakeTransport(response={"issues": []})
+    mc.MulticaClient(t).list_issues(status="cancelled")
+    _, path, _ = t.calls[0]
+    assert "status=cancelled" in path
+
+
+def test_create_agent_posts_expected_body():
+    t = _FakeTransport(response={"id": "agent_1", "name": "eng"})
+    out = mc.MulticaClient(t).create_agent("eng", runtime_id="rt_1", instructions="help")
+    method, path, body = t.calls[0]
+    assert (method, path) == ("POST", "/api/agents")
+    assert body["name"] == "eng" and body["runtime_id"] == "rt_1"
+    assert body["instructions"] == "help"
+    assert out["id"] == "agent_1"
