@@ -136,6 +136,15 @@ class SubagentSpec:
     color: Optional[str] = None
     vibe: Optional[str] = None
 
+    # ---- Merlion projection (PRD ③§3.3 subagent card shape) ----
+    # dept = ORG-scale department bucket (research/compliance/product/eng/...);
+    # short = 2-3 char avatar label; model_category = model_router category tag
+    # (deep/quick/visual/review/plan/orchestrate). All optional — only ORG/Merlion
+    # surfaces populate them; core routing never depends on them.
+    dept: Optional[str] = None
+    short: Optional[str] = None
+    model_category: Optional[str] = None
+
     # ---- routing description (four-part-contract aware) ----
     description: str = ""
     capability_tags: list[str] = field(default_factory=list)
@@ -245,6 +254,9 @@ class SubagentSpec:
             "emoji": self.emoji,
             "color": self.color,
             "vibe": self.vibe,
+            "dept": self.dept,
+            "short": self.short,
+            "model_category": self.model_category,
             "description": self.description,
             "capability_tags": json.dumps(self.capability_tags),
             "system_prompt": self.system_prompt,
@@ -284,6 +296,15 @@ class SubagentSpec:
         """Rehydrate from a ``subagent_specs`` row (``sqlite3.Row`` or mapping)."""
         get = row.__getitem__  # works for sqlite3.Row and dict
 
+        def _opt(col: str, default: Any = None) -> Any:
+            # Column-tolerant read for additively-introduced fields so a spec row
+            # from a not-yet-migrated DB rehydrates instead of raising.
+            try:
+                val = get(col)
+            except (KeyError, IndexError):
+                return default
+            return default if val is None else val
+
         def _json(col: str, default: Any) -> Any:
             raw = get(col)
             if raw is None:
@@ -299,6 +320,9 @@ class SubagentSpec:
             emoji=get("emoji"),
             color=get("color"),
             vibe=get("vibe"),
+            dept=_opt("dept"),
+            short=_opt("short"),
+            model_category=_opt("model_category"),
             description=get("description") or "",
             capability_tags=_json("capability_tags", []),
             system_prompt=get("system_prompt") or "",

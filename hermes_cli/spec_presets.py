@@ -140,6 +140,37 @@ def _extract_objective(body: str, fallback: str) -> str:
     return fallback.strip()
 
 
+# agency-agents top-level dirs → Merlion ORG department buckets. Unmapped
+# domains fall through to the domain slug itself (still a usable bucket label).
+_DEPT_MAP: dict[str, str] = {
+    "engineering": "eng",
+    "finance": "finance",
+    "operations": "infra",
+    "devops": "infra",
+    "infrastructure": "infra",
+    "product": "product",
+    "design": "product",
+    "marketing": "product",
+    "research": "research",
+    "data": "research",
+    "legal": "compliance",
+    "compliance": "compliance",
+    "security": "compliance",
+}
+
+
+def _short_label(name: str) -> str:
+    """2-3 char avatar label from a persona/role name (Merlion subagent card)."""
+    words = [w for w in re.split(r"[\s_-]+", name.strip()) if w]
+    if len(words) >= 2:
+        return "".join(w[0] for w in words[:3]).upper()
+    return (words[0][:2].upper() if words else "AG")
+
+
+def _dept_for(domain: str) -> str:
+    return _DEPT_MAP.get(domain.lower(), reg.slugify(domain))
+
+
 def parse_markdown_spec(path: Path, domain: str, text: str) -> SubagentSpec:
     """Map one agency-agents markdown file to a preset :class:`SubagentSpec`."""
     fm, body = split_frontmatter(text)
@@ -156,6 +187,8 @@ def parse_markdown_spec(path: Path, domain: str, text: str) -> SubagentSpec:
         emoji=str(fm.get("emoji")) if fm.get("emoji") else None,
         color=str(fm.get("color")) if fm.get("color") else None,
         vibe=str(fm.get("vibe")) if fm.get("vibe") else None,
+        dept=_dept_for(domain),
+        short=_short_label(name),
         description=description,
         capability_tags=_extract_capability_tags(description, name),
         system_prompt=body.strip(),

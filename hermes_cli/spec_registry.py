@@ -47,6 +47,9 @@ CREATE TABLE IF NOT EXISTS subagent_specs (
     emoji                   TEXT,
     color                   TEXT,
     vibe                    TEXT,
+    dept                    TEXT,                          -- Merlion ORG department
+    short                   TEXT,                          -- Merlion avatar label
+    model_category          TEXT,                          -- model_router category tag
     description             TEXT NOT NULL DEFAULT '',
     capability_tags         TEXT,                          -- JSON array
     system_prompt           TEXT NOT NULL DEFAULT '',
@@ -154,12 +157,28 @@ def _tenant_key(tenant: Optional[str]) -> str:
 # connection + schema
 # ---------------------------------------------------------------------------
 
+# Columns added after the initial schema shipped. Additive only: each is
+# applied via ``ALTER TABLE ADD COLUMN`` when missing so an existing DB upgrades
+# in place (``CREATE TABLE IF NOT EXISTS`` never adds columns to an extant table).
+_ADDED_SPEC_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("dept", "TEXT"),
+    ("short", "TEXT"),
+    ("model_category", "TEXT"),
+)
+
+
 def ensure_spec_schema(conn: sqlite3.Connection) -> None:
     """Idempotently create the spec tables/indexes on ``conn``.
 
-    Safe to call on every connect: pure ``CREATE TABLE/INDEX IF NOT EXISTS``.
+    Safe to call on every connect: ``CREATE TABLE/INDEX IF NOT EXISTS`` plus an
+    additive ``ALTER TABLE ADD COLUMN`` pass for columns introduced after the
+    initial schema (a fresh DB gets them from the CREATE; an old DB is patched).
     """
     conn.executescript(SPEC_SCHEMA_SQL)
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(subagent_specs)")}
+    for col, col_type in _ADDED_SPEC_COLUMNS:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE subagent_specs ADD COLUMN {col} {col_type}")
 
 
 def connect(
