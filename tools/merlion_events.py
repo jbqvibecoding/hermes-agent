@@ -37,6 +37,10 @@ MERLION_EVENTS: frozenset[str] = frozenset(
         "artifact.created",
         "ack",
         "run.done",
+        # tournament (multi-LLM plan contest → score → operator picks → exec)
+        "tournament.candidates",
+        "tournament.recommended",
+        "tournament.selected",
     }
 )
 

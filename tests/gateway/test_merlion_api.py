@@ -146,6 +146,101 @@ async def test_snapshot_missing_run_404(tmp_path):
         await client.close()
 
 
+import json  # noqa: E402
+
+_ALPHA = json.dumps(
+    {
+        "tier": "complex", "scale": "org", "departments": ["eng", "finance"],
+        "subtasks": [
+            {"id": "st0", "dept": "eng", "goal": "build", "deps": []},
+            {"id": "st1", "dept": "finance", "goal": "cost", "deps": ["st0"]},
+        ],
+    }
+)
+
+
+def _fake_plan_llm():
+    def _llm(model, prompt):
+        if model == "alpha":
+            return _ALPHA
+        raise RuntimeError("model unavailable")
+
+    return _llm
+
+
+@pytest.mark.asyncio
+async def test_tournament_scores_and_recommends(tmp_path):
+    adapter = _make_adapter(tmp_path)
+    adapter.set_tournament_llm(_fake_plan_llm())
+    client = await _client(adapter)
+    try:
+        resp = await client.post(
+            "/v1/tournament",
+            json={"brief": "Launch a fintech super-app", "models": ["alpha", "bad"]},
+            headers=AUTH,
+        )
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["tournamentId"].startswith("trn_")
+        assert body["recommendedModel"]
+        models = [c["model"] for c in body["candidates"]]
+        assert "(deterministic-baseline)" in models  # floor always entered
+        bad = next(c for c in body["candidates"] if c["model"] == "bad")
+        assert bad["ok"] is False  # failed model surfaced, tournament still returns
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_tournament_select_executes_winner(tmp_path):
+    adapter = _make_adapter(tmp_path)
+    adapter.set_tournament_llm(_fake_plan_llm())
+    client = await _client(adapter)
+    try:
+        r = await client.post(
+            "/v1/tournament",
+            json={"brief": "Launch a fintech super-app", "models": ["alpha"]},
+            headers=AUTH,
+        )
+        tid = (await r.json())["tournamentId"]
+        sel = await client.post(
+            f"/v1/tournament/{tid}/select",
+            json={"chosen_model": "alpha", "exec_models": ["mX", "mY"]},
+            headers=AUTH,
+        )
+        assert sel.status == 202
+        run_id = (await sel.json())["runId"]
+
+        status = None
+        for _ in range(40):
+            snap = await (await client.get(f"/v1/orchestrate/{run_id}", headers=AUTH)).json()
+            status = snap["status"]
+            if status in {"done", "failed"}:
+                break
+            await asyncio.sleep(0.05)
+        assert status == "done"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_tournament_select_unknown_model_404(tmp_path):
+    adapter = _make_adapter(tmp_path)
+    adapter.set_tournament_llm(_fake_plan_llm())
+    client = await _client(adapter)
+    try:
+        r = await client.post(
+            "/v1/tournament", json={"brief": "x", "models": ["alpha"]}, headers=AUTH
+        )
+        tid = (await r.json())["tournamentId"]
+        sel = await client.post(
+            f"/v1/tournament/{tid}/select", json={"chosen_model": "ghost"}, headers=AUTH
+        )
+        assert sel.status == 404
+    finally:
+        await client.close()
+
+
 @pytest.mark.asyncio
 async def test_generate_retrieve_only(tmp_path):
     client = await _client(_make_adapter(tmp_path))

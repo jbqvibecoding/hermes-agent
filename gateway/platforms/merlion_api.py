@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from typing import Any, Callable, Optional
 
 try:
@@ -32,7 +33,7 @@ except ImportError:  # pragma: no cover - exercised only where aiohttp is absent
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, SendResult
 from hermes_cli.subagent_spec import SubagentSpec
-from tools import merlion_classify, orchestrate
+from tools import merlion_classify, orchestrate, tournament
 from tools.agent_factory import TAU_HIT
 
 logger = logging.getLogger(__name__)
@@ -74,12 +75,21 @@ class MerlionApiAdapter(BasePlatformAdapter):
         # MULTICA_* env; tests inject a fake. None disables board projection.
         self._projector_factory: Optional[Callable[[str, str], Any]] = None
         self._agent_to_spec: dict = {}
+        # tournament_id -> {model -> winning OrchestrationPlan} (ok candidates only),
+        # so a later /select can execute the plan the operator picked.
+        self._tournaments: dict[str, dict[str, Any]] = {}
+        # Injected LLM plan client for tournaments; None → built lazily (needs key).
+        self._tournament_llm: Optional[tournament.LlmPlanClient] = None
 
     # -- executor seam ------------------------------------------------------
 
     def set_executor_resolver(self, resolver: AdapterResolver) -> None:
         """Inject the per-spec adapter resolver (tests / explicit wiring)."""
         self._injected_resolver = resolver
+
+    def set_tournament_llm(self, llm: Optional[tournament.LlmPlanClient]) -> None:
+        """Inject the tournament LLM plan client (tests / explicit wiring)."""
+        self._tournament_llm = llm
 
     def set_multica_projector_factory(self, factory: Optional[Callable[[str, str], Any]]) -> None:
         """Inject a ``(run_id, title) -> projector`` factory (tests / wiring)."""
@@ -172,6 +182,8 @@ class MerlionApiAdapter(BasePlatformAdapter):
         app.router.add_post("/v1/orchestrate", self._handle_orchestrate)
         app.router.add_get("/v1/orchestrate/{run_id}", self._handle_snapshot)
         app.router.add_get("/v1/orchestrate/{run_id}/stream", self._handle_stream)
+        app.router.add_post("/v1/tournament", self._handle_tournament)
+        app.router.add_post("/v1/tournament/{tid}/select", self._handle_tournament_select)
         return app
 
     async def connect(self) -> bool:
@@ -290,6 +302,99 @@ class MerlionApiAdapter(BasePlatformAdapter):
 
         return web.json_response(plan.preview(), status=202)
 
+    async def _handle_tournament(self, request: Any) -> Any:
+        """Run a multi-LLM plan tournament: score candidates, recommend — no exec.
+
+        Returns the scored candidates (best-first) plus the recommended model and a
+        ``tournamentId`` to /select. The deterministic baseline is always entered,
+        so this works with no models / no LLM key.
+        """
+        auth = self._check_auth(request)
+        if auth:
+            return auth
+        body = await self._json(request)
+        if body is None:
+            return _error("Invalid JSON", 400)
+        brief = (body.get("brief") or body.get("prompt") or "").strip()
+        if not brief:
+            return _error("Missing 'brief'", 400)
+        models = body.get("models") or []
+        if not isinstance(models, list):
+            return _error("'models' must be a list", 400)
+        tenant = body.get("tenant")
+
+        conn = orchestrate.open_conn(self._db_path)
+        try:
+            result = tournament.run_tournament(
+                conn, brief, [str(m) for m in models],
+                llm=self._tournament_llm, tenant=tenant,
+            )
+        finally:
+            conn.close()
+
+        tid = f"trn_{uuid.uuid4().hex}"
+        self._tournaments[tid] = {
+            c.model: c.plan for c in result.candidates if c.ok and c.plan is not None
+        }
+        return web.json_response(
+            {
+                "tournamentId": tid,
+                "event": "tournament.candidates",
+                "candidates": [_candidate_dict(c) for c in result.candidates],
+                "recommendedModel": result.recommended_model,
+            }
+        )
+
+    async def _handle_tournament_select(self, request: Any) -> Any:
+        """Execute the operator-picked plan, backing subagents with chosen models.
+
+        Auto-distributes ``exec_models`` across the winning plan's department steps
+        (round-robin; same-dept steps share a model) and drives the run through the
+        unchanged loop with a ``spec.model``-assigning resolver.
+        """
+        auth = self._check_auth(request)
+        if auth:
+            return auth
+        if len(self._run_streams) >= _MAX_CONCURRENT_RUNS:
+            return _error("Too many concurrent runs", 429)
+        tid = request.match_info["tid"]
+        body = await self._json(request)
+        if body is None:
+            return _error("Invalid JSON", 400)
+        plans = self._tournaments.get(tid)
+        if not plans:
+            return _error("Tournament not found", 404)
+        chosen = body.get("chosen_model") or body.get("model")
+        plan = plans.get(chosen) if chosen else None
+        if plan is None:
+            return _error("chosen_model not in tournament", 404)
+        exec_models = body.get("exec_models") or []
+        if not isinstance(exec_models, list):
+            return _error("'exec_models' must be a list", 400)
+        tenant = body.get("tenant")
+        spec_model = tournament.assign_exec_models(plan, [str(m) for m in exec_models])
+
+        conn = orchestrate.open_conn(self._db_path)
+        try:
+            orchestrate.start_run(conn, plan, tenant=tenant)
+        finally:
+            conn.close()
+
+        resolver = tournament.make_model_assigning_resolver(self._get_resolver(), spec_model)
+        prelude = [
+            {
+                "event": "tournament.selected", "run_id": plan.run_id, "model": chosen,
+                "exec_models": list(exec_models), "assignment": spec_model,
+            }
+        ]
+        queue: "asyncio.Queue[Optional[dict]]" = asyncio.Queue()
+        self._run_streams[plan.run_id] = queue
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(
+            None, self._drive_blocking, plan.run_id, loop, queue, plan, resolver, prelude
+        )
+        return web.json_response({**plan.preview(), "tournamentId": tid, "model": chosen}, status=202)
+
     async def _handle_snapshot(self, request: Any) -> Any:
         auth = self._check_auth(request)
         if auth:
@@ -353,8 +458,16 @@ class MerlionApiAdapter(BasePlatformAdapter):
         payload = f"event: {name}\ndata: {json.dumps(event)}\n\n"
         await response.write(payload.encode())
 
-    def _drive_blocking(self, run_id: str, loop: Any, queue: Any, plan: Any) -> None:
-        """Drive a run to completion in an executor thread (own sqlite conn)."""
+    def _drive_blocking(
+        self, run_id: str, loop: Any, queue: Any, plan: Any,
+        resolver: Optional[AdapterResolver] = None, prelude: Optional[list[dict]] = None,
+    ) -> None:
+        """Drive a run to completion in an executor thread (own sqlite conn).
+
+        ``resolver`` overrides the default per-spec resolver (tournament /select
+        passes a model-assigning one); ``prelude`` frames are emitted before the
+        plan's initial events (e.g. ``tournament.selected``).
+        """
 
         # Optional board projection: mirror events as Multica cards. Best-effort;
         # the projector swallows its own errors so it never breaks the run.
@@ -367,9 +480,11 @@ class MerlionApiAdapter(BasePlatformAdapter):
 
         conn = orchestrate.open_conn(self._db_path)
         try:
+            for ev in prelude or []:
+                push(ev)
             for ev in orchestrate.initial_events(plan):
                 push(ev)
-            resolver = self._get_resolver()
+            resolver = resolver or self._get_resolver()
             # Reverse control: once the cards exist (mapping populated by the
             # initial_events above), poll the board for operator actions.
             control = self._build_control(projector, plan)
@@ -387,6 +502,22 @@ class MerlionApiAdapter(BasePlatformAdapter):
             conn.close()
             loop.call_soon_threadsafe(queue.put_nowait, None)
             loop.call_soon_threadsafe(self._run_streams.pop, run_id, None)
+
+
+def _candidate_dict(c: tournament.Candidate) -> dict:
+    d: dict[str, Any] = {
+        "model": c.model, "ok": c.ok, "latencyMs": c.latency_ms, "overall": c.overall,
+    }
+    if c.ok and c.plan is not None:
+        d["plan"] = c.plan.preview()
+    if c.score is not None:
+        d["score"] = {
+            "feasibility": c.score.feasibility, "impact": c.score.impact,
+            "risk": c.score.risk, "cost": c.score.cost,
+        }
+    if not c.ok:
+        d["error"] = c.error
+    return d
 
 
 def _classification_dict(cls: merlion_classify.Classification) -> dict:
