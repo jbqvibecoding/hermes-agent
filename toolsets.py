@@ -116,6 +116,18 @@ TOOLSETS = {
         "tools": ["x_search"],
         "includes": []
     },
+
+    "deep_research": {
+        "description": (
+            "Multi-agent deep research via a local AgentHarness checkout: "
+            "decompose → parallel evidence researchers → fact-check → "
+            "conflict audit → draft → review → global verify, returning a "
+            "cited report. Requires the AgentHarness repo (AGENT_HARNESS_DIR, "
+            "default ~/AgentHarness) with its own .env configured."
+        ),
+        "tools": ["deep_research"],
+        "includes": []
+    },
     
     "vision": {
         "description": "Image analysis and vision tools",
