@@ -1,0 +1,69 @@
+{
+  "_source": "Ported from AgentHub electron/services/gate-keeper.ts (GATE_CHECKLISTS / GATE_LABELS / SPRINT_TYPE_GATES)",
+  "labels": {
+    "G0": "需求確認",
+    "G1": "圖稿審核",
+    "G2": "程式碼審查",
+    "G3": "測試驗收",
+    "G4": "文件審查",
+    "G5": "部署就緒",
+    "G6": "正式發佈"
+  },
+  "sprint_type_gates": {
+    "full": ["G0", "G1", "G2", "G3", "G4", "G5", "G6"],
+    "feature": ["G0", "G2", "G3", "G4"],
+    "bugfix": ["G0", "G2", "G3"],
+    "release": ["G0", "G5", "G6"]
+  },
+  "checklists": {
+    "G0": [
+      { "label": "需求文件已建立", "criteria": "包含功能範圍、用戶角色、核心 User Story，並已寫入 docs/" },
+      { "label": "用戶故事已定義", "criteria": "每個故事有角色、目標、驗收條件（Given/When/Then）" },
+      { "label": "驗收標準已明確", "criteria": "量化指標或可驗證的完成條件，非模糊描述" },
+      { "label": "技術可行性已確認", "criteria": "關鍵技術選型已 PoC 驗證，風險項已列出" }
+    ],
+    "G1": [
+      { "label": "UI/UX 圖稿已完成", "criteria": "所有頁面的 Wireframe/Mockup 已產出，互動流程已標註" },
+      { "label": "架構設計已審核", "criteria": "系統架構圖已繪製，模組職責與依賴關係已明確" },
+      { "label": "API 規格已定義", "criteria": "所有端點的 Request/Response Schema 已文件化（OpenAPI 或等效）" },
+      { "label": "資料模型已確認", "criteria": "DB Schema 已定義，包含欄位型別、索引、關聯與 Migration 計畫" }
+    ],
+    "G2": [
+      { "label": "[CRITICAL] SQL 注入防護", "criteria": "所有 DB 查詢使用參數化，無字串拼接" },
+      { "label": "[CRITICAL] Race Condition", "criteria": "共用資源存取有適當鎖定或序列化機制" },
+      { "label": "[CRITICAL] LLM 信任邊界", "criteria": "AI 輸出不直接用於 SQL/shell/eval，有 sanitize" },
+      { "label": "[CRITICAL] 認證授權", "criteria": "所有端點有適當的認證和權限檢查" },
+      { "label": "[INFO] 功能實作已完成", "criteria": "所有 Sprint 任務狀態為 done" },
+      { "label": "[INFO] Magic Number", "criteria": "數值常數已提取為命名常數或設定" },
+      { "label": "[INFO] Dead Code", "criteria": "無未使用的函數、變數、import" },
+      { "label": "[INFO] 文件已同步", "criteria": "README、API 文件、架構圖已同步更新" }
+    ],
+    "G3": [
+      { "label": "[T1] TypeScript 編譯通過", "criteria": "tsc --noEmit 無錯誤" },
+      { "label": "[T1] Lint 通過", "criteria": "ESLint + Prettier 無錯誤或警告" },
+      { "label": "[T2] 單元測試通過", "criteria": "所有單元測試 Pass，核心模組覆蓋率 ≥ 80%" },
+      { "label": "[T2] E2E 測試通過", "criteria": "Playwright E2E 測試全部 Pass" },
+      { "label": "[T3] 效能檢查", "criteria": "關鍵操作回應時間 < 目標值，無明顯效能退化" },
+      { "label": "[T3] 跨瀏覽器/平台", "criteria": "目標平台手動驗證無重大差異" },
+      { "label": "[T3] 無重大 Bug", "criteria": "無 Critical/High 等級的未解決 Bug" }
+    ],
+    "G4": [
+      { "label": "文件更新已完成", "criteria": "CLAUDE.md、README、API 文件、架構圖已同步更新至最新狀態" },
+      { "label": "開發紀錄已補齊", "criteria": "開發紀錄包含變更背景、修改範圍、設計決策" },
+      { "label": "規格書已同步", "criteria": "IPC 介面規格書、產品規格書、資料庫設計已反映最新變更" },
+      { "label": "測試文件已更新", "criteria": "功能測試清單、E2E 測試個案說明已涵蓋新功能" }
+    ],
+    "G5": [
+      { "label": "CI/CD 管線通過", "criteria": "Build → Test → Deploy 管線完整執行成功，無紅燈" },
+      { "label": "環境配置已就緒", "criteria": "目標環境（Staging/Production）的環境變數、密鑰、DNS 已設定" },
+      { "label": "回滾計畫已準備", "criteria": "回滾步驟已文件化，包含 DB Migration 回退方案" },
+      { "label": "監控已設定", "criteria": "錯誤追蹤、效能監控、告警通知已配置並驗證" }
+    ],
+    "G6": [
+      { "label": "安全審核通過", "criteria": "無 OWASP Top 10 漏洞，依賴項無已知高風險 CVE" },
+      { "label": "上線前最終確認", "criteria": "產品負責人在 Staging 環境完成 UAT 驗收" },
+      { "label": "用戶文件已完成", "criteria": "使用說明、FAQ、Changelog 已撰寫並發布" },
+      { "label": "正式核准發佈", "criteria": "所有利害關係人已簽核，發佈時間與通知計畫已確認" }
+    ]
+  }
+}

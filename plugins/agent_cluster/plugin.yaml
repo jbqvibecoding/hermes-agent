@@ -1,0 +1,21 @@
+name: agent_cluster
+version: 1.0.0
+description: >-
+  Agent cluster router + orchestrator: a unified 576-agent sub-agent roster
+  (agency-agents, ruflo, AgentHub, OpenOPC) searched lazily and delegated
+  through Hermes delegate_task, with crew44-style sequential pipelines,
+  an independent goal verifier gated by AgentHub G0-G6 quality checklists,
+  dangerous-command interception, and OpenOPC-style self-growth (every
+  execution recorded; recurring lessons auto-promoted to playbook skills).
+author: "jbqvibecoding (assembled from agency-agents, ruflo, AgentHub, OpenOPC, crew44)"
+provides_tools:
+  - cluster_search
+  - cluster_inspect
+  - cluster_load
+  - cluster_delegate
+  - cluster_pipeline
+  - cluster_verify
+  - cluster_knowledge
+provides_hooks:
+  - pre_tool_call
+  - subagent_stop
