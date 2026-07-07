@@ -46,6 +46,7 @@ from tools.registry import registry, tool_error
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_MINUTES = 30
+COUNCIL_DEFAULT_MAX_MINUTES = 60  # council = one full research per member
 MIN_MINUTES = 5
 MAX_MINUTES = 120
 _REPORT_INLINE_MAX_CHARS = 40_000
@@ -83,18 +84,22 @@ def _child_env() -> Dict[str, str]:
 
 async def _run_pipeline(
     question: str, depth: str, max_minutes: int,
+    pipeline: str = "deep_research",
 ) -> Dict[str, Any]:
+    """Shared subprocess driver for all AgentHarness research pipelines
+    (also used by tools/model_council_tool.py)."""
     harness = _harness_dir()
     out_dir = harness / "runs" / "hermes" / uuid.uuid4().hex[:8]
     cmd = [
         "uv", "run", "python", "-m", "workflows.deep_research.run",
+        "--pipeline", pipeline,
         "--question", question,
         "--depth", depth,
         "--out", str(out_dir),
     ]
     logger.info(
-        "deep_research: starting pipeline (depth=%s, deadline=%dmin, out=%s)",
-        depth, max_minutes, out_dir,
+        "%s: starting pipeline (depth=%s, deadline=%dmin, out=%s)",
+        pipeline, depth, max_minutes, out_dir,
     )
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -189,7 +194,7 @@ async def _run_pipeline(
             report[:_REPORT_INLINE_MAX_CHARS]
             + f"\n\n…[truncated — full report at {report_path}]"
         )
-    return {
+    out: Dict[str, Any] = {
         "status": "ok",
         "report": report,
         "report_truncated": truncated,
@@ -202,6 +207,35 @@ async def _run_pipeline(
         },
         "pipeline_errors": result.get("errors", [])[:10],
     }
+    if pipeline != "deep_research":
+        out.update(_council_extras(result))
+    return out
+
+
+def _council_extras(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Council-pipeline additions: the three comparison tables (from
+    council.json), member paper/answer paths, and the HTML artifact."""
+    extras: Dict[str, Any] = {
+        "members": result.get("members", []),
+        "member_papers": result.get("member_papers", {}),
+        "council_html_path": result.get("council_html_path", ""),
+        "council_json_path": result.get("council_json_path", ""),
+    }
+    try:
+        council = json.loads(
+            Path(result.get("council_json_path", "")).read_text(
+                encoding="utf-8",
+            ),
+        )
+        extras["council"] = {
+            "agreements": council.get("agreements", []),
+            "disagreements": council.get("disagreements", []),
+            "unique": council.get("unique", []),
+        }
+        extras["synthesis"] = council.get("synthesis", "")
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("council.json unreadable: %s", exc)
+    return extras
 
 
 async def _handle_deep_research(args: Dict[str, Any], **kwargs: Any) -> str:
@@ -211,14 +245,20 @@ async def _handle_deep_research(args: Dict[str, Any], **kwargs: Any) -> str:
     depth = str(args.get("depth", "standard")).lower()
     if depth not in {"quick", "standard", "deep"}:
         depth = "standard"
+    mode = str(args.get("mode", "solo")).lower()
+    council = mode == "council"
+    default_minutes = COUNCIL_DEFAULT_MAX_MINUTES if council else DEFAULT_MAX_MINUTES
     try:
-        max_minutes = int(args.get("max_minutes", DEFAULT_MAX_MINUTES))
+        max_minutes = int(args.get("max_minutes", default_minutes))
     except (TypeError, ValueError):
-        max_minutes = DEFAULT_MAX_MINUTES
+        max_minutes = default_minutes
     max_minutes = max(MIN_MINUTES, min(MAX_MINUTES, max_minutes))
 
     try:
-        result = await _run_pipeline(question, depth, max_minutes)
+        result = await _run_pipeline(
+            question, depth, max_minutes,
+            pipeline="deep_council_research" if council else "deep_research",
+        )
     except FileNotFoundError as exc:  # uv missing despite check_fn
         return tool_error(f"deep_research launch failed: {exc}")
     return json.dumps(result, ensure_ascii=False)
@@ -235,9 +275,14 @@ DEEP_RESEARCH_SCHEMA = {
         "when needed); a writer drafts; a critic reviews; and a global "
         "verifier performs the final audit. Use for substantive research "
         "questions that deserve verified, sourced answers — not for "
-        "quick lookups (use web_search for those). LONG-RUNNING: takes "
-        "several minutes up to ~1 hour. Call this tool BY ITSELF — never "
-        "alongside other tool calls in the same turn."
+        "quick lookups (use web_search for those). mode='council' runs "
+        "the FULL pipeline once per configured council member model "
+        "(COUNCIL_MODEL_* in the harness .env) and returns per-model "
+        "research papers plus Where-Models-Agree/Disagree/Unique-"
+        "Discoveries comparison tables — cost and duration scale with "
+        "member count. LONG-RUNNING: takes several minutes up to ~1 "
+        "hour. Call this tool BY ITSELF — never alongside other tool "
+        "calls in the same turn."
     ),
     "parameters": {
         "type": "object",
@@ -259,15 +304,28 @@ DEEP_RESEARCH_SCHEMA = {
                 ),
                 "default": "standard",
             },
+            "mode": {
+                "type": "string",
+                "enum": ["solo", "council"],
+                "description": (
+                    "solo (default): one research run on the default "
+                    "model. council: full research once per configured "
+                    "council member model, plus agree/disagree/unique "
+                    "comparison tables and per-model papers (costs ~N× "
+                    "solo; requires COUNCIL_MODEL_* in the harness .env)."
+                ),
+                "default": "solo",
+            },
             "max_minutes": {
                 "type": "integer",
                 "description": (
                     f"Wall-clock budget in minutes (clamped to "
-                    f"{MIN_MINUTES}-{MAX_MINUTES}, default "
-                    f"{DEFAULT_MAX_MINUTES}). The pipeline is killed at "
-                    f"the deadline and partial results returned."
+                    f"{MIN_MINUTES}-{MAX_MINUTES}; default "
+                    f"{DEFAULT_MAX_MINUTES}, or "
+                    f"{COUNCIL_DEFAULT_MAX_MINUTES} in council mode). The "
+                    f"pipeline is killed at the deadline and partial "
+                    f"results returned."
                 ),
-                "default": DEFAULT_MAX_MINUTES,
             },
         },
         "required": ["question"],

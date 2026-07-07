@@ -122,10 +122,26 @@ TOOLSETS = {
             "Multi-agent deep research via a local AgentHarness checkout: "
             "decompose → parallel evidence researchers → fact-check → "
             "conflict audit → draft → review → global verify, returning a "
-            "cited report. Requires the AgentHarness repo (AGENT_HARNESS_DIR, "
-            "default ~/AgentHarness) with its own .env configured."
+            "cited report. mode='council' runs the full pipeline once per "
+            "COUNCIL_MODEL_* member and adds agree/disagree/unique "
+            "comparison tables plus per-model papers. Requires the "
+            "AgentHarness repo (AGENT_HARNESS_DIR, default ~/AgentHarness) "
+            "with its own .env configured."
         ),
         "tools": ["deep_research"],
+        "includes": []
+    },
+
+    "model_council": {
+        "description": (
+            "Model Council: run the same question across several LLMs at "
+            "once (COUNCIL_MODEL_* members in the AgentHarness .env) and "
+            "get one synthesized answer plus Where-Models-Agree/Disagree/"
+            "Unique-Discoveries comparison tables. Lightweight — direct "
+            "model answers, no web research. Requires the AgentHarness "
+            "checkout (AGENT_HARNESS_DIR, default ~/AgentHarness)."
+        ),
+        "tools": ["model_council"],
         "includes": []
     },
     
