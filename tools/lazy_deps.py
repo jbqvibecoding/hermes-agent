@@ -114,6 +114,13 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
     "search.firecrawl": ("firecrawl-py==4.17.0",),
     "search.parallel": ("parallel-web==0.4.2",),
 
+    # ─── CAMEL / owl toolkit bridge (plugins/camel_tools) ──────────────────
+    # owl's toolkits ship in the camel-ai package; the camel-tools plugin
+    # wraps them as Hermes tools. Heavy dependency, installed on demand via
+    # `/camel-tools install`. Bump in lockstep with the `camel` extra in
+    # pyproject.toml.
+    "camel.tools": ("camel-ai[owl]==0.2.84",),
+
     # ─── TTS providers ─────────────────────────────────────────────────────
     # Pinned to exact versions to match pyproject.toml's no-ranges policy
     # (see comment at top of [project.dependencies]). When bumping, update

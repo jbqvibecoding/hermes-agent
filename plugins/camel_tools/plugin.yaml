@@ -1,0 +1,5 @@
+name: camel-tools
+version: 0.1.0
+description: "Bridge owl's CAMEL toolkits (camel.toolkits.*) into Hermes as tools. Wraps each toolkit's FunctionTools into non-core toolsets (camel_search, camel_math, …) surfaced via Tool Search. Requires the camel-ai dependency (lazy feature `camel.tools`); manage via `/camel-tools`."
+author: NousResearch
+kind: backend
