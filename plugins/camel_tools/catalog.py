@@ -86,9 +86,41 @@ TOOLKIT_SPECS: List[ToolkitSpec] = [
         only=["search_duckduckgo", "search_wiki", "search_baidu"],
         emoji="🔎",
     ),
+    # Keyed search engines — same SearchToolkit class, gated on their API keys
+    # so they only surface when configured (key names per owl .env_template).
     ToolkitSpec(
-        cls="MathToolkit",
-        toolset="camel_math",
-        emoji="🧮",
+        cls="SearchToolkit",
+        toolset="camel_search",
+        only=["search_google"],
+        requires_env=["GOOGLE_API_KEY", "SEARCH_ENGINE_ID"],
+        emoji="🔎",
     ),
+    ToolkitSpec(
+        cls="SearchToolkit",
+        toolset="camel_search",
+        only=["search_bocha"],
+        requires_env=["BOCHA_API_KEY"],
+        emoji="🔎",
+    ),
+    # ── Academic / research ────────────────────────────────────────────────
+    ToolkitSpec(cls="ArxivToolkit", toolset="camel_academic", emoji="📄"),
+    ToolkitSpec(cls="SemanticScholarToolkit", toolset="camel_academic", emoji="🎓"),
+    ToolkitSpec(cls="GoogleScholarToolkit", toolset="camel_academic", emoji="🎓"),
+    # ── Data / documents ───────────────────────────────────────────────────
+    ToolkitSpec(cls="ExcelToolkit", toolset="camel_data", emoji="📊"),
+    ToolkitSpec(cls="NetworkXToolkit", toolset="camel_data", emoji="🕸️"),
+    # ── Math ───────────────────────────────────────────────────────────────
+    ToolkitSpec(cls="MathToolkit", toolset="camel_math", emoji="🧮"),
+    ToolkitSpec(cls="SymPyToolkit", toolset="camel_math", emoji="➗"),
+    # ── Weather (keyed) ────────────────────────────────────────────────────
+    ToolkitSpec(
+        cls="WeatherToolkit",
+        toolset="camel_weather",
+        requires_env=["OPENWEATHERMAP_API_KEY"],
+        emoji="🌦️",
+    ),
+    # NOTE: CAMEL's CodeExecutionToolkit is intentionally NOT exposed — Hermes
+    # already ships native sandboxed code execution (tools/code_execution_tool.py
+    # + the terminal/environments backends). Reuse owl for what Hermes lacks;
+    # don't duplicate what it already does better.
 ]
