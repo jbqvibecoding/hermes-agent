@@ -137,6 +137,35 @@ TOOLKIT_SPECS: List[ToolkitSpec] = [
         requires_env=["OPENWEATHERMAP_API_KEY"],
         emoji="🌦️",
     ),
+    # ── Credentialed services (gated on their API keys; env var names follow
+    #    CAMEL 0.2.84 / owl conventions) ─────────────────────────────────────
+    ToolkitSpec(
+        cls="GithubToolkit",
+        toolset="camel_dev",
+        requires_env=["GITHUB_ACCESS_TOKEN"],
+        emoji="🐙",
+    ),
+    ToolkitSpec(
+        cls="NotionToolkit",
+        toolset="camel_productivity",
+        requires_env=["NOTION_TOKEN"],
+        emoji="📝",
+    ),
+    ToolkitSpec(
+        cls="GoogleMapsToolkit",
+        toolset="camel_maps",
+        requires_env=["GOOGLE_MAPS_API_KEY"],
+        emoji="🗺️",
+    ),
+    ToolkitSpec(
+        cls="RedditToolkit",
+        toolset="camel_social",
+        requires_env=["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USER_AGENT"],
+        emoji="👽",
+    ),
+    # NOTE: DalleToolkit is omitted — Hermes ships native image generation
+    # (plugins/image_gen). OpenAPIToolkit is omitted — it needs a per-call
+    # OpenAPI spec path in its constructor, so there's no zero-config default.
     # ── Multimodal (need a model backend → routed to the host LLM) ─────────
     ToolkitSpec(
         cls="ImageAnalysisToolkit",

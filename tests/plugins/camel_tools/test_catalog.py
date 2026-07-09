@@ -36,6 +36,24 @@ def test_code_execution_is_not_exposed():
     assert not any("CodeExecution" in s.cls for s in TOOLKIT_SPECS)
 
 
+def test_dalle_and_openapi_are_not_exposed():
+    # DalleToolkit duplicates Hermes' native image_gen; OpenAPIToolkit needs a
+    # per-call spec path with no zero-config default. Both are intentionally out.
+    names = {s.cls for s in TOOLKIT_SPECS}
+    assert "DalleToolkit" not in names
+    assert "OpenAPIToolkit" not in names
+
+
+def test_credentialed_toolkits_are_env_gated():
+    """Every credentialed service spec must carry a requires_env gate."""
+    by_cls = {s.cls: s for s in TOOLKIT_SPECS}
+    for cls in ("GithubToolkit", "NotionToolkit", "GoogleMapsToolkit", "RedditToolkit"):
+        assert cls in by_cls, f"{cls} missing from catalog"
+        spec = by_cls[cls]
+        assert spec.requires_env, f"{cls} must be env-gated"
+        assert spec.check_fn() is not None
+
+
 def test_check_fn_none_when_no_required_env():
     spec = ToolkitSpec(cls="MathToolkit", toolset="camel_math")
     assert spec.check_fn() is None
