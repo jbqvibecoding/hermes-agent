@@ -84,8 +84,9 @@ _HELP_TEXT = """\
 /camel-tools — owl/CAMEL toolkit bridge
 
 Subcommands:
-  status     Show whether camel-ai is installed and how many tools are active
-  install    Install the camel-ai dependency (then restart Hermes)
+  status              Show whether camel-ai is installed and tools are active
+  install             Install the camel-ai dependency (then restart Hermes)
+  workspace [session] Show/provision the /mnt/user-data workspace dirs
 
 When camel-ai is installed, its toolkits are exposed as non-core tools
 (camel_search, camel_math, …) and surfaced to the model via Tool Search.
@@ -113,7 +114,33 @@ def _handle_slash(raw_args: str) -> Optional[str]:
         ok, msg = _install_camel()
         return f"[camel-tools] {msg}"
 
+    if sub == "workspace":
+        return _workspace_status(argv[1] if len(argv) > 1 else "default")
+
     return f"Unknown subcommand: {sub}\n\n{_HELP_TEXT}"
+
+
+def _workspace_status(session_id: str) -> str:
+    """Resolve + provision the /mnt/user-data workspace for a session."""
+    from plugins.camel_tools.workspace import ensure_dirs, resolve_workspace
+
+    try:
+        from hermes_constants import get_hermes_home
+
+        hermes_home = get_hermes_home()
+    except Exception:  # noqa: BLE001
+        from pathlib import Path
+
+        hermes_home = str(Path.home() / ".hermes")
+
+    paths = ensure_dirs(resolve_workspace(hermes_home, session_id))
+    lines = [
+        f"[camel-tools] /mnt/user-data workspace (session {session_id!r}):",
+        f"  uploads   → {paths.uploads}",
+        f"  workspace → {paths.workspace}",
+        f"  outputs   → {paths.outputs}",
+    ]
+    return "\n".join(lines)
 
 
 def register(ctx) -> None:
