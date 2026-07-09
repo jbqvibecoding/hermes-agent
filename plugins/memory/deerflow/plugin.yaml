@@ -1,0 +1,5 @@
+name: deerflow-memory
+version: 0.1.0
+description: "DeerFlow-style cross-session memory as a Hermes MemoryProvider: file-backed fact store, host-LLM fact extraction, and age-based staleness pruning. Activate with memory.provider: deerflow."
+author: NousResearch
+kind: exclusive
