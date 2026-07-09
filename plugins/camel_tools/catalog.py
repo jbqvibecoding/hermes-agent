@@ -55,11 +55,29 @@ class ToolkitSpec:
     emoji: str = "🐫"
     name_prefix: str = ""
 
+    needs_model: bool = False
+    """If True, inject a Hermes-backed ``model=`` (host LLM) at build time.
+
+    Multimodal/browser toolkits take a ``camel.models.BaseModelBackend`` and
+    call it internally; we route that back to the user's active model via
+    :func:`plugins.camel_tools.hermes_camel_backend.make_hermes_camel_backend`.
+    """
+
+    model_task: str = "vision"
+    """Auxiliary-task bucket for the injected backend's ``call_llm`` routing."""
+
     def build(self) -> Any:
         """Import and instantiate the CAMEL toolkit. Raises if camel is absent."""
         module = importlib.import_module(self.module)
         toolkit_cls = getattr(module, self.cls)
-        return toolkit_cls(**self.kwargs)
+        kwargs = dict(self.kwargs)
+        if self.needs_model and "model" not in kwargs:
+            from plugins.camel_tools.hermes_camel_backend import (
+                make_hermes_camel_backend,
+            )
+
+            kwargs["model"] = make_hermes_camel_backend(task=self.model_task)
+        return toolkit_cls(**kwargs)
 
     def check_fn(self) -> Optional[Callable[[], bool]]:
         """Return an availability check gating on required env vars, or None."""
@@ -119,8 +137,43 @@ TOOLKIT_SPECS: List[ToolkitSpec] = [
         requires_env=["OPENWEATHERMAP_API_KEY"],
         emoji="🌦️",
     ),
+    # ── Multimodal (need a model backend → routed to the host LLM) ─────────
+    ToolkitSpec(
+        cls="ImageAnalysisToolkit",
+        toolset="camel_vision",
+        needs_model=True,
+        model_task="vision",
+        emoji="🖼️",
+    ),
+    ToolkitSpec(
+        cls="VideoAnalysisToolkit",
+        toolset="camel_video",
+        needs_model=True,
+        model_task="vision",
+        emoji="🎬",
+    ),
+    ToolkitSpec(
+        cls="AudioAnalysisToolkit",
+        toolset="camel_audio",
+        needs_model=True,
+        model_task="vision",
+        emoji="🎧",
+    ),
+    # ── Browser automation (Playwright; also drives sub-models) ────────────
+    ToolkitSpec(
+        cls="BrowserToolkit",
+        toolset="camel_browser",
+        needs_model=True,
+        model_task="vision",
+        emoji="🌐",
+    ),
     # NOTE: CAMEL's CodeExecutionToolkit is intentionally NOT exposed — Hermes
     # already ships native sandboxed code execution (tools/code_execution_tool.py
     # + the terminal/environments backends). Reuse owl for what Hermes lacks;
     # don't duplicate what it already does better.
+    #
+    # NOTE: owl's DocumentProcessingToolkit (word/excel/pdf/ppt → text) is NOT
+    # vendored here — it pulls a heavy tail (chunkr_ai, crawl4ai, xmltodict,
+    # global nest_asyncio.apply()). Document→text parsing is handled instead by
+    # the /mnt/user-data upload auto-conversion path (M4).
 ]
