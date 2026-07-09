@@ -87,6 +87,7 @@ Subcommands:
   status              Show whether camel-ai is installed and tools are active
   install             Install the camel-ai dependency (then restart Hermes)
   workspace [session] Show/provision the /mnt/user-data workspace dirs
+  install-skill <path> [--overwrite]  Install a hardened .skill archive
 
 When camel-ai is installed, its toolkits are exposed as non-core tools
 (camel_search, camel_math, …) and surfaced to the model via Tool Search.
@@ -117,7 +118,38 @@ def _handle_slash(raw_args: str) -> Optional[str]:
     if sub == "workspace":
         return _workspace_status(argv[1] if len(argv) > 1 else "default")
 
+    if sub == "install-skill":
+        if len(argv) < 2:
+            return "Usage: /camel-tools install-skill <path-to.skill> [--overwrite]"
+        overwrite = "--overwrite" in argv[2:]
+        return _install_skill(argv[1], overwrite=overwrite)
+
     return f"Unknown subcommand: {sub}\n\n{_HELP_TEXT}"
+
+
+def _install_skill(archive_path: str, *, overwrite: bool) -> str:
+    """Install a hardened .skill archive into the Hermes skills directory."""
+    from pathlib import Path
+
+    from plugins.camel_tools.skill_archive import (
+        SkillArchiveError,
+        install_skill_archive,
+    )
+
+    try:
+        from hermes_constants import get_hermes_home
+
+        skills_dir = Path(get_hermes_home()) / "skills"
+    except Exception:  # noqa: BLE001
+        skills_dir = Path.home() / ".hermes" / "skills"
+
+    try:
+        installed = install_skill_archive(archive_path, skills_dir, overwrite=overwrite)
+    except SkillArchiveError as exc:
+        return f"[camel-tools] Skill install rejected: {exc}"
+    except Exception as exc:  # noqa: BLE001
+        return f"[camel-tools] Skill install failed: {type(exc).__name__}: {exc}"
+    return f"[camel-tools] Installed skill → {installed}"
 
 
 def _workspace_status(session_id: str) -> str:
