@@ -1,0 +1,11 @@
+name: unified
+display_name: unified-memory
+version: 0.1.0
+description: "Unified memory fusing six systems — Hindsight retrieval brain, EverOS md-as-truth substrate, mempalace verbatim + AAAK triage, OpenViking tiered context assembly, MemOS MemCube portability, and the tencentdb L0-L3 pipeline — served by the hindsight-unified sidecar."
+hooks:
+  - on_memory_write
+  - on_session_end
+  - on_pre_compress
+aliases:
+  - unified-memory
+  - hindsight-unified
