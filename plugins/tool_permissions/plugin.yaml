@@ -1,0 +1,7 @@
+name: tool-permissions
+version: 0.1.0
+description: "Per-tool approval / permission-mode gate (ported from OpenHarness). Blocks or escalates tool calls via the pre_tool_call hook, with an un-overridable credential-path deny-list. Opt-in via permissions.mode (off|default|plan|full_auto)."
+author: NousResearch
+kind: standalone
+hooks:
+  - pre_tool_call
