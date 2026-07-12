@@ -113,6 +113,16 @@ def make_handler(
 
     def handler(args: Optional[dict] = None, **_kwargs: Any) -> str:
         call_args = args or {}
+        # SSRF guard: validate any http(s) URL argument before the CAMEL tool
+        # fetches it (blocks cloud-metadata / localhost / private-range hosts).
+        try:
+            from plugins.camel_tools.network_guard import NetworkGuardError, guard_args
+
+            guard_args(call_args)
+        except NetworkGuardError as exc:
+            return tool_error(f"camel tool {tool_name!r} blocked unsafe URL: {exc}")
+        except Exception:  # noqa: BLE001 — guard must never break a legit call
+            pass
         try:
             result = func(**call_args)
         except TypeError as exc:
