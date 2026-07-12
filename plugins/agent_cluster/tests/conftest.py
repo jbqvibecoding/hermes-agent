@@ -108,14 +108,114 @@ def built_roster(source_repos, tmp_path: Path):
     return json.loads(out.read_text(encoding="utf-8"))
 
 
-class FakeCtx:
-    """Stand-in for hermes PluginContext capturing registrations/dispatches."""
+class FakeTaskBoard:
+    """In-memory stand-in for ClawTeam's FileTaskStore behind its MCP tools.
 
-    def __init__(self, dispatch_results=None):
+    Implements the semantics the swarm engine depends on: tasks created with
+    blocked_by start blocked, completing a task removes it from dependents'
+    blocked_by and flips them to pending, and simple cycle rejection.
+    """
+
+    def __init__(self):
+        self.teams = {}
+        self.tasks = {}
+        self._next = 0
+
+    def _new_id(self):
+        self._next += 1
+        return f"t{self._next:03d}"
+
+    def handle(self, tool, args):
+        method = getattr(self, tool, None)
+        if method is None:
+            raise KeyError(f"unknown clawteam tool: {tool}")
+        return json.dumps(method(**args), ensure_ascii=False)
+
+    # -- tool implementations (mirror clawteam/mcp/tools signatures) --------
+
+    def team_list(self):
+        return sorted(self.teams)
+
+    def team_create(self, team_name, leader_name="", leader_id="", **kwargs):
+        self.teams.setdefault(team_name, {"members": []})
+        return {"name": team_name}
+
+    def team_member_add(self, team_name, member_name, agent_id, **kwargs):
+        self.teams.setdefault(team_name, {"members": []})["members"].append(member_name)
+        return {"name": member_name}
+
+    def task_create(self, team_name, subject, description="", owner="",
+                    priority=None, blocks=None, blocked_by=None, metadata=None):
+        blocked_by = list(blocked_by or [])
+        for dep in blocked_by:
+            if dep not in self.tasks:
+                raise ValueError(f"unknown dependency {dep}")
+        task = {
+            "id": self._new_id(),
+            "subject": subject,
+            "description": description,
+            "owner": owner,
+            "priority": priority or "medium",
+            "status": "blocked" if blocked_by else "pending",
+            # camelCase like ClawTeam's by_alias serialization
+            "blockedBy": blocked_by,
+            "metadata": dict(metadata or {}),
+        }
+        self.tasks[task["id"]] = task
+        return task
+
+    def task_update(self, team_name, task_id, status=None, owner=None,
+                    subject=None, description=None, priority=None,
+                    add_blocks=None, add_blocked_by=None, metadata=None,
+                    caller="", force=False):
+        task = self.tasks[task_id]
+        if owner is not None:
+            task["owner"] = owner
+        if subject is not None:
+            task["subject"] = subject
+        if metadata:
+            task["metadata"].update(metadata)
+        if status is not None:
+            task["status"] = status
+            if status == "completed":
+                for other in self.tasks.values():
+                    if task_id in other["blockedBy"]:
+                        other["blockedBy"] = [d for d in other["blockedBy"] if d != task_id]
+                        if not other["blockedBy"] and other["status"] == "blocked" \
+                                and not other["metadata"].get("cluster_outcome"):
+                            other["status"] = "pending"
+        return task
+
+    def task_list(self, team_name, status=None, owner=None, priority=None,
+                  sort_by_priority=False):
+        tasks = list(self.tasks.values())
+        if status:
+            tasks = [t for t in tasks if t["status"] == status]
+        if owner:
+            tasks = [t for t in tasks if t["owner"] == owner]
+        return tasks
+
+    def task_stats(self, team_name):
+        counts = {}
+        for task in self.tasks.values():
+            counts[task["status"]] = counts.get(task["status"], 0) + 1
+        return {"total": len(self.tasks), "by_status": counts}
+
+
+class FakeCtx:
+    """Stand-in for hermes PluginContext capturing registrations/dispatches.
+
+    delegate_task calls consume queued results (or a canned success);
+    mcp__<server>__* calls are served by an in-memory FakeTaskBoard.
+    """
+
+    def __init__(self, dispatch_results=None, clawteam_server="clawteam"):
         self.tools = {}
         self.hooks = {}
         self.dispatched = []
         self._results = list(dispatch_results or [])
+        self.board = FakeTaskBoard()
+        self._mcp_prefix = f"mcp__{clawteam_server}__"
 
     def register_tool(self, name, toolset, schema, handler, **kwargs):
         self.tools[name] = {"toolset": toolset, "schema": schema, "handler": handler, **kwargs}
@@ -125,9 +225,15 @@ class FakeCtx:
 
     def dispatch_tool(self, tool_name, args, **kwargs):
         self.dispatched.append((tool_name, args))
+        if tool_name.startswith(self._mcp_prefix):
+            return self.board.handle(tool_name[len(self._mcp_prefix):], args)
         if self._results:
             return self._results.pop(0)
-        return json.dumps({"results": [{"status": "success", "result": "child done"}]})
+        # Mirror real delegate_task: one result entry per task in a batch.
+        count = len(args.get("tasks") or []) or 1
+        return json.dumps(
+            {"results": [{"status": "success", "result": "child done"}] * count}
+        )
 
     def call(self, tool, **args):
         return json.loads(self.tools[tool]["handler"](args))

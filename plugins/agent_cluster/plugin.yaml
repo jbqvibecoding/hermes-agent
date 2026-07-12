@@ -1,5 +1,5 @@
 name: agent_cluster
-version: 1.0.0
+version: 1.1.0
 description: >-
   Agent cluster router + orchestrator: a unified 576-agent sub-agent roster
   (agency-agents, ruflo, AgentHub, OpenOPC) searched lazily and delegated
@@ -16,6 +16,10 @@ provides_tools:
   - cluster_pipeline
   - cluster_verify
   - cluster_knowledge
+  - cluster_plan
+  - cluster_swarm
+  - cluster_board
+  - cluster_template
 provides_hooks:
   - pre_tool_call
   - subagent_stop

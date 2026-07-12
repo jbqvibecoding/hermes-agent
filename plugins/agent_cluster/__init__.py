@@ -16,7 +16,9 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from .cluster import config as cluster_config
-from .cluster import orchestrator, prompts, roster
+from .cluster import orchestrator, prompts, roster, swarm
+from .cluster import templates as cluster_templates
+from .cluster.clawteam_bridge import ClawTeamBridge, ClawTeamUnavailable
 from .cluster.evolution import ClusterEvolution
 from .cluster.guard import Guard
 from .cluster.skill_store import SkillStore
@@ -154,6 +156,66 @@ VERIFY_SCHEMA = {
         "evidence": {"type": "string", "description": "Evidence produced by the team (paths, logs, summaries)."},
     },
     "required": ["goal"],
+}
+
+PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "team": {"type": "string", "description": "Team name for the task board (letters/digits/dashes)."},
+        "tasks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "Short task title."},
+                    "description": {"type": "string", "description": "Full task instructions."},
+                    "agent": {"type": "string", "description": "Roster slug or name of the specialist who owns this task."},
+                    "priority": {"type": "string", "enum": ["low", "medium", "high", "urgent"]},
+                    "blocked_by": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Indices (0-based) of tasks IN THIS BATCH that must complete first — builds the dependency DAG.",
+                    },
+                },
+                "required": ["subject", "agent"],
+            },
+            "description": "The task DAG to seed onto the ClawTeam board.",
+        },
+    },
+    "required": ["team", "tasks"],
+}
+
+SWARM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "team": {"type": "string", "description": "Team whose task DAG to execute (created via cluster_plan or cluster_template)."},
+        "context": {"type": "string", "description": "Shared background context injected into every task delegation."},
+        "parallel": {"type": "integer", "description": "Max ready tasks delegated per round (default from config, bounded by Hermes delegation limits)."},
+        "workspace_repo": {"type": "string", "description": "Optional path to a git repo: each agent works in an isolated ClawTeam worktree branch, merged back on success (requires clawteam CLI)."},
+        "verify_goal": {"type": "string", "description": "If set, run an independent verifier over this goal after convergence."},
+        "verify_criteria": {"type": "array", "items": {"type": "string"}, "description": "Locked acceptance criteria for the final verifier."},
+        "gate": {"type": "string", "description": "Optional quality gate for the final verifier: G0-G6."},
+    },
+    "required": ["team"],
+}
+
+BOARD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "team": {"type": "string", "description": "Team whose task board to summarize."},
+    },
+    "required": ["team"],
+}
+
+TEMPLATE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string", "description": "Template name (e.g. software-dev, code-review, hedge-fund, research-paper, strategy-room). Omit to list available templates."},
+        "goal": {"type": "string", "description": "The goal substituted into the template's {goal} placeholders."},
+        "team": {"type": "string", "description": "Team name for the board (default: template name + timestamp)."},
+        "run": {"type": "boolean", "description": "If true, immediately seed the plan AND run cluster_swarm on it; otherwise return the expanded plan for review."},
+    },
+    "required": [],
 }
 
 KNOWLEDGE_SCHEMA = {
@@ -393,6 +455,111 @@ def register(ctx) -> None:
             return _json({"success": False, "error": f"verifier failed: {exc}"})
         return _json({"success": True, **verification})
 
+    # -- ClawTeam bridge: plan / swarm / board / template ------------------------
+
+    bridge = ClawTeamBridge(_dispatch_tracked, server=str(cfg.get("clawteam_server", "clawteam")))
+
+    def _bridge_error(exc: Exception) -> str:
+        return _json({"success": False, "error": str(exc)})
+
+    def plan(args: Dict[str, Any], **kwargs) -> str:
+        del kwargs
+        team = str(args.get("team", "")).strip()
+        tasks = args.get("tasks")
+        if not team:
+            return _json({"success": False, "error": "team is required"})
+        if not isinstance(tasks, list) or not tasks:
+            return _json({"success": False, "error": "tasks is required"})
+        try:
+            return _json(swarm.plan_tasks(bridge, team, tasks))
+        except ClawTeamUnavailable as exc:
+            return _bridge_error(exc)
+        except Exception as exc:
+            return _json({"success": False, "error": f"plan failed: {exc}"})
+
+    def run_swarm_tool(args: Dict[str, Any], **kwargs) -> str:
+        del kwargs
+        team = str(args.get("team", "")).strip()
+        if not team:
+            return _json({"success": False, "error": "team is required"})
+        try:
+            parallel = int(args.get("parallel") or cfg.get("swarm_parallel", 3))
+        except Exception:
+            parallel = int(cfg.get("swarm_parallel", 3))
+        try:
+            report = swarm.run_swarm(
+                bridge,
+                _dispatch_tracked,
+                team,
+                context=str(args.get("context", "")),
+                parallel=parallel,
+                max_rounds=int(cfg.get("swarm_max_rounds", 20)),
+                max_retries=int(cfg.get("swarm_max_retries", 1)),
+                evolution=evolution,
+                workspace_repo=str(args.get("workspace_repo", "")).strip(),
+                verify_goal=str(args.get("verify_goal", "")).strip(),
+                verify_criteria=args.get("verify_criteria") or [],
+                gate=str(args.get("gate", "")).strip(),
+            )
+            return _json(report)
+        except ClawTeamUnavailable as exc:
+            return _bridge_error(exc)
+        except Exception as exc:
+            return _json({"success": False, "error": f"swarm failed: {exc}"})
+
+    def board(args: Dict[str, Any], **kwargs) -> str:
+        del kwargs
+        team = str(args.get("team", "")).strip()
+        if not team:
+            return _json({"success": False, "error": "team is required"})
+        try:
+            return _json({"success": True, **swarm.board_snapshot(bridge, team)})
+        except ClawTeamUnavailable as exc:
+            return _bridge_error(exc)
+
+    def template(args: Dict[str, Any], **kwargs) -> str:
+        del kwargs
+        user_dir = cluster_config.get_data_dir(cfg) / "templates"
+        name = str(args.get("name", "")).strip()
+        if not name:
+            return _json({"success": True, "templates": cluster_templates.list_templates(user_dir)})
+        loaded = cluster_templates.load_template(name, user_dir)
+        if loaded is None:
+            return _json({
+                "success": False,
+                "error": f"template not found: {name}",
+                "templates": cluster_templates.list_templates(user_dir),
+            })
+        goal = str(args.get("goal", "")).strip()
+        if not goal:
+            return _json({"success": False, "error": "goal is required when expanding a template"})
+        import time as _time
+
+        team = str(args.get("team", "")).strip() or f"{name}-{int(_time.time()) % 100000}"
+        expanded = cluster_templates.to_plan(loaded, goal, team)
+        if not expanded.get("success"):
+            return _json(expanded)
+        if not bool(args.get("run", False)):
+            return _json(expanded)
+        try:
+            plan_result = swarm.plan_tasks(bridge, team, expanded["tasks"])
+            if not plan_result.get("success"):
+                return _json({**expanded, **plan_result})
+            report = swarm.run_swarm(
+                bridge,
+                _dispatch_tracked,
+                team,
+                parallel=int(cfg.get("swarm_parallel", 3)),
+                max_rounds=int(cfg.get("swarm_max_rounds", 20)),
+                max_retries=int(cfg.get("swarm_max_retries", 1)),
+                evolution=evolution,
+            )
+            return _json({"template": name, "roles": expanded["roles"], **report})
+        except ClawTeamUnavailable as exc:
+            return _bridge_error(exc)
+        except Exception as exc:
+            return _json({"success": False, "error": f"template run failed: {exc}"})
+
     # -- knowledge -------------------------------------------------------------
 
     def knowledge(args: Dict[str, Any], **kwargs) -> str:
@@ -499,6 +666,59 @@ def register(ctx) -> None:
             "a structured PASS/FAIL report. Use before declaring work done."
         ),
         emoji="✅",
+    )
+    ctx.register_tool(
+        name="cluster_plan",
+        toolset=TOOLSET,
+        schema=PLAN_SCHEMA,
+        handler=plan,
+        description=(
+            "Seed a dependency DAG of tasks onto a ClawTeam task board (team + "
+            "tasks with blocked_by index references; owners are cluster roster "
+            "slugs). Use for multi-task work with real dependencies, then run "
+            "cluster_swarm. Requires the clawteam MCP server."
+        ),
+        emoji="🗂️",
+    )
+    ctx.register_tool(
+        name="cluster_swarm",
+        toolset=TOOLSET,
+        schema=SWARM_SCHEMA,
+        handler=run_swarm_tool,
+        description=(
+            "Execute a team's task DAG to convergence: ready tasks are "
+            "delegated in parallel to their owner specialists, completions "
+            "auto-unblock dependents, failures retry then fail-fast. Optional "
+            "git-worktree isolation per agent (workspace_repo) and a final "
+            "verifier (verify_goal + gate). Every execution is recorded into "
+            "evolution memory."
+        ),
+        emoji="🐝",
+    )
+    ctx.register_tool(
+        name="cluster_board",
+        toolset=TOOLSET,
+        schema=BOARD_SCHEMA,
+        handler=board,
+        description=(
+            "Show a team's task-board snapshot: per-status columns and stats "
+            "(pending/in_progress/completed/blocked, failure reasons)."
+        ),
+        emoji="📊",
+    )
+    ctx.register_tool(
+        name="cluster_template",
+        toolset=TOOLSET,
+        schema=TEMPLATE_SCHEMA,
+        handler=template,
+        description=(
+            "List or expand team templates (ClawTeam TOML archetypes: "
+            "software-dev, code-review, hedge-fund, research-paper, "
+            "strategy-room). Expansion maps template roles onto cluster "
+            "roster specialists and builds a task DAG; pass run=true to "
+            "execute it immediately via cluster_swarm."
+        ),
+        emoji="🧩",
     )
     ctx.register_tool(
         name="cluster_knowledge",

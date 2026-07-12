@@ -20,6 +20,16 @@ DEFAULTS: Dict[str, Any] = {
     "guard_enabled": True,
     # Max characters of a stage result carried into the next pipeline stage.
     "handover_note_limit": 4000,
+    # ClawTeam MCP bridge (DAG swarm): name of the mcp_servers entry whose
+    # tools register as mcp__<server>__*.
+    "clawteam_server": "clawteam",
+    # Max ready tasks delegated per swarm round (also bounded by Hermes'
+    # delegation.max_concurrent_children).
+    "swarm_parallel": 3,
+    # Hard cap on swarm scheduler rounds before returning a board snapshot.
+    "swarm_max_rounds": 20,
+    # Failed-task retries before the task is marked blocked/failed.
+    "swarm_max_retries": 1,
 }
 
 

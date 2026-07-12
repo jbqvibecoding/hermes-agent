@@ -37,6 +37,12 @@
 | `cluster_pipeline` | 顺序接力流水线（架构 → 编码 → 测试…），可选终局 verifier |
 | `cluster_verify` | 独立核验子代理：锁定 criteria + 可选 G0–G6 门禁，输出 PASS/FAIL 报告 |
 | `cluster_knowledge` | 检索沉淀的 reflection、playbook 与标准工作流 |
+| `cluster_plan` † | 在 ClawTeam 任务板上按依赖建任务 DAG（owner = roster slug） |
+| `cluster_swarm` † | DAG 调度循环：就绪任务并行委派 → 完成自动解锁下游 → 收敛；可选 worktree 隔离与终局 verifier |
+| `cluster_board` † | 任务板快照（各状态列 + 统计） |
+| `cluster_template` † | 列出/展开 TOML 团队模板（software-dev、code-review、hedge-fund…），映射 roster 选角，可 run=true 直接执行 |
+
+† 需要 ClawTeam MCP 桥接（见下节）；未配置时返回带安装指引的错误，其余工具不受影响。
 
 ## 安装 / 启用
 
@@ -63,6 +69,68 @@ plugins:
 有先后依赖的开发流程用 cluster_pipeline（并带 verify_goal + gate 做终局核验），
 宣布完成前用 cluster_verify 跑 G2/G3 门禁。保持懒加载：不要预载全量 roster。
 ```
+
+## ClawTeam 桥接（DAG swarm / worktree / 模板 / 持久团队）
+
+[ClawTeam](https://github.com/jbqvibecoding/ClawTeam) 作为**外部进程**提供任务 DAG
+存储（依赖链、环检测、完成自动解锁下游）、git worktree 隔离与团队模板。本插件不
+`import clawteam`——通过 Hermes 自带 MCP client 桥接，复用其经过验证的任务底座。
+
+### 安装与接线
+
+```bash
+pip install clawteam
+```
+
+Hermes `config.yaml`：
+
+```yaml
+mcp_servers:
+  clawteam:
+    command: clawteam-mcp
+```
+
+重启 Hermes 后，ClawTeam 的 26 个工具以 `mcp__clawteam__*` 注册进工具表，
+`cluster_plan / cluster_swarm / cluster_board / cluster_template` 即可用。
+（server 名不叫 `clawteam` 时，在 `plugins.entries.agent_cluster.clawteam_server` 指定。）
+
+### 两种用法
+
+1. **DAG swarm（推荐云端默认）** —— 状态在 ClawTeam 任务板，执行在 Hermes
+   `delegate_task`，知识沉淀在 evolution：
+
+   ```
+   cluster_plan(team="feature-x", tasks=[
+     {subject: "设计 schema",  agent: "system-architect"},
+     {subject: "实现 API",     agent: "backend-architect", blocked_by: [0]},
+     {subject: "实现前端",     agent: "frontend-developer", blocked_by: [0]},
+     {subject: "集成测试",     agent: "tester", blocked_by: [1, 2]},
+   ])
+   cluster_swarm(team="feature-x", verify_goal="feature X 可用", gate="G3")
+   ```
+
+   就绪任务（0）先跑；完成后 1、2 自动解锁并**并行**委派；全完后 4 跑；
+   最后独立 verifier 按 G3 门禁核验。失败自动重试一次，超限标记 failed 并停止
+   下游。`workspace_repo=/path/to/repo` 时每个 agent 在独立 worktree 分支工作，
+   成功后受控合并（冲突即中止并报告；需要宿主装有 `clawteam` CLI 与 git）。
+
+2. **持久 tmux 团队（长任务/真实 CLI 进程）** —— 主 agent 直接使用
+   `mcp__clawteam__*` 工具（team/task/mailbox/board/workspace 分析），配合宿主上
+   `clawteam spawn/launch` 起真实的 Claude Code/Codex worker 进程；适合跨天任务
+   与需要人监控 tmux 的场景。
+
+### 双向互通
+
+- **出**：把 roster 专家或已升格的 playbook 导出为 ClawTeam 可注入的 skill：
+
+  ```bash
+  python3 -m plugins.agent_cluster.scripts.export_skill --agent backend-architect
+  python3 -m plugins.agent_cluster.scripts.export_skill --playbook coder-backend-playbook
+  # 之后： clawteam spawn <team> --skill backend-architect ...
+  ```
+
+- **入**：ClawTeam 格式的 SKILL.md 目录放进 `<data_dir>/skills/` 即被
+  `cluster_knowledge` 检索、被同名角色的提示注入复用（格式天然兼容）。
 
 ## Roster 重建
 

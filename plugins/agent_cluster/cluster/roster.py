@@ -61,9 +61,11 @@ def lookup(identifier: str, agents: Optional[List[Dict[str, Any]]] = None) -> Op
     needle = (identifier or "").strip().lower()
     if not needle:
         return None
+    # Try the raw identifier first: dedup-requalified slugs contain a double
+    # dash ("openopc--backend-architect") that slugify() would collapse.
     slug = slugify(needle)
     for agent in agents if agents is not None else load_agents():
-        if agent["slug"] == slug or agent["name"].lower() == needle:
+        if agent["slug"] in (needle, slug) or agent["name"].lower() == needle:
             return agent
     return None
 

@@ -17,6 +17,10 @@ EXPECTED_TOOLS = {
     "cluster_pipeline",
     "cluster_verify",
     "cluster_knowledge",
+    "cluster_plan",
+    "cluster_swarm",
+    "cluster_board",
+    "cluster_template",
 }
 
 

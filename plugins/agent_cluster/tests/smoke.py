@@ -58,6 +58,25 @@ def main() -> int:
     guard = ctx.hooks["pre_tool_call"][0]
     blocked = guard(tool_name="terminal", args={"command": "git push --force origin main"})
     print(f"\n=== guard ===\nforce-push blocked: {bool(blocked)}")
+
+    # ClawTeam bridge: DAG plan → swarm → board, and template listing/expansion
+    # (FakeCtx serves mcp__clawteam__* from an in-memory board).
+    show(
+        "cluster_plan",
+        team="smoke-team",
+        tasks=[
+            {"subject": "design the api", "agent": "backend-architect"},
+            {"subject": "implement the api", "agent": "coder", "blocked_by": [0]},
+            {"subject": "test the api", "agent": "tester", "blocked_by": [1]},
+        ],
+    )
+    ctx._results = []
+    show("cluster_swarm", team="smoke-team")
+    show("cluster_board", team="smoke-team")
+    listed = show("cluster_template")
+    assert any(t["name"] == "software-dev" for t in listed["templates"])
+    show("cluster_template", name="code-review", goal="review the auth module")
+
     print(f"\nsmoke OK (data dir: {tmp})")
     return 0
 
