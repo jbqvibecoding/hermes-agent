@@ -204,9 +204,15 @@ async def _run_pipeline(
             "sub_questions": result.get("sub_question_count", 0),
             "evidence_cards": result.get("evidence_count", 0),
             "research_iterations": result.get("iterations", 0),
+            "contradiction_clusters": result.get("contradiction_clusters", 0),
+            "loci": result.get("loci_count", 0),
+            "vault_sources": result.get("vault_source_count", 0),
         },
         "pipeline_errors": result.get("errors", [])[:10],
     }
+    for key in ("vault_dir", "patch_log_path", "polish_log_path"):
+        if result.get(key):
+            out[key] = result[key]
     if pipeline != "deep_research":
         out.update(_council_extras(result))
     return out
@@ -273,9 +279,13 @@ DEEP_RESEARCH_SCHEMA = {
         "evidence; fact-checkers re-fetch every cited source; a conflict "
         "auditor hunts contradictions and coverage gaps (re-researching "
         "when needed); a writer drafts; a critic reviews; and a global "
-        "verifier performs the final audit. Use for substantive research "
-        "questions that deserve verified, sourced answers — not for "
-        "quick lookups (use web_search for those). mode='council' runs "
+        "verifier performs the final audit. Sources are stored in a "
+        "searchable evidence vault, contested claims are mapped into a "
+        "contradiction graph with prioritized loci for deeper "
+        "investigation, four adversarial critics review the draft, and "
+        "revisions are applied as surgical patches. Use for substantive "
+        "research questions that deserve verified, sourced answers — not "
+        "for quick lookups (use web_search for those). mode='council' runs "
         "the FULL pipeline once per configured council member model "
         "(COUNCIL_MODEL_* in the harness .env) and returns per-model "
         "research papers plus Where-Models-Agree/Disagree/Unique-"
