@@ -63,6 +63,7 @@ async def _handle_model_council(args: Dict[str, Any], **kwargs: Any) -> str:
     try:
         result = await _run_pipeline(
             question, "quick", max_minutes, pipeline="model_council",
+            peer_review=bool(args.get("peer_review", False)),
         )
     except FileNotFoundError as exc:
         return tool_error(f"model_council launch failed: {exc}")
@@ -99,6 +100,19 @@ MODEL_COUNCIL_SCHEMA = {
                     "The question, phrased self-contained (members see "
                     "only this text, not the conversation)."
                 ),
+            },
+            "peer_review": {
+                "type": "boolean",
+                "description": (
+                    "Add an anonymized peer-review round: each member "
+                    "ranks the other members' answers blind (authorship "
+                    "hidden, self-votes excluded), adding a Peer Review "
+                    "Ranking table and letting the synthesis lean on the "
+                    "council's own verdict. Costs one extra call per "
+                    "member. Use when accuracy matters more than speed. "
+                    "Default false."
+                ),
+                "default": False,
             },
             "max_minutes": {
                 "type": "integer",

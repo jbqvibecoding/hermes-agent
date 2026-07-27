@@ -85,6 +85,7 @@ def _child_env() -> Dict[str, str]:
 async def _run_pipeline(
     question: str, depth: str, max_minutes: int,
     pipeline: str = "deep_research",
+    peer_review: bool = False,
 ) -> Dict[str, Any]:
     """Shared subprocess driver for all AgentHarness research pipelines
     (also used by tools/model_council_tool.py)."""
@@ -97,6 +98,8 @@ async def _run_pipeline(
         "--depth", depth,
         "--out", str(out_dir),
     ]
+    if peer_review:
+        cmd.append("--peer-review")
     logger.info(
         "%s: starting pipeline (depth=%s, deadline=%dmin, out=%s)",
         pipeline, depth, max_minutes, out_dir,
@@ -226,7 +229,10 @@ def _council_extras(result: Dict[str, Any]) -> Dict[str, Any]:
         "member_papers": result.get("member_papers", {}),
         "council_html_path": result.get("council_html_path", ""),
         "council_json_path": result.get("council_json_path", ""),
+        "peer_review_enabled": result.get("peer_review_enabled", False),
     }
+    if result.get("peer_ranking"):
+        extras["peer_ranking"] = result["peer_ranking"]
     try:
         council = json.loads(
             Path(result.get("council_json_path", "")).read_text(
@@ -264,6 +270,7 @@ async def _handle_deep_research(args: Dict[str, Any], **kwargs: Any) -> str:
         result = await _run_pipeline(
             question, depth, max_minutes,
             pipeline="deep_council_research" if council else "deep_research",
+            peer_review=council and bool(args.get("peer_review", False)),
         )
     except FileNotFoundError as exc:  # uv missing despite check_fn
         return tool_error(f"deep_research launch failed: {exc}")
@@ -325,6 +332,18 @@ DEEP_RESEARCH_SCHEMA = {
                     "solo; requires COUNCIL_MODEL_* in the harness .env)."
                 ),
                 "default": "solo",
+            },
+            "peer_review": {
+                "type": "boolean",
+                "description": (
+                    "council mode only: add an anonymized peer-review "
+                    "round where each member ranks the other members' "
+                    "reports blind (self-votes excluded), producing a "
+                    "Peer Review Ranking table that also informs the "
+                    "synthesis. Costs one extra call per member. Default "
+                    "false."
+                ),
+                "default": False,
             },
             "max_minutes": {
                 "type": "integer",
