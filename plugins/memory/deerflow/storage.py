@@ -25,7 +25,14 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-FACT_CATEGORIES = ("preference", "knowledge", "context", "behavior", "goal", "correction")
+FACT_CATEGORIES = (
+    "preference",
+    "knowledge",
+    "context",
+    "behavior",
+    "goal",
+    "correction",
+)
 _SAFE_USER_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -58,7 +65,13 @@ def create_empty_memory() -> dict[str, Any]:
     }
 
 
-def make_fact(content: str, category: str = "context", confidence: float = 0.5, *, source: str = "extracted") -> dict[str, Any]:
+def make_fact(
+    content: str,
+    category: str = "context",
+    confidence: float = 0.5,
+    *,
+    source: str = "extracted",
+) -> dict[str, Any]:
     """Build a discrete fact entry (DeerFlow schema)."""
     content = content.strip()
     if not content:

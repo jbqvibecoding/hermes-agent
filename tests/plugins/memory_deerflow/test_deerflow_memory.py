@@ -116,7 +116,9 @@ def test_extract_facts_empty_conversation():
 def _aged_fact(fid, days, category="context", conf=0.5):
     f = make_fact(f"fact {fid}", category, conf)
     f["id"] = fid
-    f["createdAt"] = (datetime.now(UTC) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
+    f["createdAt"] = (
+        (datetime.now(UTC) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
+    )
     return f
 
 
@@ -132,7 +134,11 @@ def test_stale_excludes_protected_category():
 
 
 def test_apply_removals_guardrail_intersects_candidates():
-    facts = [_aged_fact("old", 400), _aged_fact("new", 5), _aged_fact("corr", 400, "correction")]
+    facts = [
+        _aged_fact("old", 400),
+        _aged_fact("new", 5),
+        _aged_fact("corr", 400, "correction"),
+    ]
     # Model asks to remove all three, but only genuine stale candidates go.
     kept = apply_staleness_removals(facts, {"old", "new", "corr"}, age_days=180)
     kept_ids = {f["id"] for f in kept}
@@ -181,7 +187,10 @@ def test_provider_sync_and_flush_persists_facts(tmp_path):
 def test_provider_prefetch_injects_top_facts(tmp_path):
     st = FileMemoryStorage(tmp_path)
     data = create_empty_memory()
-    data["facts"] = [make_fact("uses rust", "knowledge", 0.95), make_fact("likes tea", "preference", 0.3)]
+    data["facts"] = [
+        make_fact("uses rust", "knowledge", 0.95),
+        make_fact("likes tea", "preference", 0.3),
+    ]
     st.save(data, "alice")
     p = DeerflowMemoryProvider(storage=st)
     p.initialize("s", user_id="alice", hermes_home=str(tmp_path))

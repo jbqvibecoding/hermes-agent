@@ -23,6 +23,49 @@ Ported `utils/network_guard.py`. Validates every http(s) URL arg of a CAMEL
 tool before it fetches (blocks cloud-metadata / localhost / private ranges).
 Wired into the camel adapter; toggle via `HERMES_CAMEL_SSRF_GUARD`.
 
+### `plugins/memory/deerflow/autodream.py` — transactional memory consolidation
+Ported `services/autodream/{lock,backup}.py`. Adds the out-of-band pass our
+`deerflow-memory` lacked: merge near-duplicates, drop superseded facts, under a
+PID-stamped lock + timestamped backup, with automatic rollback on failure or in
+`preview` mode. Driven via `DeerflowMemoryProvider.consolidate(force=, preview=)`
+(e.g. from a Hermes cron routine). Gated by `min_hours` / `min_new_facts`;
+removals are capped and never touch protected categories (`correction`).
+
+**Divergence from upstream:** upstream's dreamer is a separate subprocess, so it
+stamps the lock with its (soon-dead) PID. Ours runs in-process, so a successful
+pass writes an *empty* payload — the file's mtime still records "last
+consolidated at", but the mutex is released rather than blocking our own next
+pass for an hour.
+
+### `plugins/declarative_hooks/` — config-declared hooks with LLM adjudication
+Ported `hooks/{schemas,executor}.py`. Complements `tool_permissions` (hard
+rules) with *soft* policy an operator writes in plain language:
+
+```yaml
+declarative_hooks:
+  pre_tool_call:
+    - type: prompt          # command | prompt | http | agent
+      matcher: "terminal"   # fnmatch on tool_name / prompt / event
+      priority: 10          # higher runs first
+      prompt: |
+        Reject this call if it would delete production data.
+        Event payload: $ARGUMENTS
+```
+
+A blocking verdict on `pre_tool_call` becomes `{"action": "block", "message":
+reason}` — Hermes' documented directive contract; on other events it is
+advisory (those call sites have no veto). OpenHarness event names
+(`pre_tool_use`, `session_start`, …) are accepted as aliases.
+
+**Divergence from upstream:** upstream is async + pydantic + its own API client.
+Ours is synchronous (Hermes hook callbacks are), uses dataclasses (the minimal
+test env has no pydantic), and routes `prompt`/`agent` hooks through
+`agent.auxiliary_client.call_llm` — so a hook needs no credentials of its own.
+
+Both plugins are bundled but **not enabled by default** — `hermes plugins enable
+declarative-hooks`, and with no `declarative_hooks:` config the plugin registers
+nothing at all.
+
 ## Strategic follow-ons (high value; need a decision / live infra)
 
 These are the two things Hermes genuinely lacks equal-or-better. Neither is
@@ -60,17 +103,6 @@ progress comments throughout. A static React dashboard renders a kanban from a
 - **Why not yet:** it is a large new subsystem that drives real git/`gh`/CI and
   cannot be verified in this environment. Warrants its own milestone with your
   steer on scope (which sources, verification policy, auto-merge gating).
-
-## Smaller optional enhancements (noted, not built)
-
-- **Background memory consolidation** (`services/autodream/`): a transactional,
-  rollback-safe periodic "dream" pass (lock + backup + diff) over the memory
-  store — our `deerflow-memory` does inline extraction/prune but not out-of-band
-  consolidation. Could be a Hermes cron routine → memory-scoped delegation
-  subagent firing the `MemoryProvider`.
-- **Declarative LLM-backed hooks** (`hooks/schemas.py` `prompt`/`agent`/`http`):
-  config-driven, LLM-backed *blocking* hooks so plugin authors can declare
-  policies without writing Python. Layers onto Hermes' existing hook events.
 
 ## Skipped (Hermes equal-or-better)
 

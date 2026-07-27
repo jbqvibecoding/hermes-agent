@@ -1,0 +1,15 @@
+name: declarative-hooks
+version: 0.1.0
+description: "Config-declared lifecycle hooks with LLM adjudication (ported from OpenHarness). Four hook types (command/prompt/http/agent) with matcher, priority, block_on_failure and timeout; a blocking verdict on pre_tool_call vetoes the tool call. Opt-in via the declarative_hooks: config key — no config, no registration."
+author: NousResearch
+kind: standalone
+hooks:
+  - pre_tool_call
+  - post_tool_call
+  - pre_llm_call
+  - post_llm_call
+  - pre_verify
+  - on_session_start
+  - on_session_end
+  - subagent_start
+  - subagent_stop
