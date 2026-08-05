@@ -141,7 +141,12 @@ def test_schema_missing_name_raises():
 def test_schema_defaults_parameters_when_absent():
     ft = FakeFunctionTool(lambda: None, {"function": {"name": "noparams"}})
     schema = hermes_schema_from_camel(ft)
-    assert schema["parameters"] == {"type": "object", "properties": {}}
+    # additionalProperties is added by the schema-hardening pass (C1).
+    assert schema["parameters"] == {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -257,3 +262,138 @@ def test_real_camel_search_toolkit_registers():
     assert "search_duckduckgo" in names
     entry = next(e for e in ctx.registered if e["name"] == "search_duckduckgo")
     assert entry["schema"]["parameters"]["type"] == "object"
+
+
+# ---------------------------------------------------------------------------
+# C1: async tool methods must not leak unawaited coroutines
+# ---------------------------------------------------------------------------
+
+
+def _async_tool() -> FakeFunctionTool:
+    # No URL-typed argument: the SSRF guard resolves hostnames for real, and a
+    # test must not depend on DNS.
+    async def browser_snapshot(selector: str) -> dict:
+        return {"snapshot": selector}
+
+    return FakeFunctionTool(
+        browser_snapshot,
+        _openai_schema(
+            "browser_snapshot",
+            "Snapshot a node.",
+            {"selector": {"type": "string"}},
+            ["selector"],
+        ),
+    )
+
+
+def test_async_tool_returns_real_result_not_a_coroutine():
+    """Regression: calling .func on an ``async def`` method returned the
+    coroutine object, which was then serialized into the tool result."""
+    handler = make_handler(_async_tool())
+    payload = json.loads(handler({"selector": "#main"}))
+    assert payload["snapshot"] == "#main"
+    assert "coroutine" not in json.dumps(payload)
+
+
+def test_async_tool_failure_is_surfaced_as_a_tool_error():
+    async def boom() -> None:
+        raise RuntimeError("navigation failed")
+
+    handler = make_handler(FakeFunctionTool(boom, _openai_schema("boom", "d", {}, [])))
+    payload = json.loads(handler({}))
+    assert payload.get("error")
+    assert "navigation failed" in json.dumps(payload)
+
+
+def test_sync_tools_are_unaffected_by_the_async_path():
+    handler = make_handler(_search_tool())
+    payload = json.loads(handler({"query": "camel"}))
+    assert payload["result"][0]["title"] == "hit for camel"
+
+
+def test_callable_functiontool_is_preferred_over_raw_func():
+    """CAMEL's FunctionTool.__call__ does Pydantic arg coercion and async
+    handling; prefer it when the object is callable."""
+
+    class CallableFunctionTool(FakeFunctionTool):
+        def __call__(self, **kwargs):
+            return {"via": "__call__", **kwargs}
+
+    tool = CallableFunctionTool(
+        lambda **kw: {"via": "func"},
+        _openai_schema("t", "d", {"x": {"type": "string"}}, []),
+    )
+    payload = json.loads(make_handler(tool)({"x": "1"}))
+    assert payload["via"] == "__call__"
+
+
+# ---------------------------------------------------------------------------
+# C1: schema hardening (additionalProperties: false at every level)
+# ---------------------------------------------------------------------------
+
+
+def test_nested_objects_get_additional_properties_false():
+    schema = _openai_schema(
+        "nested",
+        "d",
+        {
+            "cfg": {
+                "type": "object",
+                "properties": {"deep": {"type": "object", "properties": {}}},
+            },
+            "items": {"type": "array", "items": {"type": "object", "properties": {}}},
+        },
+        [],
+    )
+    params = hermes_schema_from_camel(FakeFunctionTool(lambda: None, schema))[
+        "parameters"
+    ]
+    assert params["additionalProperties"] is False
+    assert params["properties"]["cfg"]["additionalProperties"] is False
+    assert (
+        params["properties"]["cfg"]["properties"]["deep"]["additionalProperties"]
+        is False
+    )
+    assert params["properties"]["items"]["items"]["additionalProperties"] is False
+
+
+def test_explicit_additional_properties_is_respected():
+    schema = _openai_schema("free", "d", {}, [])
+    schema["function"]["parameters"]["additionalProperties"] = True
+    params = hermes_schema_from_camel(FakeFunctionTool(lambda: None, schema))[
+        "parameters"
+    ]
+    assert params["additionalProperties"] is True
+
+
+def test_hardening_does_not_mutate_the_toolkits_own_schema():
+    """CAMEL caches the schema on the FunctionTool instance and reuses it."""
+    schema = _openai_schema("t", "d", {}, [])
+    tool = FakeFunctionTool(lambda: None, schema)
+    hermes_schema_from_camel(tool)
+    assert "additionalProperties" not in schema["function"]["parameters"]
+
+
+def test_real_camel_math_divide_by_zero_returns_a_string():
+    """Behavior change in the 0.2.84 → 0.2.90 bump: math_divide used to raise
+    ZeroDivisionError and now returns an error *string*. Anything downstream
+    that assumed a float must cope, so pin the contract here."""
+    pytest.importorskip("camel", reason="camel-ai not installed")
+    from camel.toolkits import MathToolkit  # type: ignore
+
+    result = MathToolkit().math_divide(1, 0)
+    assert isinstance(result, str)
+    assert "zero" in result.lower()
+
+
+def test_real_camel_datacommons_is_registered_when_keyed(monkeypatch):
+    """DataCommonsToolkit refuses to construct without its key; with the key
+    present it must build and register (the C2 gap that was never wired)."""
+    pytest.importorskip("camel", reason="camel-ai not installed")
+    from plugins.camel_tools.catalog import TOOLKIT_SPECS
+
+    monkeypatch.setenv("DATACOMMONS_API_KEY", "test-key")
+    spec = next(s for s in TOOLKIT_SPECS if s.cls == "DataCommonsToolkit")
+    ctx = FakeCtx()
+    names = register_toolkit(ctx, spec.build(), toolset=spec.toolset)
+    assert names

@@ -45,7 +45,20 @@ def _register_camel_tools(ctx) -> int:
         try:
             toolkit = spec.build()
         except Exception as exc:  # noqa: BLE001 — one bad toolkit shouldn't sink the rest
-            logger.warning("camel-tools: failed to build %s: %s", spec.cls, exc)
+            # Some credentialed toolkits (e.g. DataCommonsToolkit) refuse to
+            # construct without their key. That is expected on an unconfigured
+            # install, so it is a debug note rather than a warning.
+            import os
+
+            unmet = [v for v in (spec.requires_env or ()) if not os.environ.get(v)]
+            if unmet:
+                logger.debug(
+                    "camel-tools: %s unavailable (missing %s)",
+                    spec.cls,
+                    ", ".join(unmet),
+                )
+            else:
+                logger.warning("camel-tools: failed to build %s: %s", spec.cls, exc)
             continue
         registered = register_toolkit(
             ctx,
@@ -88,9 +101,15 @@ Subcommands:
   install             Install the camel-ai dependency (then restart Hermes)
   workspace [session] Show/provision the /mnt/user-data workspace dirs
   install-skill <path> [--overwrite]  Install a hardened .skill archive
+  convert [session] [--overwrite]     Convert uploads/ documents to Markdown
+  install-converter   Install the markitdown document converter
 
 When camel-ai is installed, its toolkits are exposed as non-core tools
 (camel_search, camel_math, …) and surfaced to the model via Tool Search.
+
+`convert` turns PDF/Word/Excel/PowerPoint files in /mnt/user-data/uploads into
+.md files in /mnt/user-data/workspace, so the agent can read them (read_file
+refuses binary formats). It needs `markitdown`, not camel-ai.
 """
 
 
@@ -106,7 +125,7 @@ def _handle_slash(raw_args: str) -> Optional[str]:
             return "[camel-tools] camel-ai is installed. CAMEL toolkits are active."
         return (
             "[camel-tools] camel-ai is NOT installed. Run `/camel-tools install` "
-            "(or `pip install 'camel-ai[owl]==0.2.84'`), then restart Hermes."
+            "(or `pip install 'camel-ai[owl]==0.2.90'`), then restart Hermes."
         )
 
     if sub == "install":
@@ -124,7 +143,61 @@ def _handle_slash(raw_args: str) -> Optional[str]:
         overwrite = "--overwrite" in argv[2:]
         return _install_skill(argv[1], overwrite=overwrite)
 
+    if sub == "install-converter":
+        return f"[camel-tools] {_install_converter()[1]}"
+
+    if sub == "convert":
+        rest = argv[1:]
+        overwrite = "--overwrite" in rest
+        positional = [a for a in rest if not a.startswith("-")]
+        return _convert_uploads(positional[0] if positional else "default", overwrite)
+
     return f"Unknown subcommand: {sub}\n\n{_HELP_TEXT}"
+
+
+def _install_converter() -> tuple[bool, str]:
+    """Install the markitdown document converter via lazy-deps."""
+    from plugins.camel_tools.uploads import MARKITDOWN_FEATURE
+
+    try:
+        from tools.lazy_deps import FeatureUnavailable, ensure
+    except Exception as exc:  # noqa: BLE001
+        return False, f"lazy-deps unavailable: {exc}"
+    try:
+        ensure(MARKITDOWN_FEATURE, prompt=False)
+    except FeatureUnavailable as exc:
+        return False, str(exc)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"install failed: {type(exc).__name__}: {exc}"
+    return True, "markitdown installed. Document conversion is available."
+
+
+def _convert_uploads(session_id: str, overwrite: bool) -> str:
+    """Convert a session's uploads/ documents into workspace/ Markdown."""
+    from pathlib import Path
+
+    from plugins.camel_tools.uploads import (
+        ConversionUnavailable,
+        convert_session_uploads,
+    )
+
+    try:
+        result = convert_session_uploads(session_id, overwrite=overwrite)
+    except ConversionUnavailable as exc:
+        return f"[camel-tools] {exc}"
+    except Exception as exc:  # noqa: BLE001
+        return f"[camel-tools] Conversion failed: {type(exc).__name__}: {exc}"
+
+    lines = [
+        f"[camel-tools] uploads → workspace (session {session_id!r}): {result.summary()}"
+    ]
+    for src, dest in sorted(result.converted.items()):
+        lines.append(f"  ✓ {Path(src).name} → {Path(dest).name}")
+    for src in sorted(result.skipped):
+        lines.append(f"  – {Path(src).name} (unsupported format)")
+    for src, err in sorted(result.failed.items()):
+        lines.append(f"  ✗ {Path(src).name}: {err}")
+    return "\n".join(lines)
 
 
 def _install_skill(archive_path: str, *, overwrite: bool) -> str:
@@ -175,12 +248,82 @@ def _workspace_status(session_id: str) -> str:
     return "\n".join(lines)
 
 
+_CONVERT_TOOL_SCHEMA = {
+    "name": "convert_uploads",
+    "description": (
+        "Convert documents in /mnt/user-data/uploads (PDF, Word, Excel, "
+        "PowerPoint, EPUB, HTML, images, audio) into Markdown files in "
+        "/mnt/user-data/workspace, then read those. Use this when the user "
+        "uploaded a file that read_file cannot open because it is binary. "
+        "Returns the written paths, not the document text."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "session_id": {
+                "type": "string",
+                "description": "Workspace session id. Defaults to 'default'.",
+            },
+            "overwrite": {
+                "type": "boolean",
+                "description": "Re-convert files whose .md output already exists.",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+
+def _convert_uploads_tool(args: Optional[dict] = None, **_kwargs) -> str:
+    """Tool handler: convert this session's uploads and report the paths."""
+    from tools.registry import tool_error, tool_result
+
+    from plugins.camel_tools.uploads import (
+        ConversionUnavailable,
+        convert_session_uploads,
+    )
+
+    args = args or {}
+    session_id = str(args.get("session_id") or "default")
+    try:
+        result = convert_session_uploads(
+            session_id, overwrite=bool(args.get("overwrite"))
+        )
+    except ConversionUnavailable as exc:
+        return tool_error(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return tool_error(f"upload conversion failed: {type(exc).__name__}: {exc}")
+    return tool_result({
+        "summary": result.summary(),
+        "converted": result.converted,
+        "skipped": result.skipped,
+        "failed": result.failed,
+    })
+
+
+def _markitdown_available() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("markitdown") is not None
+
+
 def register(ctx) -> None:
     """Plugin entry point — called once by the plugin loader at startup."""
     ctx.register_command(
         "camel-tools",
         handler=_handle_slash,
         description="Manage the owl/CAMEL toolkit bridge (status, install).",
+    )
+
+    # Document conversion is independent of camel-ai: it only needs markitdown,
+    # so it is registered even when the CAMEL bridge is inactive.
+    ctx.register_tool(
+        name="convert_uploads",
+        toolset="camel_data",
+        schema=_CONVERT_TOOL_SCHEMA,
+        handler=_convert_uploads_tool,
+        check_fn=_markitdown_available,
+        emoji="📄",
     )
 
     if not _camel_available():

@@ -1,0 +1,17 @@
+Hermes
+Copyright (c) 2025 Nous Research
+
+This product includes software developed at CAMEL-AI.org
+(https://github.com/camel-ai/camel), licensed under the Apache License,
+Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+
+Portions of the following files are derived from CAMEL-AI source and have
+been modified. Each file carries the attribution and a description of the
+changes in its module docstring:
+
+  plugins/camel_tools/schema_guard.py
+      derived from camel/toolkits/function_tool.py
+      (sanitize_and_enforce_required / _add_additional_properties_false)
+
+  plugins/camel_tools/uploads.py
+      derived from camel/loaders/markitdown.py (MarkItDownLoader)

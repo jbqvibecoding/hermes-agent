@@ -21,13 +21,24 @@ dependency is not installed.
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import logging
+import threading
 from typing import Any, Callable, Iterable, List, Optional, Set
 
+from plugins.camel_tools.schema_guard import harden_parameters
 from tools.registry import tool_error, tool_result
 
 logger = logging.getLogger(__name__)
+
+# Background loop used to drive coroutine results to completion. A *persistent*
+# loop (rather than asyncio.run per call) matches CAMEL's own approach and keeps
+# httpx/Playwright connection pools alive across calls instead of tearing down
+# the transport every invocation.
+_ASYNC_LOOP: Optional[asyncio.AbstractEventLoop] = None
+_ASYNC_LOOP_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +84,9 @@ def hermes_schema_from_camel(function_tool: Any) -> dict:
     return {
         "name": str(name),
         "description": str(fn.get("description") or ""),
-        "parameters": parameters,
+        # Lock every nested object down so undeclared keys can't ride along
+        # past anything that validates a call against this schema.
+        "parameters": harden_parameters(parameters),
     }
 
 
@@ -98,6 +111,44 @@ def _resolve_callable(function_tool: Any) -> Callable[..., Any]:
     return func
 
 
+def _make_invoker(function_tool: Any) -> Callable[..., Any]:
+    """Return the best callable for invoking *function_tool*.
+
+    Prefer the ``FunctionTool`` object itself when it is callable: CAMEL's
+    ``FunctionTool.__call__`` coerces plain dicts into the Pydantic models a
+    signature declares (``List[TodoItem]`` and friends) and drives coroutine
+    results to completion. Calling the bare ``.func`` skips both.
+
+    Falls back to ``.func`` for objects that only expose that attribute, which
+    keeps the adapter duck-typed and unit-testable without ``camel-ai``.
+    """
+    if callable(function_tool) and hasattr(function_tool, "func"):
+        return function_tool
+    return _resolve_callable(function_tool)
+
+
+def _run_coroutine(coro: Any) -> Any:
+    """Drive a coroutine to completion from synchronous Hermes tool code.
+
+    Some CAMEL toolkits (hybrid/async browser, MCP) define their tool methods
+    as ``async def``. Hermes tool handlers are synchronous, so calling such a
+    method returns an *unawaited coroutine object* — which would otherwise be
+    serialized into the tool result as a meaningless repr instead of failing
+    loudly. We resolve it here on a persistent background loop.
+    """
+    global _ASYNC_LOOP
+    with _ASYNC_LOOP_LOCK:
+        if _ASYNC_LOOP is None or _ASYNC_LOOP.is_closed():
+            _ASYNC_LOOP = asyncio.new_event_loop()
+            threading.Thread(
+                target=_ASYNC_LOOP.run_forever,
+                name="camel-tools-async",
+                daemon=True,
+            ).start()
+        loop = _ASYNC_LOOP
+    return asyncio.run_coroutine_threadsafe(coro, loop).result()
+
+
 def make_handler(
     function_tool: Any, *, name: Optional[str] = None
 ) -> Callable[..., str]:
@@ -108,7 +159,7 @@ def make_handler(
     the (arbitrary Python) return value into a JSON result envelope, funnelling
     any exception through :func:`tools.registry.tool_error`.
     """
-    func = _resolve_callable(function_tool)
+    invoke = _make_invoker(function_tool)
     tool_name = name or hermes_schema_from_camel(function_tool)["name"]
 
     def handler(args: Optional[dict] = None, **_kwargs: Any) -> str:
@@ -124,7 +175,11 @@ def make_handler(
         except Exception:  # noqa: BLE001 — guard must never break a legit call
             pass
         try:
-            result = func(**call_args)
+            result = invoke(**call_args)
+            # An async toolkit method hands back a coroutine; resolve it rather
+            # than serializing the coroutine object into the tool result.
+            if inspect.isawaitable(result):
+                result = _run_coroutine(result)
         except TypeError as exc:
             return tool_error(
                 f"camel tool {tool_name!r} called with bad arguments: {exc}"

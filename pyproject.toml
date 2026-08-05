@@ -151,7 +151,7 @@ firecrawl = ["firecrawl-py==4.17.0"]
 parallel-web = ["parallel-web==0.4.2"]
 # owl/CAMEL toolkit bridge (plugins/camel_tools) — heavy; installed on demand
 # via `/camel-tools install`. Keep in lockstep with LAZY_DEPS["camel.tools"].
-camel = ["camel-ai[owl]==0.2.84"]
+camel = ["camel-ai[owl]==0.2.90"]
 # Image generation backends
 fal = ["fal-client==0.13.1"]
 # Edge TTS — default TTS provider but still optional (users can pick

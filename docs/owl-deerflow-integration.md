@@ -58,12 +58,14 @@ See each plugin's `README.md` for usage and configuration.
 
 - CAMEL `CodeExecutionToolkit` → Hermes native sandboxed code execution.
 - CAMEL `DalleToolkit` → Hermes native `image_gen`.
-- owl `DocumentProcessingToolkit` → heavy dep tail; document→text via uploads.
+- owl `DocumentProcessingToolkit` → heavy dep tail; document→text is handled by
+  `plugins/camel_tools/uploads.py` (see [camel-integration.md](camel-integration.md)).
 
 ## Follow-ons (require live infra to verify)
 
-- Wiring the `/mnt/user-data` volume specs into a live Docker environment +
-  uploads auto-conversion (needs a Docker sandbox).
+- Wiring the `/mnt/user-data` volume specs into a live Docker environment
+  (needs a Docker sandbox). The uploads→Markdown half of this is now built —
+  `convert_uploads` / `/camel-tools convert`.
 - Enriching `tools/delegate_tool.py` results with DeerFlow's additive subagent
   status contract (`subagent_status`/`stop_reason`/`result_brief`) — needs live
   subagent runs to verify.

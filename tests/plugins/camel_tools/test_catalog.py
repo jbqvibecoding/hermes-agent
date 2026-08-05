@@ -91,10 +91,26 @@ def test_check_fn_requires_all_env_vars(monkeypatch):
 
 
 def test_camel_feature_key_matches_lazy_deps():
+    """The lazy-deps spec and the pyproject `camel` extra must stay in lockstep.
+
+    Asserting they equal each other (rather than a hardcoded version) keeps the
+    real invariant — both comments say "bump in lockstep" — without this test
+    needing an edit on every version bump.
+    """
+    from pathlib import Path
+
     from tools.lazy_deps import LAZY_DEPS
 
     assert CAMEL_FEATURE in LAZY_DEPS
-    assert LAZY_DEPS[CAMEL_FEATURE] == ("camel-ai[owl]==0.2.84",)
+    (spec,) = LAZY_DEPS[CAMEL_FEATURE]
+    assert spec.startswith("camel-ai[owl]==")
+
+    pyproject = (Path(__file__).resolve().parents[3] / "pyproject.toml").read_text(
+        encoding="utf-8"
+    )
+    assert f'camel = ["{spec}"]' in pyproject, (
+        f"pyproject.toml `camel` extra is out of lockstep with LAZY_DEPS ({spec})"
+    )
 
 
 def test_build_raises_without_camel_when_absent():
@@ -109,3 +125,129 @@ def test_build_raises_without_camel_when_absent():
     spec = ToolkitSpec(cls="MathToolkit", toolset="camel_math")
     with pytest.raises(ModuleNotFoundError):
         spec.build()
+
+
+# ---------------------------------------------------------------------------
+# C2: catalog expansion (checked against camel-ai 0.2.90)
+# ---------------------------------------------------------------------------
+
+
+def test_datacommons_is_exposed_and_key_gated():
+    """DataCommons was named in the original owl toolkit list but was the one
+    entry never wired up and never documented as a deliberate skip."""
+    spec = next(s for s in TOOLKIT_SPECS if s.cls == "DataCommonsToolkit")
+    assert spec.requires_env == ["DATACOMMONS_API_KEY"]
+
+
+@pytest.mark.parametrize(
+    "cls_name",
+    [
+        "FileToolkit",
+        "PPTXToolkit",
+        "PubMedToolkit",
+        "SearxNGToolkit",
+        "WolframAlphaToolkit",
+        "AskNewsToolkit",
+        "GoogleCalendarToolkit",
+        "GmailToolkit",
+        "SlackToolkit",
+        "VideoDownloaderToolkit",
+    ],
+)
+def test_expanded_toolkits_present(cls_name):
+    assert any(s.cls == cls_name for s in TOOLKIT_SPECS)
+
+
+@pytest.mark.parametrize(
+    "cls_name",
+    [
+        # Needs a live camel ChatAgent; Hermes owns delegation.
+        "AgentToolkit",
+        # Needs a Node.js + npm Playwright runtime beside Python.
+        "HybridBrowserToolkit",
+        # Scrapes SERP DOM with hand-written JS; breaks on any page change.
+        "HeadlessBrowserSearchToolkit",
+        # Deprecated upstream in favour of FileToolkit.
+        "MarkItDownToolkit",
+        # Hermes ships better equivalents.
+        "TodoToolkit",
+        "SkillToolkit",
+        "PlanningWorktreeToolkit",
+        # Overlaps VideoAnalysisToolkit and is a paid API.
+        "TwelveLabsToolkit",
+    ],
+)
+def test_deliberately_excluded_toolkits_stay_out(cls_name):
+    assert not any(s.cls == cls_name for s in TOOLKIT_SPECS)
+
+
+def test_credentialed_specs_all_declare_requires_env():
+    """Every spec whose service needs a secret must gate on it, so an
+    unconfigured install never advertises a tool that cannot work."""
+    keyed = {
+        "DataCommonsToolkit",
+        "SearxNGToolkit",
+        "WolframAlphaToolkit",
+        "AskNewsToolkit",
+        "GoogleCalendarToolkit",
+        "GmailToolkit",
+        "SlackToolkit",
+    }
+    for spec in TOOLKIT_SPECS:
+        if spec.cls in keyed:
+            assert spec.requires_env, f"{spec.cls} must declare requires_env"
+
+
+def test_env_kwargs_fill_from_environment(monkeypatch):
+    spec = next(s for s in TOOLKIT_SPECS if s.cls == "SearxNGToolkit")
+    assert spec.env_kwargs == {"searxng_host": "SEARXNG_HOST"}
+    monkeypatch.setenv("SEARXNG_HOST", "https://searx.internal")
+    captured = {}
+
+    class FakeModule:
+        class SearxNGToolkit:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "importlib.import_module", lambda name: FakeModule, raising=True
+    )
+    spec.build()
+    assert captured["searxng_host"] == "https://searx.internal"
+
+
+def test_env_kwargs_omitted_when_unset(monkeypatch):
+    spec = ToolkitSpec(
+        cls="X", toolset="camel_x", env_kwargs={"host": "SOME_UNSET_VAR_XYZ"}
+    )
+    monkeypatch.delenv("SOME_UNSET_VAR_XYZ", raising=False)
+    captured = {}
+
+    class FakeModule:
+        class X:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "importlib.import_module", lambda name: FakeModule, raising=True
+    )
+    spec.build()
+    assert "host" not in captured
+
+
+def test_workspace_kwarg_points_at_the_user_data_workspace(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    spec = next(s for s in TOOLKIT_SPECS if s.cls == "FileToolkit")
+    assert spec.workspace_kwarg == "working_directory"
+    captured = {}
+
+    class FakeModule:
+        class FileToolkit:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "importlib.import_module", lambda name: FakeModule, raising=True
+    )
+    spec.build()
+    assert captured["working_directory"].endswith("/workspace")

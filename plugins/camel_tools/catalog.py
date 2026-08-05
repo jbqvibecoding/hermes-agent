@@ -32,6 +32,26 @@ logger = logging.getLogger(__name__)
 CAMEL_FEATURE = "camel.tools"
 
 
+def default_workspace_dir() -> Any:
+    """Host directory backing ``/mnt/user-data/workspace`` for the default session.
+
+    Toolkit construction happens once at plugin-load time, before any session
+    exists, so file-writing toolkits are pointed at the default session's
+    workspace rather than a per-session one.
+    """
+    from pathlib import Path
+
+    from plugins.camel_tools.workspace import ensure_dirs, resolve_workspace
+
+    try:
+        from hermes_constants import get_hermes_home
+
+        hermes_home = get_hermes_home()
+    except Exception:  # noqa: BLE001
+        hermes_home = str(Path.home() / ".hermes")
+    return ensure_dirs(resolve_workspace(hermes_home, "default")).workspace
+
+
 @dataclass(frozen=True)
 class ToolkitSpec:
     """How to construct and expose one CAMEL toolkit."""
@@ -66,6 +86,24 @@ class ToolkitSpec:
     model_task: str = "vision"
     """Auxiliary-task bucket for the injected backend's ``call_llm`` routing."""
 
+    env_kwargs: Dict[str, str] = field(default_factory=dict)
+    """Constructor kwargs sourced from the environment: ``{kwarg: ENV_VAR}``.
+
+    For toolkits whose constructor takes a *required* deployment value rather
+    than reading it themselves — e.g. ``SearxNGToolkit(searxng_host=...)``,
+    which has no zero-config default. Pair with ``requires_env`` so the tools
+    stay gated when the variable is unset.
+    """
+
+    workspace_kwarg: str = ""
+    """Constructor kwarg to fill with the ``/mnt/user-data/workspace`` host dir.
+
+    Toolkits that write files (``FileToolkit``, ``PPTXToolkit``) take a
+    ``working_directory``; pointing it at the workspace contract keeps their
+    output inside the same tree the user sees, instead of CAMEL's default
+    ``camel_working_dir`` next to the process CWD.
+    """
+
     def build(self) -> Any:
         """Import and instantiate the CAMEL toolkit. Raises if camel is absent."""
         module = importlib.import_module(self.module)
@@ -77,6 +115,14 @@ class ToolkitSpec:
             )
 
             kwargs["model"] = make_hermes_camel_backend(task=self.model_task)
+        for kwarg, env_var in self.env_kwargs.items():
+            import os
+
+            value = os.environ.get(env_var)
+            if value:
+                kwargs.setdefault(kwarg, value)
+        if self.workspace_kwarg:
+            kwargs.setdefault(self.workspace_kwarg, str(default_workspace_dir()))
         return toolkit_cls(**kwargs)
 
     def check_fn(self) -> Optional[Callable[[], bool]]:
@@ -124,9 +170,49 @@ TOOLKIT_SPECS: List[ToolkitSpec] = [
     ToolkitSpec(cls="ArxivToolkit", toolset="camel_academic", emoji="📄"),
     ToolkitSpec(cls="SemanticScholarToolkit", toolset="camel_academic", emoji="🎓"),
     ToolkitSpec(cls="GoogleScholarToolkit", toolset="camel_academic", emoji="🎓"),
+    ToolkitSpec(cls="PubMedToolkit", toolset="camel_academic", emoji="🧬"),
+    # Self-hosted SearxNG: the constructor takes a *required* host, so it is
+    # sourced from the environment rather than hardcoded.
+    ToolkitSpec(
+        cls="SearxNGToolkit",
+        toolset="camel_search",
+        env_kwargs={"searxng_host": "SEARXNG_HOST"},
+        requires_env=["SEARXNG_HOST"],
+        emoji="🔎",
+    ),
     # ── Data / documents ───────────────────────────────────────────────────
     ToolkitSpec(cls="ExcelToolkit", toolset="camel_data", emoji="📊"),
     ToolkitSpec(cls="NetworkXToolkit", toolset="camel_data", emoji="🕸️"),
+    # DataCommons — named in the original owl toolkit list. Its constructor is
+    # decorated with @api_keys_required, so it raises (and is skipped) until
+    # DATACOMMONS_API_KEY is set.
+    ToolkitSpec(
+        cls="DataCommonsToolkit",
+        toolset="camel_data",
+        requires_env=["DATACOMMONS_API_KEY"],
+        emoji="🌐",
+    ),
+    # File read/edit. Its read_file is CAMEL's supported route for document
+    # → text conversion (MarkItDownToolkit is deprecated upstream in favor of
+    # it). Writes land in the /mnt/user-data/workspace contract.
+    ToolkitSpec(
+        cls="FileToolkit",
+        toolset="camel_data",
+        workspace_kwarg="working_directory",
+        emoji="📁",
+    ),
+    ToolkitSpec(
+        cls="PPTXToolkit",
+        toolset="camel_data",
+        workspace_kwarg="working_directory",
+        emoji="📽️",
+    ),
+    ToolkitSpec(
+        cls="WolframAlphaToolkit",
+        toolset="camel_math",
+        requires_env=["WOLFRAMALPHA_APP_ID"],
+        emoji="🧠",
+    ),
     # ── Math ───────────────────────────────────────────────────────────────
     ToolkitSpec(cls="MathToolkit", toolset="camel_math", emoji="🧮"),
     ToolkitSpec(cls="SymPyToolkit", toolset="camel_math", emoji="➗"),
@@ -138,7 +224,7 @@ TOOLKIT_SPECS: List[ToolkitSpec] = [
         emoji="🌦️",
     ),
     # ── Credentialed services (gated on their API keys; env var names follow
-    #    CAMEL 0.2.84 / owl conventions) ─────────────────────────────────────
+    #    CAMEL 0.2.90 / owl conventions) ─────────────────────────────────────
     ToolkitSpec(
         cls="GithubToolkit",
         toolset="camel_dev",
@@ -163,6 +249,39 @@ TOOLKIT_SPECS: List[ToolkitSpec] = [
         requires_env=["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USER_AGENT"],
         emoji="👽",
     ),
+    ToolkitSpec(
+        cls="SlackToolkit",
+        toolset="camel_social",
+        requires_env=["SLACK_BOT_TOKEN"],
+        emoji="💬",
+    ),
+    ToolkitSpec(
+        cls="AskNewsToolkit",
+        toolset="camel_search",
+        requires_env=["ASKNEWS_CLIENT_ID", "ASKNEWS_CLIENT_SECRET"],
+        emoji="📰",
+    ),
+    ToolkitSpec(
+        cls="GoogleCalendarToolkit",
+        toolset="camel_productivity",
+        requires_env=[
+            "GOOGLE_CLIENT_ID",
+            "GOOGLE_CLIENT_SECRET",
+            "GOOGLE_REFRESH_TOKEN",
+        ],
+        emoji="📅",
+    ),
+    ToolkitSpec(
+        cls="GmailToolkit",
+        toolset="camel_productivity",
+        requires_env=[
+            "GOOGLE_CLIENT_ID",
+            "GOOGLE_CLIENT_SECRET",
+            "GOOGLE_REFRESH_TOKEN",
+        ],
+        emoji="✉️",
+    ),
+    ToolkitSpec(cls="VideoDownloaderToolkit", toolset="camel_video", emoji="⬇️"),
     # NOTE: DalleToolkit is omitted — Hermes ships native image generation
     # (plugins/image_gen). OpenAPIToolkit is omitted — it needs a per-call
     # OpenAPI spec path in its constructor, so there's no zero-config default.
@@ -203,6 +322,19 @@ TOOLKIT_SPECS: List[ToolkitSpec] = [
     #
     # NOTE: owl's DocumentProcessingToolkit (word/excel/pdf/ppt → text) is NOT
     # vendored here — it pulls a heavy tail (chunkr_ai, crawl4ai, xmltodict,
-    # global nest_asyncio.apply()). Document→text parsing is handled instead by
-    # the /mnt/user-data upload auto-conversion path (M4).
+    # global nest_asyncio.apply()). Document→text conversion is handled by
+    # plugins/camel_tools/uploads.py, which depends on `markitdown` directly
+    # (not via camel-ai) so it works whether or not CAMEL is installed.
+    #
+    # NOTE: further deliberate omissions, checked against camel-ai 0.2.90:
+    #   * AgentToolkit — spawns sub-agents by cloning a live camel ChatAgent;
+    #     Hermes owns delegation in tools/delegate_tool.py.
+    #   * HybridBrowserToolkit / HeadlessBrowserSearchToolkit — the first needs
+    #     a Node.js + npm Playwright runtime alongside Python; the second
+    #     scrapes Google/Bing/Brave SERP DOM with hand-written JS that breaks
+    #     whenever those pages change.
+    #   * MarkItDownToolkit — deprecated upstream in favor of FileToolkit.
+    #   * TodoToolkit / SkillToolkit / PlanningWorktreeToolkit — Hermes already
+    #     ships kanban, a skills system, and worktree support.
+    #   * TwelveLabsToolkit — overlaps VideoAnalysisToolkit and is a paid API.
 ]
