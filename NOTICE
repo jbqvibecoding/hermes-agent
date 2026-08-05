@@ -15,3 +15,27 @@ changes in its module docstring:
 
   plugins/camel_tools/uploads.py
       derived from camel/loaders/markitdown.py (MarkItDownLoader)
+
+This product includes software developed by the wanman contributors
+(https://github.com/chekusu/wanman), licensed under the Apache License,
+Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+
+Portions of the following files are derived from wanman source and have been
+modified. Each file carries the attribution and a description of the changes
+in its module docstring:
+
+  hermes_cli/board_health.py
+      derived from packages/cli/src/loop-observability.ts
+      (loop health classification and the run auto-exit policy)
+
+  hermes_cli/task_scope.py
+      derived from packages/runtime/src/task-pool.ts
+      (scopesOverlap / pathMatchesPattern / patternsOverlap)
+
+  agent/skill_snapshot.py
+      inspired by packages/runtime/src/shared-skill-manager.ts and
+      brain-manager.ts (per-run skill activation snapshots, pin policy)
+
+  plugins/observability/ndjson/__init__.py
+      inspired by packages/cli/src/loop-observability.ts (NDJSON event log
+      and heartbeat file)

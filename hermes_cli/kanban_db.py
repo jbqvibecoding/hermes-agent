@@ -71,6 +71,7 @@ new locking.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import json
 import os
@@ -1947,6 +1948,13 @@ def _migrate_add_optional_columns(conn: sqlite3.Connection) -> None:
     if "model_override" not in cols:
         conn.execute("ALTER TABLE tasks ADD COLUMN model_override TEXT")
 
+    if "scope" not in cols:
+        # Declared file scope (JSON ``{"paths": [...], "patterns": [...]}``)
+        # used to refuse creating a task that overlaps one already in flight.
+        # NULL = undeclared, which never conflicts — so existing rows and any
+        # caller that doesn't pass a scope keep their previous behaviour.
+        _add_column_if_missing(conn, "tasks", "scope", "scope TEXT")
+
     if "goal_mode" not in cols:
         # Ralph-style goal loop toggle for the dispatched worker. 0 (the
         # default) = classic single-shot worker, preserving the behaviour
@@ -2383,6 +2391,95 @@ def _canonical_assignee(assignee: Optional[str]) -> Optional[str]:
     return normalize_profile_name(assignee)
 
 
+def classify_board_tick(
+    conn: sqlite3.Connection,
+    *,
+    task_transitions: int = 0,
+    errors: int = 0,
+    board: Optional[str] = None,
+    fire_hook: bool = True,
+) -> Any:
+    """Classify the board's current health and fire ``kanban_board_tick``.
+
+    Called once per dispatcher pass. Returns a
+    :class:`hermes_cli.board_health.BoardHealth`; the caller can feed it (with
+    the snapshot) to a :class:`~hermes_cli.board_health.RunGate` to decide
+    whether an unattended run should stop.
+
+    Fully best-effort on the hook side — a misbehaving observer must never
+    disturb dispatching.
+    """
+    import time
+
+    from hermes_cli.board_health import classify_board, snapshot_from_rows
+
+    rows = conn.execute("SELECT status, claim_lock, claim_expires FROM tasks").fetchall()
+    snapshot = snapshot_from_rows(
+        rows, task_transitions=task_transitions, errors=errors, now=time.time()
+    )
+    health = classify_board(snapshot)
+
+    if fire_hook:
+        try:
+            from hermes_cli.plugins import invoke_hook
+            from hermes_cli.profiles import get_active_profile_name
+
+            try:
+                profile_name = get_active_profile_name()
+            except Exception:
+                profile_name = "default"
+            invoke_hook(
+                "kanban_board_tick",
+                classification=health.classification,
+                reasons=list(health.reasons),
+                snapshot=dataclasses.asdict(snapshot),
+                board=board,
+                profile_name=profile_name,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            _log.debug("kanban_board_tick hook failed: %s", exc)
+
+    return health, snapshot
+
+
+def _check_scope_conflict(
+    conn: sqlite3.Connection,
+    scope_paths: Optional[Iterable[str]],
+    scope_patterns: Optional[Iterable[str]],
+) -> Optional[str]:
+    """Refuse a declared file scope that overlaps an in-flight task.
+
+    Returns the JSON to store in ``tasks.scope``, or ``None`` when no scope was
+    declared (in which case no query runs and nothing can be refused — the
+    pre-existing behaviour for every caller that doesn't opt in).
+
+    Raises:
+        ScopeConflictError: the scope overlaps at least one active task.
+    """
+    from hermes_cli.task_scope import (
+        ACTIVE_STATUSES,
+        ScopeConflictError,
+        check_scope,
+        make_scope,
+    )
+
+    scope = make_scope(scope_paths, scope_patterns)
+    if scope.is_empty():
+        return None
+
+    placeholders = ",".join("?" * len(ACTIVE_STATUSES))
+    active = conn.execute(
+        "SELECT id, title, assignee, status, scope FROM tasks "
+        f"WHERE status IN ({placeholders}) AND scope IS NOT NULL",
+        ACTIVE_STATUSES,
+    ).fetchall()
+
+    result = check_scope(scope, active)
+    if not result.allowed:
+        raise ScopeConflictError(result.message, result.conflicts)
+    return scope.to_json()
+
+
 def create_task(
     conn: sqlite3.Connection,
     *,
@@ -2407,6 +2504,8 @@ def create_task(
     session_id: Optional[str] = None,
     board: Optional[str] = None,
     project_id: Optional[str] = None,
+    scope_paths: Optional[Iterable[str]] = None,
+    scope_patterns: Optional[Iterable[str]] = None,
 ) -> str:
     """Create a new task and optionally link it under parent tasks.
 
@@ -2430,6 +2529,12 @@ def create_task(
     each name to ``hermes --skills ...``. Use this to pin a task to a
     specialist skill (e.g. ``skills=["translation"]`` so the worker loads the
     translation skill regardless of the profile's default config).
+
+    ``scope_paths`` / ``scope_patterns`` declare which files the task will
+    touch. When given, creation is **refused** if the scope overlaps a task
+    that is already in flight, so two workers can't be scheduled onto the same
+    files and discover the collision only at merge time. Omitting both keeps
+    the previous behaviour exactly (an undeclared scope never conflicts).
     """
     assignee = _canonical_assignee(assignee)
     if not title or not title.strip():
@@ -2628,6 +2733,14 @@ def create_task(
                         except Exception:
                             branch_name = None
 
+                # Path-scope conflict gate. Runs inside the same write txn as
+                # the INSERT so two concurrent creates can't both pass. An
+                # undeclared scope short-circuits to None and skips the query
+                # entirely, keeping existing callers on their old code path.
+                scope_json = _check_scope_conflict(
+                    conn, scope_paths, scope_patterns
+                )
+
                 conn.execute(
                     """
                     INSERT INTO tasks (
@@ -2635,8 +2748,9 @@ def create_task(
                         created_by, created_at, workspace_kind, workspace_path,
                         branch_name, project_id, tenant, idempotency_key,
                         max_runtime_seconds,
-                        skills, max_retries, goal_mode, goal_max_turns, session_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        skills, max_retries, goal_mode, goal_max_turns, session_id,
+                        scope
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         task_id,
@@ -2659,6 +2773,7 @@ def create_task(
                         1 if goal_mode else 0,
                         int(goal_max_turns) if goal_max_turns is not None else None,
                         session_id,
+                        scope_json,
                     ),
                 )
                 for pid in parents:

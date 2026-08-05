@@ -1,0 +1,16 @@
+name: ndjson
+version: "1.0.0"
+description: "Local NDJSON event sink — appends observer-hook and kanban board events to a newline-delimited JSON file, plus a heartbeat file. Zero dependencies, crash-safe, front-end agnostic. Opt-in via observability.ndjson config or HERMES_NDJSON_PATH."
+author: NousResearch
+kind: standalone
+hooks:
+  - pre_tool_call
+  - post_tool_call
+  - pre_api_request
+  - post_api_request
+  - on_session_start
+  - on_session_end
+  - kanban_task_claimed
+  - kanban_task_completed
+  - kanban_task_blocked
+  - kanban_board_tick

@@ -210,6 +210,17 @@ VALID_HOOKS: Set[str] = {
     "kanban_task_claimed",
     "kanban_task_completed",
     "kanban_task_blocked",
+    # Board-level health tick. Fired once per dispatcher pass with a
+    # classification of whether the BOARD as a whole is progressing — distinct
+    # from the per-task hooks above, which only ever describe one task. This is
+    # what lets an observer tell "nothing to do" apart from "work is queued but
+    # nothing is picking it up" apart from "everything is waiting on a
+    # dependency". Fires in the DISPATCHER process. Observers only.
+    #
+    # kwargs: classification: "productive"|"idle"|"blocked"|"backlog_stuck"|
+    #   "error", reasons: list[str], snapshot: dict (task counts),
+    #   board: str | None, profile_name: str.
+    "kanban_board_tick",
 }
 
 ENTRY_POINTS_GROUP = "hermes_agent.plugins"
