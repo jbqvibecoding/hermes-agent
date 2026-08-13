@@ -963,6 +963,42 @@ def run_conversation(
             api_messages, tools=agent.tools or None
         )
 
+        # Hybrid metering (D5, agent/token_meter.py). The heuristic above is
+        # chars/4 over the WHOLE history, so its error grows with the history.
+        # When the provider has already told us the exact size of a request
+        # that is still a prefix of this one, anchor to that number and spend
+        # the heuristic only on what has been appended since. Falls back to
+        # request_pressure_tokens whenever anchoring is unsafe, and can only
+        # ever raise the figure — so this brings a needed compaction forward,
+        # never delays one.
+        _envelope = ""
+        try:
+            from agent.token_meter import envelope_key
+
+            _envelope = envelope_key(
+                system_prompt=active_system_prompt or "",
+                tools=agent.tools or None,
+                model=getattr(agent, "model", "") or "",
+            )
+            _anchored = agent.context_compressor.anchored_request_tokens(
+                api_messages,
+                envelope=_envelope,
+                full_estimate=request_pressure_tokens,
+            )
+            if _anchored > request_pressure_tokens:
+                logger.debug(
+                    "Token metering anchored to provider usage: %s -> %s (%s)",
+                    f"{request_pressure_tokens:,}",
+                    f"{_anchored:,}",
+                    getattr(agent.context_compressor, "last_estimate_source", "?"),
+                )
+                request_pressure_tokens = _anchored
+            agent.context_compressor.note_pending_usage_anchor(
+                len(api_messages), _envelope, request_pressure_tokens
+            )
+        except Exception:
+            logger.debug("Hybrid token metering unavailable this turn", exc_info=True)
+
         _runtime_context_error = _ollama_context_limit_error(
             agent, request_pressure_tokens
         )

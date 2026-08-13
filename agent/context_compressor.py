@@ -731,6 +731,8 @@ class ContextCompressor(ContextEngine):
         self.last_compression_rough_tokens = 0
         self.last_rough_tokens_when_real_prompt_fit = 0
         self.awaiting_real_usage_after_compression = False
+        self._pending_usage_anchor = None
+        self._usage_anchor = None
 
     def on_session_end(self, session_id: str, messages: List[Dict[str, Any]]) -> None:
         """Clear all per-session compaction state at a real session boundary.
@@ -1113,9 +1115,101 @@ class ContextCompressor(ContextEngine):
         # succeeded.  Silent recovery would hide the broken config.
         self._last_aux_model_failure_error: Optional[str] = None
         self._last_aux_model_failure_model: Optional[str] = None
+        # Hybrid token metering (D5). ``_pending_usage_anchor`` holds the shape
+        # of the in-flight request; it becomes ``_usage_anchor`` when the
+        # provider reports real usage for it. Both are self-invalidating —
+        # anchored_request_tokens() re-checks the envelope and message count on
+        # every read — so a missed reset degrades to the plain heuristic rather
+        # than to a wrong number.
+        self._pending_usage_anchor: Optional[tuple] = None
+        self._usage_anchor: Any = None
+        self.last_estimate_source: str = "heuristic"
+
+    # ------------------------------------------------------------------
+    # Hybrid token metering (D5) — see agent/token_meter.py
+    # ------------------------------------------------------------------
+
+    def note_pending_usage_anchor(
+        self, message_count: int, envelope: str, heuristic_tokens: int
+    ) -> None:
+        """Record what we are about to send, so the reply's usage can anchor it.
+
+        Called immediately before an API request. The anchor is only promoted
+        once the provider answers, because until then we have no real number to
+        anchor to. Never raises — metering must not be able to break a turn.
+        """
+        try:
+            self._pending_usage_anchor = (
+                int(message_count),
+                str(envelope),
+                int(heuristic_tokens),
+            )
+        except Exception:
+            self._pending_usage_anchor = None
+
+    def _promote_usage_anchor(self, usage: Dict[str, Any]) -> None:
+        """Turn the pending request into a confirmed anchor using real usage."""
+        pending = getattr(self, "_pending_usage_anchor", None)
+        self._pending_usage_anchor = None
+        if not pending:
+            return
+        message_count, envelope, heuristic_tokens = pending
+        try:
+            prompt_tokens = int(usage.get("prompt_tokens") or 0)
+            # Several providers report prompt_tokens NET of cached input. The
+            # number that has to fit in the context window is the whole prompt,
+            # cache hits included, so add the cache-read bucket back when the
+            # provider gives us one. Without this every cached turn would look
+            # like a sudden collapse in context size.
+            cache_read = int(usage.get("cache_read_tokens") or 0)
+            if cache_read > 0:
+                prompt_tokens += cache_read
+            if prompt_tokens <= 0:
+                return
+            from agent.token_meter import UsageAnchor
+
+            self._usage_anchor = UsageAnchor(
+                prompt_tokens=prompt_tokens,
+                message_count=message_count,
+                envelope=envelope,
+                heuristic_tokens=heuristic_tokens,
+            )
+        except Exception:
+            self._usage_anchor = None
+
+    def anchored_request_tokens(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        envelope: str,
+        full_estimate: int,
+    ) -> int:
+        """Best available size for the request, anchored where that is sound.
+
+        Returns ``full_estimate`` unchanged whenever anchoring is unsafe or
+        would lower the number, so this can only ever move a compaction
+        decision *earlier*, never later. Never raises.
+        """
+        try:
+            from agent.model_metadata import estimate_messages_tokens_rough
+            from agent.token_meter import estimate_with_anchor
+
+            tokens, source = estimate_with_anchor(
+                messages,
+                anchor=getattr(self, "_usage_anchor", None),
+                envelope=envelope,
+                estimate_messages=estimate_messages_tokens_rough,
+                full_estimate=full_estimate,
+            )
+            self.last_estimate_source = source
+            return tokens
+        except Exception:
+            logger.debug("anchored token estimate failed; using heuristic", exc_info=True)
+            return full_estimate
 
     def update_from_response(self, usage: Dict[str, Any]):
         """Update tracked token usage from API response."""
+        self._promote_usage_anchor(usage)
         self.last_prompt_tokens = usage.get("prompt_tokens", 0)
         self.last_completion_tokens = usage.get("completion_tokens", 0)
         self.last_total_tokens = usage.get("total_tokens", self.last_prompt_tokens + self.last_completion_tokens)

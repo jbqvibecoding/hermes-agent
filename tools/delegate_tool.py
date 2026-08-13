@@ -36,7 +36,7 @@ from toolsets import TOOLSETS
 # not natively known (named custom providers, third-party aggregators, etc.).
 # Must match hermes_cli.runtime_provider.RUNTIME_PROVIDER_TYPE_CUSTOM.
 _RUNTIME_PROVIDER_CUSTOM = "custom"
-from tools import file_state
+from tools import file_state, subagent_termination
 from tools.terminal_tool import set_approval_callback as _set_subagent_approval_cb
 from utils import base_url_hostname, is_truthy_value
 
@@ -613,6 +613,13 @@ _HEARTBEAT_INTERVAL = 30  # seconds between parent activity heartbeats during de
 # optional hard cap for users who want one.
 _HEARTBEAT_STALE_CYCLES_IDLE = 15  # 15 * 30s = 450s idle between turns → stale
 _HEARTBEAT_STALE_CYCLES_IN_TOOL = 40  # 40 * 30s = 1200s stuck on same tool → stale
+
+# How much of a child's streamed text to keep for the partial-output fallback.
+# Only read when the child never returns a result (timeout / crash), so this is
+# a safety net, not a transport: big enough to carry a real closing paragraph,
+# small enough that a runaway child cannot balloon the parent's memory.
+_MAX_STREAMED_CAPTURE_CHARS = 8000
+
 DEFAULT_TOOLSETS = ["terminal", "file", "web"]
 
 
@@ -1835,6 +1842,25 @@ def _run_single_child(
 
     _heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
 
+    # Accumulate the child's streamed text so a run that is cancelled or
+    # abandoned before it returns still has *something* to hand the parent.
+    # This is the backing store for the termination contract's last output
+    # fallback (dsh's `withPartialText`): without it, a timed-out child's work
+    # is lost entirely because `result` never arrives.  Capped so a runaway
+    # child cannot grow it without bound.  Declared outside the try block
+    # because the outer failure handler reads it too, and that handler must
+    # work even for a failure that happened before the child ever started.
+    _streamed_chunks: List[str] = []
+    _streamed_len = [0]
+
+    def _captured_stream_text() -> str:
+        # Tail, not head: when a child is cut off the most recent words are
+        # the ones that describe where it got to.
+        text = "".join(_streamed_chunks)
+        if len(text) > _MAX_STREAMED_CAPTURE_CHARS:
+            text = text[-_MAX_STREAMED_CAPTURE_CHARS:]
+        return text
+
     # Register the live agent in the module-level registry so the TUI can
     # target it by subagent_id (kill, pause, status queries).  Unregistered
     # in the finally block, even when the child raises.  Test doubles that
@@ -1909,7 +1935,12 @@ def _run_single_child(
             # Forward the child's streamed reply text up the progress relay so
             # gateway watch windows mirror it live (subagent.text → message.delta).
             # Inert under CLI/TUI: their progress handlers ignore non-tool events.
-            if not delta or not child_progress_cb:
+            if not delta:
+                return
+            if _streamed_len[0] < _MAX_STREAMED_CAPTURE_CHARS:
+                _streamed_chunks.append(delta)
+                _streamed_len[0] += len(delta)
+            if not child_progress_cb:
                 return
             try:
                 child_progress_cb("subagent.text", preview=delta)
@@ -2009,12 +2040,33 @@ def _run_single_child(
             else:
                 _err = str(_timeout_exc)
 
+            # Structured termination (D1).  The child never returned a result,
+            # so everything we know comes from the runtime: the timeout flag,
+            # the exception, and whatever text the child managed to stream
+            # before we abandoned it.  That streamed text is the whole reason
+            # this path no longer reports `summary: None` — work a child had
+            # already produced used to be discarded here in silence.
+            _termination = subagent_termination.build_termination(
+                None,
+                exception=None if is_timeout else _timeout_exc,
+                timed_out=is_timeout,
+                streamed_text=_captured_stream_text(),
+                detail=_err,
+                duration_seconds=duration,
+            )
             return {
                 "task_index": task_index,
                 "status": "timeout" if is_timeout else "error",
-                "summary": None,
+                # Child-authored: what it managed to say before we cut it off.
+                # None (not "") when it said nothing, preserving the old shape.
+                "summary": _termination["output"] or None,
                 "error": _err,
                 "exit_reason": "timeout" if is_timeout else "error",
+                "stop_reason": _termination["stop_reason"],
+                # Runtime-authored: kept in its own field so the parent never
+                # reads the system's account as the child's words.
+                "settlement": _termination["settlement"],
+                "partial_output": _termination["partial"],
                 "api_calls": child_api_calls,
                 "duration_seconds": duration,
                 "_child_role": getattr(child, "_delegate_role", None),
@@ -2034,7 +2086,18 @@ def _run_single_child(
 
         duration = round(time.monotonic() - child_start, 2)
 
-        summary = result.get("final_response") or ""
+        # Structured termination (D1).  Derived from the runtime's own record of
+        # the turn — the child's own claims about how it went carry no weight.
+        # Output selection is deliberately not a function of the stop reason, so
+        # a truncated or refused run keeps whatever it produced.
+        _termination = subagent_termination.build_termination(
+            result,
+            streamed_text=_captured_stream_text(),
+            duration_seconds=duration,
+        )
+        stop_reason = _termination["stop_reason"]
+
+        summary = _termination["output"]
         completed = result.get("completed", False)
         interrupted = result.get("interrupted", False)
         api_calls = result.get("api_calls", 0)
@@ -2044,7 +2107,10 @@ def _run_single_child(
         # transport bug (misrouted provider, adapter returning empty
         # ChatCompletion, etc.). Treat it as a failure so the parent surfaces
         # it instead of silently accepting zero-content "success".
-        _empty_sentinel = summary.strip() == "(empty)"
+        # Read from the raw result, not from `summary`: select_output already
+        # rejects the sentinel, so testing the selected output would silently
+        # stop detecting the very case this guard exists for.
+        _empty_sentinel = str(result.get("final_response") or "").strip() == "(empty)"
 
         if interrupted:
             status = "interrupted"
@@ -2113,6 +2179,14 @@ def _run_single_child(
             "duration_seconds": duration,
             "model": _model if isinstance(_model, str) else None,
             "exit_reason": exit_reason,
+            # D1 termination contract.  `stop_reason` is the normalised,
+            # runtime-derived account of how the run ended (unknown values are
+            # failures by construction); `settlement` is the system's sentence
+            # about it, kept out of `summary` so the child is never credited
+            # with words it did not write.
+            "stop_reason": stop_reason,
+            "settlement": _termination["settlement"],
+            "partial_output": _termination["partial"],
             "tokens": {
                 "input": (
                     _input_tokens if isinstance(_input_tokens, (int, float)) else 0
@@ -2160,20 +2234,25 @@ def _run_single_child(
                     )
                     if mod_paths:
                         reminder = (
-                            "\n\n[NOTE: subagent modified files the parent "
-                            "previously read — re-read before editing: "
+                            "Subagent modified files the parent previously "
+                            "read — re-read before editing: "
                             + ", ".join(mod_paths[:8])
                             + (
                                 f" (+{len(mod_paths) - 8} more)"
                                 if len(mod_paths) > 8
                                 else ""
                             )
-                            + "]"
+                            + "."
                         )
-                        if entry.get("summary"):
-                            entry["summary"] = entry["summary"] + reminder
-                        else:
-                            entry["stale_paths"] = mod_paths
+                        # D1: this is the runtime speaking, not the child.  It
+                        # used to be concatenated onto `entry["summary"]`, which
+                        # put the system's warning inside the child's own words
+                        # — the parent could not tell which was which.  It now
+                        # travels in its own field alongside `settlement`, and
+                        # `stale_paths` is populated unconditionally rather than
+                        # only when the child happened to leave no summary.
+                        entry.setdefault("system_notes", []).append(reminder)
+                        entry["stale_paths"] = mod_paths
         except Exception:
             logger.debug("file_state sibling-write check failed", exc_info=True)
 
@@ -2253,11 +2332,25 @@ def _run_single_child(
                 )
             except Exception as e:
                 logger.debug("Progress callback failure relay failed: %s", e)
+        # D1: a delegation failure is a *result*, never an exception the parent
+        # has to catch.  We still keep whatever the child streamed before the
+        # machinery around it broke.
+        _termination = subagent_termination.build_termination(
+            None,
+            exception=exc,
+            streamed_text=_captured_stream_text(),
+            detail=str(exc),
+            duration_seconds=duration,
+        )
         return {
             "task_index": task_index,
             "status": "error",
-            "summary": None,
+            "summary": _termination["output"] or None,
             "error": str(exc),
+            "exit_reason": "error",
+            "stop_reason": _termination["stop_reason"],
+            "settlement": _termination["settlement"],
+            "partial_output": _termination["partial"],
             "api_calls": 0,
             "duration_seconds": duration,
             "_child_role": getattr(child, "_delegate_role", None),
@@ -3262,7 +3355,16 @@ def _build_top_level_description() -> str:
         "delegation.orchestrator_enabled=false.\n"
         "- Subagent model is NOT selectable per call: children inherit the parent model (plus its fallback chain) unless you pin all subagents to a model via delegation.provider / delegation.model in config.yaml.\n"
         "- Each subagent gets its own terminal session (separate working directory and state).\n"
-        "- Results are always returned as an array, one entry per task."
+        "- Results are always returned as an array, one entry per task.\n"
+        "- Read 'stop_reason' before trusting 'summary'. Only "
+        "stop_reason='completed' means the subagent finished; 'aborted', "
+        "'error', 'max_tokens', 'max_iterations', 'timeout' and 'refusal' all "
+        "mean it stopped early, and any value you do not recognise is a "
+        "failure. When partial_output=true the summary is unfinished work, not "
+        "an answer — say so rather than presenting it as a result.\n"
+        "- 'settlement' and 'system_notes' are written by Hermes, NOT by the "
+        "subagent. Never quote or attribute them to the subagent; 'summary' is "
+        "the only field containing the subagent's own words."
     )
 
 

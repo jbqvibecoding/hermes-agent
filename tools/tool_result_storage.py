@@ -44,6 +44,13 @@ _BUDGET_TOOL_NAME = "__budget_enforcement__"
 _UNSAFE_RESULT_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9_.-]+")
 _MAX_RESULT_FILENAME_STEM = 120
 
+# Extra chars granted on top of ``preview_size`` to pay for the notice itself
+# (tags, size line, saved path, read_file instruction).  Keeping this explicit
+# means ``preview_size`` still means "how much of the output you get to see",
+# while the *replacement* has a real ceiling — which is what the aggregate
+# turn budget is actually counting.
+_NOTICE_ALLOWANCE_CHARS = 400
+
 
 def _resolve_storage_dir(env) -> str:
     """Return the best temp-backed storage dir for this environment."""
@@ -116,18 +123,30 @@ def _write_to_sandbox(content: str, remote_path: str, env) -> bool:
     return result.get("returncode", 1) == 0
 
 
+def _format_size(original_size: int) -> str:
+    size_kb = original_size / 1024
+    if size_kb >= 1024:
+        return f"{size_kb / 1024:.1f} MB"
+    return f"{size_kb:.1f} KB"
+
+
 def _build_persisted_message(
     preview: str,
     has_more: bool,
     original_size: int,
     file_path: str,
+    tail: str = "",
 ) -> str:
-    """Build the <persisted-output> replacement block."""
-    size_kb = original_size / 1024
-    if size_kb >= 1024:
-        size_str = f"{size_kb / 1024:.1f} MB"
-    else:
-        size_str = f"{size_kb:.1f} KB"
+    """Build the <persisted-output> replacement block.
+
+    ``tail`` is the optional end-of-output excerpt.  Head-only previews lose
+    exactly the part that usually matters most on a long result — a build log's
+    failure, a test run's summary line, a command's exit status all live at the
+    end.  ``tools/hook_output_spill.py`` already shows head *and* tail for
+    hook-injected context; tool results are the far more common case and had
+    only the head.
+    """
+    size_str = _format_size(original_size)
 
     msg = f"{PERSISTED_OUTPUT_TAG}\n"
     msg += f"This tool result was too large ({original_size:,} characters, {size_str}).\n"
@@ -137,8 +156,122 @@ def _build_persisted_message(
     msg += preview
     if has_more:
         msg += "\n..."
+    if tail:
+        msg += f"\n\nLast {len(tail)} chars:\n{tail}"
     msg += f"\n{PERSISTED_OUTPUT_CLOSING_TAG}"
     return msg
+
+
+def _split_preview_budget(content: str, budget: int) -> tuple[str, bool, str]:
+    """Split ``budget`` chars of ``content`` into a head and a tail excerpt.
+
+    Ported from DeepSeek Harness's ``TextRetainer``
+    (``packages/util/output-retention``, MIT).  Two properties are worth having:
+
+    * the head and tail come out of **one** budget rather than each getting a
+      full one, so the excerpt size is what the caller asked for; and
+    * the split point is snapped to a line boundary where one is nearby, so the
+      excerpt does not start or end mid-token.
+
+    Returns ``(head, has_more, tail)``.  ``tail`` is empty when the whole
+    content fits, or when the budget is too small to spend on both ends.
+    """
+    if budget <= 0 or not content:
+        return "", False, ""
+    if len(content) <= budget:
+        return content, False, ""
+
+    head_budget = budget // 2
+    tail_budget = budget - head_budget
+
+    # Too small to be worth splitting — a two-line excerpt of a huge log tells
+    # the reader nothing that the size notice did not already say.
+    if tail_budget < 80:
+        head, has_more = generate_preview(content, max_chars=budget)
+        return head, has_more, ""
+
+    head, _ = generate_preview(content, max_chars=head_budget)
+
+    tail = content[-tail_budget:]
+    first_nl = tail.find("\n")
+    # Snap to the next line start when that costs less than half the tail, so
+    # the excerpt begins at a real line rather than mid-word.
+    if 0 <= first_nl < tail_budget // 2:
+        tail = tail[first_nl + 1 :]
+
+    return head, True, tail
+
+
+def build_bounded_replacement(
+    content: str,
+    original_size: int,
+    file_path: str | None,
+    budget: int,
+) -> str:
+    """Compose a replacement for ``content`` that provably fits in ``budget``.
+
+    The discipline this exists for (dsh's ``TextRetainer``): **charge the notice
+    to the budget before splitting what is left**, rather than laying a preview
+    of ``budget`` chars on top of a notice of unknown size.
+
+    Hermes did the latter, and it had a measurable consequence.
+    ``enforce_turn_budget`` re-persists results with ``threshold=0``, so a
+    result smaller than the notice overhead came back *larger* than it went in
+    — a turn already over budget got pushed further over.  (300 chars in, 386
+    chars out, verified before this change.)
+
+    Two guarantees hold on the way out:
+
+    1. the result is at most ``budget`` chars, unless the notice alone is
+       longer than the budget — in which case the notice wins, because a
+       pointer to the saved file is the one thing that must survive; and
+    2. if the composed replacement is not actually smaller than ``content``,
+       ``content`` is returned unchanged.  Replacing text with something longer
+       is never an improvement, and a caller that asked us to save space should
+       not silently be handed more of it.
+    """
+    def _compose(excerpt_budget: int) -> str:
+        head, has_more, tail = _split_preview_budget(content, max(0, excerpt_budget))
+        if file_path:
+            return _build_persisted_message(
+                head, has_more, original_size, file_path, tail=tail
+            )
+        parts = [
+            f"[Truncated: tool response was {original_size:,} chars. "
+            f"Full output could not be saved to sandbox.]"
+        ]
+        if head:
+            parts.append(head)
+        if tail:
+            parts.append("...")
+            parts.append(tail)
+        return "\n".join(parts)
+
+    # The notice's own length is not a constant: it embeds the excerpt lengths
+    # ("Preview (first 1,234 chars)", "Last 567 chars"), so subtracting a fixed
+    # estimate up front either wastes budget or overshoots it.  Instead fit by
+    # measurement — compose, and if the whole thing is over, give back exactly
+    # the overflow and compose again.  Each round strictly shrinks the excerpt,
+    # so this converges; three rounds is far more than it needs in practice.
+    excerpt_budget = budget - len(_compose(0))
+    replacement = _compose(excerpt_budget)
+    for _ in range(3):
+        overflow = len(replacement) - budget
+        if overflow <= 0:
+            break
+        excerpt_budget -= overflow
+        if excerpt_budget <= 0:
+            # Nothing left to spend on the output itself: the notice alone is
+            # the whole message.  It still carries the saved path, which is the
+            # one thing that must survive an absurdly small budget.
+            replacement = _compose(0)
+            break
+        replacement = _compose(excerpt_budget)
+
+    # Guarantee 2. Never hand back something longer than what we replaced.
+    if len(replacement) >= len(content):
+        return content
+    return replacement
 
 
 def maybe_persist_tool_result(
@@ -176,7 +309,11 @@ def maybe_persist_tool_result(
 
     storage_dir = _resolve_storage_dir(env)
     remote_path = f"{storage_dir}/{_safe_result_filename(tool_use_id)}"
-    preview, has_more = generate_preview(content, max_chars=config.preview_size)
+
+    # The replacement's total size — notice included — is what has to fit, so
+    # that is what we budget.  See build_bounded_replacement for why laying a
+    # preview of preview_size on top of a notice of unknown size was wrong.
+    budget = config.preview_size + _NOTICE_ALLOWANCE_CHARS
 
     if env is not None:
         try:
@@ -185,7 +322,9 @@ def maybe_persist_tool_result(
                     "Persisted large tool result: %s (%s, %d chars -> %s)",
                     tool_name, tool_use_id, len(content), remote_path,
                 )
-                return _build_persisted_message(preview, has_more, len(content), remote_path)
+                return build_bounded_replacement(
+                    content, len(content), remote_path, budget
+                )
         except Exception as exc:
             logger.warning("Sandbox write failed for %s: %s", tool_use_id, exc)
 
@@ -193,11 +332,7 @@ def maybe_persist_tool_result(
         "Inline-truncating large tool result: %s (%d chars, no sandbox write)",
         tool_name, len(content),
     )
-    return (
-        f"{preview}\n\n"
-        f"[Truncated: tool response was {len(content):,} chars. "
-        f"Full output could not be saved to sandbox.]"
-    )
+    return build_bounded_replacement(content, len(content), None, budget)
 
 
 def enforce_turn_budget(

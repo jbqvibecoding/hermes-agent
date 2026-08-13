@@ -442,7 +442,17 @@ class TestMaybePersistToolResult:
         cmd = env.execute.call_args[0][0]
         assert "mkdir -p /data/data/com.termux/files/usr/tmp/hermes-results" in cmd
 
-    def test_threshold_zero_forces_persist(self):
+    def test_threshold_zero_writes_the_file_but_keeps_tiny_content_inline(self):
+        """threshold=0 still saves the output; it does not make it bigger.
+
+        This used to assert that ANY content came back wrapped in a
+        <persisted-output> block. For content shorter than the notice itself
+        that made the result grow — 18 chars in, ~390 chars out — which is the
+        opposite of what a size-reduction path is for, and it compounded in
+        enforce_turn_budget (which persists with threshold=0 precisely because
+        a turn is already over budget). The file is still written; only the
+        in-context replacement is declined when it would not shrink anything.
+        """
         env = MagicMock()
         env.execute.return_value = {"output": "", "returncode": 0}
         content = "even short content"
@@ -453,8 +463,23 @@ class TestMaybePersistToolResult:
             env=env,
             threshold=0,
         )
-        # Any non-empty content with threshold=0 should be persisted
+        assert result == content
+        assert len(result) <= len(content)
+        env.execute.assert_called_once()  # the full output was still saved
+
+    def test_threshold_zero_persists_content_large_enough_to_benefit(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "", "returncode": 0}
+        content = "x" * 50_000
+        result = maybe_persist_tool_result(
+            content=content,
+            tool_name="terminal",
+            tool_use_id="tc_zero_big",
+            env=env,
+            threshold=0,
+        )
         assert PERSISTED_OUTPUT_TAG in result
+        assert len(result) < len(content)
 
 
 # ── enforce_turn_budget ───────────────────────────────────────────────
