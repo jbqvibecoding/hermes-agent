@@ -99,7 +99,14 @@ def test_camofox_short_circuits_before_guard(monkeypatch):
 
     import tools.browser_camofox as camofox
 
-    monkeypatch.setattr(camofox, "camofox_click", lambda ref, task_id: '{"success": true, "camofox": true}')
+    # ``**kwargs`` so this double keeps matching as the real signature grows —
+    # it gained ``snapshot_id`` with the B3 staleness guard, and the ordering
+    # invariant this test exists for is unaffected by any of that.
+    monkeypatch.setattr(
+        camofox,
+        "camofox_click",
+        lambda ref, task_id, **kwargs: '{"success": true, "camofox": true}',
+    )
 
     out = json.loads(browser_tool.browser_click("@e1", task_id="task-1"))
 

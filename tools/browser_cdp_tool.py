@@ -426,6 +426,14 @@ def browser_cdp(
     """
     effective_task_id = task_id or "default"
 
+    # B1: raw CDP is the third way to drive this browser, so it is gated like
+    # the other two. Placed before the frame_id branch so the supervisor route
+    # cannot become the sibling bypass — the same reasoning the private-page
+    # guard below is placed there.
+    _control_block = _human_control_block(effective_task_id, method)
+    if _control_block:
+        return _control_block
+
     # --- Route iframe-scoped calls through the supervisor ---------------
     if frame_id:
         # Same private-page/SSRF boundary as the stateless path below —
@@ -521,6 +529,9 @@ def browser_cdp(
             method=method,
         )
 
+    _invalidate_view_after_cdp(task_id, method)
+
+
     payload: Dict[str, Any] = {
         "success": True,
         "method": method,
@@ -529,6 +540,87 @@ def browser_cdp(
     if target_id:
         payload["target_id"] = target_id
     return json.dumps(payload, ensure_ascii=False)
+
+
+def _human_control_block(task_id: str, method: str) -> Optional[str]:
+    """Refuse a raw CDP call while a person is driving the browser (B1).
+
+    Read-only methods are allowed through, so the agent can keep watching what
+    the person is doing. Everything else is refused — a ``Input.dispatchKeyEvent``
+    landing in the middle of someone's login is exactly what this prevents.
+
+    Fails closed, like the other two paths.
+    """
+    refusal = tool_error(
+        "Could not determine whether a person is currently driving this "
+        "browser, so the CDP call was refused.",
+        method=method,
+    )
+    # Imported outside the guarded block on purpose: if the import itself
+    # failed, naming HumanHasControlError in an `except` clause would raise
+    # NameError and skip straight past the gate.
+    try:
+        from tools.browser_control import HumanHasControlError, assert_agent_may_act
+    except Exception as exc:  # noqa: BLE001 — fail closed
+        logger.warning("browser control state unavailable; refusing call: %s", exc)
+        return refusal
+
+    if str(method or "").startswith(_CDP_READ_ONLY_PREFIXES):
+        return None
+
+    try:
+        # "eval" stands in for "an arbitrary raw command": it is classified as
+        # acting, which is what an unrecognised CDP method must be treated as.
+        assert_agent_may_act(task_id, "eval")
+    except HumanHasControlError as exc:
+        return tool_error(str(exc), method=method)
+    except Exception as exc:  # noqa: BLE001 — fail closed
+        logger.warning("CDP control-state check failed; refusing call: %s", exc)
+        return refusal
+    return None
+
+
+# Raw-CDP methods that only observe. Everything else is assumed to have
+# possibly changed the page — see _invalidate_view_after_cdp.
+_CDP_READ_ONLY_PREFIXES = (
+    "Target.get",
+    "Browser.get",
+    "Page.getFrameTree",
+    "Page.getLayoutMetrics",
+    "Page.captureScreenshot",
+    "DOM.get",
+    "DOM.describeNode",
+    "Accessibility.get",
+    "Network.get",
+    "Runtime.getProperties",
+)
+
+
+def _invalidate_view_after_cdp(task_id: Optional[str], method: str) -> None:
+    """Void outstanding element refs after a raw CDP call (B3).
+
+    This is the third of Hermes' browser paths, and the least constrained:
+    ``Page.navigate`` and ``Runtime.evaluate`` can move or rewrite the page
+    without any of the tool-level bookkeeping noticing. Because a raw method
+    can do anything, the honest default is to assume it *did* — so anything not
+    recognisably read-only advances the generation, and element references
+    taken before it are treated as stale.
+
+    That is deliberately over-eager. The cost of over-invalidating is one extra
+    snapshot; the cost of under-invalidating is the model clicking whatever
+    happens to be at ``@e7`` on a page it has not looked at.
+
+    Never raises: bookkeeping must not turn a working CDP call into a failure.
+    """
+    try:
+        name = str(method or "")
+        if name.startswith(_CDP_READ_ONLY_PREFIXES):
+            return
+        from tools.browser_view_state import note_navigation
+
+        note_navigation(task_id or "default")
+    except Exception:  # noqa: BLE001 — see docstring
+        logger.debug("CDP view-state invalidation failed", exc_info=True)
 
 
 # ---------------------------------------------------------------------------

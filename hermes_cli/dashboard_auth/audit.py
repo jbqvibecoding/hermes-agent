@@ -11,17 +11,10 @@ sequence.
 """
 from __future__ import annotations
 
-import datetime as _dt
 import enum
-import json
-import logging
 import os
-import threading
 from pathlib import Path
 from typing import Any
-
-_log = logging.getLogger(__name__)
-_write_lock = threading.Lock()
 
 # Field names that must never appear in the log raw. Any kwarg matching
 # these is silently dropped.
@@ -68,22 +61,20 @@ def audit_log(event: AuditEvent, **fields: Any) -> None:
     Token-like fields are dropped. Missing log directory is created.
     Write failures are logged at WARNING but never raise — auth must not
     fail because the audit logger broke.
+
+    The mechanism now lives in :mod:`hermes_cli.audit_log`, shared with the
+    tool-call audit trail; this module keeps the auth-specific path, event enum
+    and redaction set. ``hermes_cli.audit_log`` imports only the standard
+    library, so the early-startup constraint in this module's docstring still
+    holds.
+
+    The path is resolved per call rather than cached, preserving the previous
+    behaviour of honouring a ``HERMES_HOME`` that changes at runtime.
     """
-    safe_fields = {
-        k: v for k, v in fields.items()
-        if k not in _REDACTED_FIELDS
-    }
-    entry = {
-        "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-        "event": event.value,
-        **safe_fields,
-    }
-    line = json.dumps(entry, separators=(",", ":")) + "\n"
-    path = _resolve_log_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with _write_lock:
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(line)
-    except Exception as e:
-        _log.warning("dashboard-auth audit log write failed: %s", e)
+    from hermes_cli.audit_log import AuditWriter
+
+    AuditWriter(
+        _resolve_log_path(),
+        redacted_fields=_REDACTED_FIELDS,
+        name="dashboard-auth",
+    ).write(event.value, **fields)

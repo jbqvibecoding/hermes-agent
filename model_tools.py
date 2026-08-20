@@ -990,6 +990,34 @@ def _emit_post_tool_call_hook(
     result *after* the gate (parsing the result is only worth it when a
     listener will actually consume it).
     """
+    # Durable audit (B4) runs before the hook gate below. It must not sit
+    # behind ``has_hook``: that gate exists so the observer path costs nothing
+    # when nothing is listening, but an audit trail that only records when an
+    # observability plugin happens to be installed is not an audit trail.
+    # Opt-in, off by default — see tools/tool_audit.audit_enabled().
+    try:
+        from tools.tool_audit import audit_enabled, record_tool_call
+
+        if audit_enabled():
+            _audit_status, _audit_etype, _audit_emsg = (
+                (status, error_type, error_message)
+                if status is not None
+                else _tool_result_observer_fields(result)
+            )
+            record_tool_call(
+                tool_name=function_name,
+                args=function_args,
+                task_id=task_id or "",
+                session_id=session_id or "",
+                tool_call_id=tool_call_id or "",
+                duration_ms=duration_ms,
+                status=_audit_status,
+                error_type=_audit_etype,
+                error_message=_audit_emsg,
+            )
+    except Exception as _audit_err:  # noqa: BLE001 — auditing never breaks a call
+        logger.debug("tool audit error: %s", _audit_err)
+
     try:
         from hermes_cli.plugins import has_hook, invoke_hook
         if not has_hook("post_tool_call"):

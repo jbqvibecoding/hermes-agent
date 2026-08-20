@@ -1985,15 +1985,98 @@ class CLICommandsMixin:
             print("   /browser connect      — connect to your live Chromium-family browser")
             print("   /browser disconnect   — revert to default")
             print()
+            self._print_browser_control_status()
+
+        elif sub.startswith("take"):
+            self._handle_browser_take(sub)
+
+        elif sub == "release":
+            self._handle_browser_release()
 
         else:
             print()
-            print("Usage: /browser connect|disconnect|status")
+            print("Usage: /browser connect|disconnect|status|take|release")
             print()
             print("   connect      Connect browser tools to your live Chromium-family browser session")
             print("   disconnect   Revert to default browser backend")
             print("   status       Show current browser mode")
+            print("   take         Take the wheel — the agent's browser actions are refused until you release")
+            print("   release      Hand the browser back to the agent")
             print()
+
+    # ------------------------------------------------------------------
+    # Browser handover (B1) — see tools/browser_control.py
+    # ------------------------------------------------------------------
+
+    def _browser_control_session_key(self) -> str:
+        """The session the handover applies to.
+
+        ``"default"`` matches what the browser tools use when the model omits
+        ``task_id``, which is the case for an interactive CLI session.
+        """
+        return "default"
+
+    def _print_browser_control_status(self) -> None:
+        """Show who is driving, and anything the agent has asked for."""
+        try:
+            from tools.browser_control import get_state
+            from tools.browser_secret import pending_secret
+        except Exception:
+            return
+
+        key = self._browser_control_session_key()
+        state = get_state(key)
+        if state.human_driving:
+            print("   🧑 You have the wheel — the agent's browser actions are being refused.")
+            if state.reason:
+                print(f"      Reason: {state.reason}")
+            print("      /browser release  — hand it back")
+        elif state.requested:
+            print("   🙋 The agent has asked for help with the browser.")
+            if state.reason:
+                print(f"      It says: {state.reason}")
+            print("      /browser take     — take the wheel")
+
+        waiting = pending_secret(key)
+        if waiting is not None:
+            print(f"   🔑 The agent is waiting for you to fill {waiting.ref} ({waiting.label}).")
+        print()
+
+    def _handle_browser_take(self, sub: str) -> None:
+        """``/browser take [reason]`` — a person takes the wheel."""
+        try:
+            from tools.browser_control import take
+        except Exception as exc:
+            print(f"Could not take control: {exc}")
+            return
+
+        parts = sub.split(None, 1)
+        reason = parts[1].strip() if len(parts) > 1 else ""
+        state = take(self._browser_control_session_key(), reason)
+        print()
+        print("🧑 You have the wheel.")
+        print("   The agent's browser actions are now REFUSED, not queued — a queued")
+        print("   click would land the moment you let go, possibly on another page.")
+        print("   It can still read the page, so it can see what you did.")
+        if state.reason:
+            print(f"   Reason on record: {state.reason}")
+        print("   /browser release  — hand it back when you're done")
+        print()
+
+    def _handle_browser_release(self) -> None:
+        """``/browser release`` — hand the browser back to the agent."""
+        try:
+            from tools.browser_control import get_state, release
+        except Exception as exc:
+            print(f"Could not release control: {exc}")
+            return
+
+        key = self._browser_control_session_key()
+        if not get_state(key).human_driving:
+            print("\nThe agent already has the browser — nothing to hand back.\n")
+            return
+        release(key)
+        print("\n🤖 Handed back. The agent can act on the browser again.\n")
 
     def _handle_goal_command(self, cmd: str) -> None:
         """Dispatch /goal subcommands: set / draft / show / status / pause / resume / clear."""

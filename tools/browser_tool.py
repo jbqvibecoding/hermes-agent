@@ -1833,7 +1833,7 @@ BROWSER_TOOL_SCHEMAS = [
     },
     {
         "name": "browser_snapshot",
-        "description": "Get a text-based snapshot of the current page's accessibility tree. Returns interactive elements with ref IDs (like @e1, @e2) for browser_click and browser_type. full=false (default): compact view with interactive elements. full=true: complete page content. Snapshots over 8000 chars are truncated or LLM-summarized. Requires browser_navigate first. Note: browser_navigate already returns a compact snapshot — use this to refresh after interactions that change the page, or with full=true for complete content.",
+        "description": "Get a text-based snapshot of the current page's accessibility tree. Returns interactive elements with ref IDs (like @e1, @e2) for browser_click and browser_type, plus a 'snapshot_id' identifying this view of the page — pass that id back to browser_click/browser_type so they can refuse to act if the page moves on. full=false (default): compact view with interactive elements. full=true: complete page content. Snapshots over 8000 chars are truncated or LLM-summarized. Requires browser_navigate first. Note: browser_navigate already returns a compact snapshot — use this to refresh after interactions that change the page, or with full=true for complete content.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1855,6 +1855,10 @@ BROWSER_TOOL_SCHEMAS = [
                 "ref": {
                     "type": "string",
                     "description": "The element reference from the snapshot (e.g., '@e5', '@e12')"
+                },
+                "snapshot_id": {
+                    "type": "string",
+                    "description": "The 'snapshot_id' from the browser_snapshot or browser_navigate response this ref came from. Always pass it. Element refs are positional — '@e5' means 'the fifth interactive element', not a particular button — so if the page changed after you looked, clicking the same ref hits a different element. Passing this makes the click fail safely with a stale-view error instead."
                 }
             },
             "required": ["ref"]
@@ -1873,6 +1877,10 @@ BROWSER_TOOL_SCHEMAS = [
                 "text": {
                     "type": "string",
                     "description": "The text to type into the field"
+                },
+                "snapshot_id": {
+                    "type": "string",
+                    "description": "The 'snapshot_id' from the browser_snapshot or browser_navigate response this ref came from. Always pass it. Element refs are positional, so if the page changed after you looked, typing into the same ref targets a different field — passing this makes it fail safely with a stale-view error instead."
                 }
             },
             "required": ["ref", "text"]
@@ -2321,6 +2329,18 @@ def _run_browser_command(
     if is_interrupted():
         return {"success": False, "error": "Interrupted"}
 
+    # B1: refuse (never queue) agent actions while a person is driving. Placed
+    # here rather than in each tool because this is the one chokepoint every
+    # agent-browser command passes through, so a command added later is gated
+    # without anyone having to remember to gate it.
+    _control_block = _human_control_error(task_id, command)
+    if _control_block is not None:
+        return {
+            "success": False,
+            "error": json.loads(_control_block)["error"],
+            "human_has_control": True,
+        }
+
     # Get session info (creates Browserbase session with proxies if needed)
     try:
         session_info = _get_session_info(task_id)
@@ -2574,9 +2594,129 @@ def _run_browser_command(
             fallback_result = _chrome_fallback_screenshot(task_id, args or [], timeout)
         else:
             fallback_result = _run_chrome_fallback_command(task_id, command, args, timeout)
-        return _annotate_lightpanda_fallback(fallback_result, fallback_reason)
+        fallback_result = _annotate_lightpanda_fallback(fallback_result, fallback_reason)
+        _note_browser_view_change(task_id, command, fallback_result)
+        return fallback_result
 
+    _note_browser_view_change(task_id, command, result)
     return result
+
+
+def _human_control_error(task_id: str, command: str) -> Optional[str]:
+    """Refuse an agent browser action while a person is driving (B1).
+
+    ``None`` means "carry on". Reads are never refused — see
+    ``tools/browser_control.py`` on why that diverges from OpenBot.
+
+    Unlike the staleness guard, this one **fails closed**: if the control state
+    cannot be read, the action is refused. This is a real boundary — someone is
+    at the keyboard of that browser — and a guard that silently opens when its
+    own bookkeeping breaks is the failure mode that makes people stop trusting
+    guards. The cost of a wrong refusal is a retry.
+    """
+    refusal = json.dumps(
+        {
+            "success": False,
+            "error": (
+                "Could not determine whether a person is currently driving "
+                "this browser, so the action was refused. Retry; if this "
+                "persists it is a bug in the control-state bookkeeping."
+            ),
+            "human_has_control": None,
+        },
+        ensure_ascii=False,
+    )
+    # Imported outside the guarded block on purpose: if the import itself
+    # failed, naming HumanHasControlError in an `except` clause would raise
+    # NameError and skip straight past the gate.
+    try:
+        from tools.browser_control import HumanHasControlError, assert_agent_may_act
+    except Exception as exc:  # noqa: BLE001 — fail closed
+        logger.warning("browser control state unavailable; refusing action: %s", exc)
+        return refusal
+
+    try:
+        assert_agent_may_act(task_id, command)
+    except HumanHasControlError as exc:
+        return json.dumps(
+            {"success": False, "error": str(exc), "human_has_control": True},
+            ensure_ascii=False,
+        )
+    except Exception as exc:  # noqa: BLE001 — see docstring: fail closed
+        logger.warning("browser control-state check failed; refusing action: %s", exc)
+        return refusal
+    return None
+
+
+def _current_browser_view_id(task_id: str) -> str:
+    """The current page-view id for this session, or "" if unavailable (B3)."""
+    try:
+        from tools.browser_view_state import current_view_id
+
+        return current_view_id(task_id)
+    except Exception:  # noqa: BLE001 — reporting must not break a good snapshot
+        logger.debug("browser view-state read failed", exc_info=True)
+        return ""
+
+
+def _stale_view_error(task_id: str, snapshot_id: Optional[str]) -> Optional[str]:
+    """Return a tool-error JSON string when ``snapshot_id`` is out of date (B3).
+
+    ``None`` means "carry on" — including when the caller passed no id at all,
+    which is the behaviour every existing call site and every model that has
+    not learned the parameter gets.
+
+    Never raises: a fault in the staleness bookkeeping must not be able to
+    block a browser action that would otherwise have worked. It fails *open*
+    for that reason, which is the right direction here — this guard prevents a
+    model from acting on a mistaken belief, it is not a security boundary. The
+    security boundary is B1's takeover gate, which fails closed.
+    """
+    if not snapshot_id:
+        return None
+    try:
+        from tools.browser_view_state import StaleViewError, check_view_id
+
+        check_view_id(task_id, snapshot_id)
+    except StaleViewError as exc:
+        return json.dumps(
+            {
+                "success": False,
+                "error": str(exc),
+                "stale_view": True,
+                "current_snapshot_id": exc.current,
+            },
+            ensure_ascii=False,
+        )
+    except Exception:  # noqa: BLE001 — see docstring
+        logger.debug("browser view-state check failed", exc_info=True)
+    return None
+
+
+def _note_browser_view_change(
+    task_id: str, command: str, result: Optional[Dict[str, Any]]
+) -> None:
+    """Advance the page-view generation after a snapshot or a navigation (B3).
+
+    Called on the way out of every ``agent-browser`` command so the counter
+    cannot drift from what actually happened. Only successful commands count:
+    a snapshot that failed did not hand the caller new references, so the ones
+    they already hold are still the current ones.
+
+    Never raises — bookkeeping must not be able to turn a working browser
+    command into a failure.
+    """
+    try:
+        if not isinstance(result, dict) or not result.get("success"):
+            return
+        from tools import browser_commands, browser_view_state
+
+        if browser_commands.issues_new_view(command):
+            browser_view_state.note_snapshot(task_id)
+        elif browser_commands.navigates(command):
+            browser_view_state.note_navigation(task_id)
+    except Exception:  # noqa: BLE001 — see docstring
+        logger.debug("browser view-state bookkeeping failed", exc_info=True)
 
 
 def _extract_relevant_content(
@@ -2991,7 +3131,10 @@ def browser_snapshot(
         response = {
             "success": True,
             "snapshot": _redact_browser_output(snapshot_text),
-            "element_count": len(refs) if refs else 0
+            "element_count": len(refs) if refs else 0,
+            # B3: the view these refs belong to. Pass it back to browser_click /
+            # browser_type and they will refuse to act if the page has moved on.
+            "snapshot_id": _current_browser_view_id(effective_task_id),
         }
         _copy_fallback_warning(response, result)
 
@@ -3017,22 +3160,30 @@ def browser_snapshot(
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
-def browser_click(ref: str, task_id: Optional[str] = None) -> str:
+def browser_click(
+    ref: str, task_id: Optional[str] = None, snapshot_id: Optional[str] = None
+) -> str:
     """
     Click on an element.
 
     Args:
         ref: Element reference (e.g., "@e5")
         task_id: Task identifier for session isolation
+        snapshot_id: The page view this ref came from (from browser_snapshot).
+                     Optional; when given, the click is refused if the page has
+                     moved on since — see tools/browser_view_state.py.
 
     Returns:
         JSON string with click result
     """
     if _is_camofox_mode():
         from tools.browser_camofox import camofox_click
-        return camofox_click(ref, task_id)
+        return camofox_click(ref, task_id, snapshot_id=snapshot_id)
 
     effective_task_id = _last_session_key(task_id or "default")
+    stale = _stale_view_error(effective_task_id, snapshot_id)
+    if stale is not None:
+        return stale
     blocked = _blocked_private_page_action(effective_task_id, "click")
     if blocked is not None:
         return blocked
@@ -3057,7 +3208,12 @@ def browser_click(ref: str, task_id: Optional[str] = None) -> str:
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
-def browser_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
+def browser_type(
+    ref: str,
+    text: str,
+    task_id: Optional[str] = None,
+    snapshot_id: Optional[str] = None,
+) -> str:
     """
     Type text into an input field.
 
@@ -3065,15 +3221,21 @@ def browser_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
         ref: Element reference (e.g., "@e3")
         text: Text to type
         task_id: Task identifier for session isolation
+        snapshot_id: The page view this ref came from (from browser_snapshot).
+                     Optional; when given, typing is refused if the page has
+                     moved on since — see tools/browser_view_state.py.
 
     Returns:
         JSON string with type result
     """
     if _is_camofox_mode():
         from tools.browser_camofox import camofox_type
-        return camofox_type(ref, text, task_id)
+        return camofox_type(ref, text, task_id, snapshot_id=snapshot_id)
 
     effective_task_id = _last_session_key(task_id or "default")
+    stale = _stale_view_error(effective_task_id, snapshot_id)
+    if stale is not None:
+        return stale
     blocked = _blocked_private_page_action(effective_task_id, "type")
     if blocked is not None:
         return blocked

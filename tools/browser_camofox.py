@@ -26,6 +26,8 @@ container as ``http://host.docker.internal:3000``.
 from __future__ import annotations
 
 import base64
+import functools
+import inspect
 import json
 import logging
 import os
@@ -489,6 +491,121 @@ def _delete(path: str, body: dict = None, timeout: Optional[int] = None) -> dict
 # Tool implementations
 # ---------------------------------------------------------------------------
 
+def _stale_view_error(
+    task_id: Optional[str], snapshot_id: Optional[str]
+) -> Optional[str]:
+    """Refuse an action naming an element from a superseded page view (B3).
+
+    Camofox is one of Hermes' three independent browser paths, so the guard has
+    to be applied here too — a check that only covered ``browser_tool``'s
+    agent-browser path would be bypassed the moment ``browser.camofox`` is
+    configured, which is exactly the kind of partial coverage that makes a
+    guard worse than none (the operator believes it is on).
+
+    Fails open on any internal fault: this prevents a model acting on a
+    mistaken belief, it is not a security boundary.
+    """
+    if not snapshot_id:
+        return None
+    try:
+        from tools.browser_view_state import StaleViewError, check_view_id
+
+        check_view_id(task_id or "default", snapshot_id)
+    except StaleViewError as exc:
+        return tool_error(str(exc), success=False)
+    except Exception:  # noqa: BLE001 — see docstring
+        logger.debug("camofox view-state check failed", exc_info=True)
+    return None
+
+
+def _requires_agent_control(command: str):
+    """Refuse this Camofox action while a person is driving (B1).
+
+    Camofox's HTTP helpers (``_post``/``_get``) never receive the session key,
+    so unlike the agent-browser path there is no single chokepoint to gate.
+    A decorator is the next best thing: one line per acting function, visible
+    at the definition, and ``test_every_acting_camofox_tool_is_gated`` asserts
+    that none was forgotten.
+
+    Fails closed, matching ``browser_tool._human_control_error``: if the
+    control state cannot be read, the action is refused.
+    """
+
+    def _decorate(fn):
+        @functools.wraps(fn)
+        def _wrapped(*args, **kwargs):
+            task_id = kwargs.get("task_id")
+            if task_id is None:
+                # Every gated function takes task_id positionally after its
+                # own arguments; find it by name rather than by index so a
+                # signature change cannot silently gate the wrong session.
+                try:
+                    bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+                    task_id = bound.arguments.get("task_id")
+                except (TypeError, ValueError):
+                    task_id = None
+            refusal = tool_error(
+                "Could not determine whether a person is currently driving "
+                "this browser, so the action was refused.",
+                success=False,
+            )
+            # Imported outside the guarded block on purpose: if the import
+            # itself failed, naming HumanHasControlError in an `except` clause
+            # would raise NameError and skip straight past the gate.
+            try:
+                from tools.browser_control import (
+                    HumanHasControlError,
+                    assert_agent_may_act,
+                )
+            except Exception as exc:  # noqa: BLE001 — fail closed
+                logger.warning(
+                    "browser control state unavailable; refusing action: %s", exc
+                )
+                return refusal
+
+            try:
+                assert_agent_may_act(task_id, command)
+            except HumanHasControlError as exc:
+                return tool_error(str(exc), success=False)
+            except Exception as exc:  # noqa: BLE001 — fail closed, see docstring
+                logger.warning(
+                    "camofox control-state check failed; refusing action: %s", exc
+                )
+                return refusal
+            return fn(*args, **kwargs)
+
+        _wrapped._hermes_control_gated = command  # type: ignore[attr-defined]
+        return _wrapped
+
+    return _decorate
+
+
+def _current_view_id_safe(task_id: Optional[str]) -> str:
+    """Current page-view id, or "" when the bookkeeping is unavailable (B3)."""
+    try:
+        from tools.browser_view_state import current_view_id
+
+        return current_view_id(task_id or "default")
+    except Exception:  # noqa: BLE001 — reporting must not break a good snapshot
+        logger.debug("camofox view-state read failed", exc_info=True)
+        return ""
+
+
+def _note_view_change(task_id: Optional[str], command: str) -> None:
+    """Advance the page-view generation after a Camofox snapshot/navigation."""
+    try:
+        from tools import browser_commands, browser_view_state
+
+        if browser_commands.issues_new_view(command):
+            browser_view_state.note_snapshot(task_id or "default")
+        elif browser_commands.navigates(command):
+            browser_view_state.note_navigation(task_id or "default")
+    except Exception:  # noqa: BLE001 — bookkeeping must not break the browser
+        logger.debug("camofox view-state bookkeeping failed", exc_info=True)
+
+
+
+@_requires_agent_control("navigate")
 def camofox_navigate(url: str, task_id: Optional[str] = None) -> str:
     """Navigate to a URL via Camofox."""
     try:
@@ -556,6 +673,11 @@ def camofox_navigate(url: str, task_id: Optional[str] = None) -> str:
         except Exception:
             pass  # Navigation succeeded; snapshot is a bonus
 
+        # B3: the page moved, so every element ref from before this call is
+        # void. Bumped once for the navigation — the bonus snapshot above
+        # belongs to the new view, not a further one.
+        _note_view_change(task_id, "navigate")
+        result["snapshot_id"] = _current_view_id_safe(task_id)
         return json.dumps(result)
     except requests.HTTPError as e:
         return tool_error(f"Navigation failed: {e}", success=False)
@@ -637,18 +759,29 @@ def camofox_snapshot(full: bool = False, task_id: Optional[str] = None,
             else:
                 snapshot = _truncate_snapshot(snapshot)
 
+        _note_view_change(task_id, "snapshot")
         return json.dumps({
             "success": True,
             "snapshot": snapshot,
             "element_count": refs_count,
+            # B3: pass this back to browser_click / browser_type and they will
+            # refuse to act if the page has moved on since.
+            "snapshot_id": _current_view_id_safe(task_id),
         })
     except Exception as e:
         return tool_error(str(e), success=False)
 
 
-def camofox_click(ref: str, task_id: Optional[str] = None) -> str:
+@_requires_agent_control("click")
+def camofox_click(
+    ref: str, task_id: Optional[str] = None, snapshot_id: Optional[str] = None
+) -> str:
     """Click an element by ref via Camofox."""
     try:
+        stale = _stale_view_error(task_id, snapshot_id)
+        if stale:
+            return stale
+
         session = _get_session(task_id)
         if not session["tab_id"]:
             return tool_error("No browser session. Call browser_navigate first.", success=False)
@@ -673,9 +806,19 @@ def camofox_click(ref: str, task_id: Optional[str] = None) -> str:
         return tool_error(str(e), success=False)
 
 
-def camofox_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
+@_requires_agent_control("type")
+def camofox_type(
+    ref: str,
+    text: str,
+    task_id: Optional[str] = None,
+    snapshot_id: Optional[str] = None,
+) -> str:
     """Type text into an element by ref via Camofox."""
     try:
+        stale = _stale_view_error(task_id, snapshot_id)
+        if stale:
+            return stale
+
         session = _get_session(task_id)
         if not session["tab_id"]:
             return tool_error("No browser session. Call browser_navigate first.", success=False)
@@ -714,6 +857,7 @@ def camofox_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
         return tool_error(redact_browser_typed_text_for_display(str(e), text), success=False)
 
 
+@_requires_agent_control("scroll")
 def camofox_scroll(direction: str, task_id: Optional[str] = None) -> str:
     """Scroll the page via Camofox."""
     try:
@@ -730,6 +874,7 @@ def camofox_scroll(direction: str, task_id: Optional[str] = None) -> str:
         return tool_error(str(e), success=False)
 
 
+@_requires_agent_control("back")
 def camofox_back(task_id: Optional[str] = None) -> str:
     """Navigate back via Camofox."""
     try:
@@ -746,6 +891,7 @@ def camofox_back(task_id: Optional[str] = None) -> str:
         return tool_error(str(e), success=False)
 
 
+@_requires_agent_control("press")
 def camofox_press(key: str, task_id: Optional[str] = None) -> str:
     """Press a keyboard key via Camofox."""
     try:
@@ -766,6 +912,7 @@ def camofox_press(key: str, task_id: Optional[str] = None) -> str:
         return tool_error(str(e), success=False)
 
 
+@_requires_agent_control("close")
 def camofox_close(task_id: Optional[str] = None) -> str:
     """Close the browser session via Camofox."""
     try:
@@ -929,6 +1076,7 @@ def camofox_vision(question: str, annotate: bool = False,
         return tool_error(str(e), success=False)
 
 
+@_requires_agent_control("eval")
 def camofox_console(clear: bool = False, task_id: Optional[str] = None) -> str:
     """Get console output — limited support in Camofox.
 
