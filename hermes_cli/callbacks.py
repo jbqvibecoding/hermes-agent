@@ -63,6 +63,87 @@ def clarify_callback(cli, question, choices):
     )
 
 
+def prompt_for_secret_value(cli, prompt: str, *, timeout: int = 120, metadata=None):
+    """Prompt for a secret and **return it**, rather than storing it.
+
+    A sibling of :func:`prompt_for_secret`, which exists to capture API keys and
+    therefore writes them to ``~/.hermes/.env``. The browser secret flow (B2)
+    needs the opposite: the value must reach one browser field and then be gone,
+    so it must come back to the caller and never touch disk.
+
+    Returns the string, or ``None`` when the person cancelled or the prompt
+    timed out. Callers must not log, store or echo the return value.
+
+    Reuses ``cli._secret_state`` deliberately: the ``PasswordProcessor`` that
+    masks typing is gated on ``bool(cli._sudo_state) or bool(cli._secret_state)``
+    (see ``cli.py``), so a *new* state attribute would render the input in clear
+    text. Reusing the existing one is what makes the masking actually apply.
+    """
+    if not getattr(cli, "_app", None):
+        # No TUI (``hermes -p``, a pipe, a non-interactive shell): fall back to
+        # the raw-mode masked reader, which handles the no-TTY case itself.
+        if not hasattr(cli, "_secret_state"):
+            cli._secret_state = None
+        if not hasattr(cli, "_secret_deadline"):
+            cli._secret_deadline = 0
+        try:
+            value = masked_secret_prompt(f"{prompt} (hidden, ESC or empty Enter to cancel): ")
+        except (EOFError, KeyboardInterrupt):
+            return None
+        return value or None
+
+    response_queue = queue.Queue()
+    cli._secret_state = {
+        "var_name": "",  # nothing is being stored under a name
+        "prompt": prompt,
+        "metadata": metadata or {},
+        "response_queue": response_queue,
+    }
+    cli._secret_deadline = _time.monotonic() + timeout
+
+    # Clear any half-typed draft first, or pressing Enter would submit it as
+    # the secret. Same reasoning as prompt_for_secret.
+    _reset_secret_buffer(cli)
+    cli._app.invalidate()
+
+    try:
+        while True:
+            try:
+                value = response_queue.get(timeout=1)
+                return value or None
+            except queue.Empty:
+                if cli._secret_deadline - _time.monotonic() <= 0:
+                    cprint(f"\n{_DIM}  ⏱ Timeout — secret entry cancelled{_RST}")
+                    return None
+                cli._app.invalidate()
+    finally:
+        # Always tear the modal down, including on an exception, so a stray
+        # failure cannot leave the terminal masking input forever.
+        cli._secret_state = None
+        cli._secret_deadline = 0
+        _reset_secret_buffer(cli)
+        try:
+            cli._app.invalidate()
+        except Exception:
+            pass
+
+
+def _reset_secret_buffer(cli) -> None:
+    """Drop whatever is in the input buffer, by whichever route exists."""
+    if hasattr(cli, "_clear_secret_input_buffer"):
+        try:
+            cli._clear_secret_input_buffer()
+            return
+        except Exception:
+            pass
+    app = getattr(cli, "_app", None)
+    if app:
+        try:
+            app.current_buffer.reset()
+        except Exception:
+            pass
+
+
 def prompt_for_secret(cli, var_name: str, prompt: str, metadata=None) -> dict:
     """Prompt for a secret value through the TUI (e.g. API keys for skills).
 

@@ -1993,6 +1993,9 @@ class CLICommandsMixin:
         elif sub == "release":
             self._handle_browser_release()
 
+        elif sub == "secret":
+            self._handle_browser_secret()
+
         else:
             print()
             print("Usage: /browser connect|disconnect|status|take|release")
@@ -2002,6 +2005,7 @@ class CLICommandsMixin:
             print("   status       Show current browser mode")
             print("   take         Take the wheel — the agent's browser actions are refused until you release")
             print("   release      Hand the browser back to the agent")
+            print("   secret       Type a password into the field the agent asked about (it never sees it)")
             print()
 
     # ------------------------------------------------------------------
@@ -2077,6 +2081,89 @@ class CLICommandsMixin:
             return
         release(key)
         print("\n🤖 Handed back. The agent can act on the browser again.\n")
+
+    def _handle_browser_secret(self) -> None:
+        """``/browser secret`` — type a value into the field the agent named.
+
+        The value goes from the masked prompt straight into the browser. It is
+        never returned to the agent, written to disk, or logged; only the fact
+        it happened and its length are recorded.
+        """
+        try:
+            from tools.browser_secret import (
+                SecretFillError,
+                pending_secret,
+                supply_secret,
+            )
+            from tools.browser_secret_fill import (
+                SecretFillUnavailable,
+                fill_secret,
+                secret_exposure_warning,
+            )
+        except Exception as exc:
+            print(f"Could not start secret entry: {exc}")
+            return
+
+        key = self._browser_control_session_key()
+        request = pending_secret(key)
+        if request is None:
+            print()
+            print("Nothing is waiting for a secret on this browser session.")
+            print("The agent asks for one with browser_ask_human(need='secret').")
+            print()
+            return
+
+        print()
+        print(f"🔑 The agent is asking you to fill {request.ref} — {request.label}.")
+        print("   It will not see what you type; it is told only the length.")
+        warning = secret_exposure_warning()
+        if warning:
+            print(f"   ⚠️  {warning}")
+        print()
+
+        value = self._prompt_browser_secret_value(request.label)
+        if not value:
+            print("  🟡 Cancelled — nothing was typed into the page.\n")
+            return
+
+        # supply_secret reduces ANY filler exception to its type name, on
+        # purpose: a backend exception can carry the value in its message. That
+        # also throws away detail we would like ("no tab open"), so we capture
+        # it here — from SecretFillUnavailable only, whose messages are authored
+        # in tools/browser_secret_fill.py and provably contain no secret.
+        detail: dict = {}
+
+        def _fill(ref, secret_value):
+            try:
+                fill_secret(key, ref, secret_value)
+            except SecretFillUnavailable as exc:
+                detail["reason"] = str(exc)
+                raise
+
+        try:
+            supply_secret(key, value, filler=_fill)
+        except SecretFillError as exc:
+            reason = detail.get("reason") or str(exc)
+            print(f"  🔴 Could not type it into the page: {reason}\n")
+            return
+        except Exception as exc:  # noqa: BLE001 — never leak the value in a traceback
+            print(f"  🔴 Secret entry failed: {type(exc).__name__}\n")
+            return
+        finally:
+            # Drop the local reference promptly; it has served its purpose.
+            value = None
+
+        print(f"  ✅ Filled {request.ref}. The agent has been told it was filled.\n")
+
+    def _prompt_browser_secret_value(self, label: str):
+        """Masked prompt for the value, or None if cancelled/unavailable."""
+        try:
+            from hermes_cli.callbacks import prompt_for_secret_value
+
+            return prompt_for_secret_value(self, f"Value for {label}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  🔴 Could not open a masked prompt: {type(exc).__name__}")
+            return None
 
     def _handle_goal_command(self, cmd: str) -> None:
         """Dispatch /goal subcommands: set / draft / show / status / pause / resume / clear."""

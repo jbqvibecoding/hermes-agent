@@ -1847,6 +1847,33 @@ BROWSER_TOOL_SCHEMAS = [
         }
     },
     {
+        "name": "browser_ask_human",
+        "description": "Ask a person for help with the browser when you have hit something you should not get past alone — a login form, a 2FA prompt, a CAPTCHA, a consent dialog that matters. need='help' raises a hand so a person can take the wheel (they use '/browser take', then '/browser release' to hand it back); it does NOT block, so keep working or wait as you judge best, but your browser ACTIONS will be refused while they are driving (reads still work, so you can see what they did). need='secret' asks a person to type a value into one specific field you name — use this for passwords and one-time codes. You never see the value: you get back only whether it was filled and how many characters it was. Never ask the user to paste a password into the chat instead; that puts it in the transcript, which is exactly what this avoids.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "need": {
+                    "type": "string",
+                    "enum": ["help", "secret"],
+                    "description": "'help' to ask a person to take over the browser; 'secret' to ask them to type a value into one field."
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "For need='help': what you are stuck on, in one line, so the person knows what they are being asked to do."
+                },
+                "ref": {
+                    "type": "string",
+                    "description": "For need='secret': the element reference the value goes into (e.g. '@e7'), from the most recent browser_snapshot."
+                },
+                "label": {
+                    "type": "string",
+                    "description": "For need='secret': what the value is, shown to the person (e.g. 'the admin console password')."
+                }
+            },
+            "required": ["need"]
+        }
+    },
+    {
         "name": "browser_click",
         "description": "Click on an element identified by its ref ID from the snapshot (e.g., '@e5'). The ref IDs are shown in square brackets in the snapshot output. Requires browser_navigate and browser_snapshot to be called first.",
         "parameters": {
@@ -3055,6 +3082,93 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
             "success": False,
             "error": result.get("error", "Navigation failed")
         }, ensure_ascii=False)
+
+
+def browser_ask_human(
+    need: str,
+    reason: str = "",
+    ref: str = "",
+    label: str = "",
+    task_id: Optional[str] = None,
+) -> str:
+    """Ask a person for help with the browser (B1/B2 agent-side entry point).
+
+    One tool rather than two deliberately: per the Footprint Ladder in
+    ``AGENTS.md``, every model-facing tool costs tokens on *every* API call, and
+    these two requests share a shape — "I cannot do this part; a person must."
+
+    ``need="help"`` raises a hand. It does **not** hand over control — only a
+    person can do that, from ``/browser take``. This call does not block, so
+    the agent can keep working while it waits, or give up on its own terms.
+
+    ``need="secret"`` asks a person to type a value into one field. The agent
+    never sees the value; it gets back only that it happened and how long it
+    was.
+
+    Returns a JSON string. Never raises.
+    """
+    session_key = task_id or "default"
+    kind = str(need or "").strip().lower()
+
+    if kind == "help":
+        try:
+            from tools.browser_control import request_help
+
+            state = request_help(session_key, reason)
+        except Exception as exc:  # noqa: BLE001
+            return tool_error(f"Could not raise a help request: {exc}", success=False)
+        return json.dumps(
+            {
+                "success": True,
+                "asked": "help",
+                "reason": state.reason,
+                "note": (
+                    "A person has been asked to take over this browser. They "
+                    "take the wheel with '/browser take' and hand it back with "
+                    "'/browser release'. This did not block — you may keep "
+                    "working, but any action you attempt while they are driving "
+                    "will be refused (reads still work, so you can watch)."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    if kind == "secret":
+        if not str(ref or "").strip():
+            return tool_error(
+                "need='secret' requires 'ref' — the element the value goes "
+                "into, from the latest browser_snapshot.",
+                success=False,
+            )
+        try:
+            from tools.browser_secret import request_secret
+
+            request = request_secret(session_key, ref, label)
+        except Exception as exc:  # noqa: BLE001
+            return tool_error(f"Could not request a secret: {exc}", success=False)
+        return json.dumps(
+            {
+                "success": True,
+                "asked": "secret",
+                "ref": request.ref,
+                "label": request.label,
+                "note": (
+                    f"A person has been asked to fill {request.ref} "
+                    f"({request.label}) with '/browser secret'. You will never "
+                    "see the value — only whether it was filled and how many "
+                    "characters it was. Do not ask the user to paste it into "
+                    "the chat; that would put it in the transcript, which is "
+                    "the thing this avoids."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    return tool_error(
+        f"Unknown need {need!r}. Use need='help' (ask a person to drive) or "
+        "need='secret' (ask a person to type a value into one field).",
+        success=False,
+    )
 
 
 def browser_snapshot(
@@ -4902,7 +5016,13 @@ registry.register(
     name="browser_click",
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_click"],
-    handler=lambda args, **kw: browser_click(ref=args.get("ref", ""), task_id=kw.get("task_id")),
+    handler=lambda args, **kw: browser_click(
+        ref=args.get("ref", ""),
+        task_id=kw.get("task_id"),
+        # B3: without this the schema advertises snapshot_id, the model sends
+        # it, and the handler drops it — leaving the staleness gate dead.
+        snapshot_id=args.get("snapshot_id"),
+    ),
     check_fn=check_browser_requirements,
     emoji="👆",
 )
@@ -4910,7 +5030,12 @@ registry.register(
     name="browser_type",
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_type"],
-    handler=lambda args, **kw: browser_type(ref=args.get("ref", ""), text=args.get("text", ""), task_id=kw.get("task_id")),
+    handler=lambda args, **kw: browser_type(
+        ref=args.get("ref", ""),
+        text=args.get("text", ""),
+        task_id=kw.get("task_id"),
+        snapshot_id=args.get("snapshot_id"),
+    ),
     check_fn=check_browser_requirements,
     emoji="⌨️",
 )
@@ -4962,4 +5087,18 @@ registry.register(
     handler=lambda args, **kw: browser_console(clear=args.get("clear", False), expression=args.get("expression"), task_id=kw.get("task_id")),
     check_fn=check_browser_requirements,
     emoji="🖥️",
+)
+registry.register(
+    name="browser_ask_human",
+    toolset="browser",
+    schema=_BROWSER_SCHEMA_MAP["browser_ask_human"],
+    handler=lambda args, **kw: browser_ask_human(
+        need=args.get("need", ""),
+        reason=args.get("reason", ""),
+        ref=args.get("ref", ""),
+        label=args.get("label", ""),
+        task_id=kw.get("task_id"),
+    ),
+    check_fn=check_browser_requirements,
+    emoji="🙋",
 )

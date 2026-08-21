@@ -1269,6 +1269,31 @@ display:
 #   redact_pii: false
 
 # =============================================================================
+# Audit trail
+# =============================================================================
+# A durable, structured record of tool activity, written as JSON Lines to
+#   ~/.hermes/logs/tool-audit.log      (profile-aware: $HERMES_HOME/logs/...)
+# separate from the conversation transcript, which compaction and /delete can
+# remove.
+#
+# Two things worth knowing before you turn this on:
+#
+#   * There is NO rotation. The file grows for as long as you keep using
+#     Hermes. Rotate or truncate it yourself if you care about the size.
+#   * Browser handover and secret events (control taken/released, help
+#     requested, secret requested/supplied, action refused, stale view) are
+#     written REGARDLESS of this setting. They are rare, security-relevant,
+#     and have no other record anywhere. This flag only controls the
+#     one-line-per-tool-call stream, which is the part that grows.
+#
+# Secret-bearing field names (password, token, api_key, ...) are replaced with
+# "[REDACTED]" before anything is written; the value of a browser secret never
+# reaches this code at all.
+# audit:
+#   # Log every tool call (name, args, duration, outcome). Off by default.
+#   tool_calls: false
+
+# =============================================================================
 # Shell-script hooks
 # =============================================================================
 # Register shell scripts as plugin-hook callbacks.  Each entry is executed as

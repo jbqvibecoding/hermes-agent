@@ -2038,7 +2038,18 @@ DEFAULT_CONFIG = {
     "privacy": {
         "redact_pii": False,  # When True, hash user IDs and strip phone numbers from LLM context
     },
-    
+
+    # Audit trail (tools/tool_audit.py -> ~/.hermes/logs/tool-audit.log)
+    "audit": {
+        # Off by default: one JSONL line per tool call, every turn, with no
+        # rotation. Turning that on for everyone would be a disk-usage decision
+        # made on their behalf. Browser handover and secret events are NOT
+        # behind this flag -- they are rare, security-relevant, and have no
+        # other record anywhere.
+        "tool_calls": False,
+    },
+
+
     # Text-to-speech configuration
     # Each provider supports an optional `max_text_length:` override for the
     # per-request input-character cap. Omit it to use the provider's documented

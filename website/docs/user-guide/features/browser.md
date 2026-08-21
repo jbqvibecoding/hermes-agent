@@ -591,9 +591,72 @@ Responds to a native JS dialog (`alert` / `confirm` / `prompt` / `beforeunload`)
 
 **Frame tree** inside `browser_snapshot.frame_tree` is capped to 30 frames and OOPIF depth 2 to keep payloads bounded on ad-heavy pages. A `truncated: true` flag surfaces when limits were hit; agents needing the full tree can use `browser_cdp` with `Page.getFrameTree`.
 
+## Handing Over to a Human
+
+Some pages the agent cannot get past on its own — a login it has no credentials for, a CAPTCHA, a two-factor prompt, a payment step you would rather approve yourself. There are two ways to get past them, and they are alternatives, not stages:
+
+| | You drive | The agent drives |
+|---|---|---|
+| **Takeover** | ✓ you do the whole step yourself | agent is blocked from acting |
+| **Scoped secret** | you supply one value | ✓ agent keeps working |
+
+### Takeover: `/browser take` and `/browser release`
+
+```
+/browser take            # you have the wheel; the agent stops acting
+/browser take Logging in myself
+/browser release         # hand it back
+/browser status          # who currently holds it
+```
+
+While you hold the wheel, the agent's **acting** commands (click, type, press, navigate, …) are refused with an explanation, on all three browser paths — the default agent-browser path, Camofox, and raw `browser_cdp`. It is not a queue: the calls are rejected, not deferred, so the agent finds out immediately and can say something useful instead of hanging.
+
+**Reading is deliberately still allowed.** `browser_snapshot`, page reads, and console reads go through while you are driving. After you finish logging in, the agent has to look at the page again to learn what happened; blocking that would only force it to guess.
+
+The agent can ask for a takeover, but cannot grant itself one:
+
+```
+browser_ask_human(need="help", reason="This page wants a 2FA code from your phone")
+```
+
+That call **raises a hand and returns immediately** — it does not block and does not transfer control. Only `/browser take`, typed by you, does that. You will see the request in the CLI; the agent carries on with whatever else it can do meanwhile.
+
+### Scoped secret: `/browser secret`
+
+When only one value is missing, you do not have to take over the whole session. The agent asks for it by field:
+
+```
+browser_ask_human(need="secret", ref="@e7", label="the admin console password")
+```
+
+Then, in the CLI:
+
+```
+/browser secret
+```
+
+You get a masked prompt (nothing echoes; ESC or an empty Enter cancels). The value is typed straight into that one element and is **not** returned to the agent — the model gets back only `{"supplied": true, "characters": 24}`. It is not written to `.env`, not stored anywhere, and does not appear in the conversation transcript or the session database.
+
+This is why it does not go through `browser_type`: that tool's result carries the typed text into the transcript, and the redaction applied there only masks strings that *look like* API keys. A password you chose yourself usually looks like nothing in particular and would come back verbatim. Not putting it there is the stronger property than scrubbing it afterwards.
+
+Note that filling a secret works even while you hold the wheel — it is your action, typed by you, so it is not subject to the takeover block above.
+
+:::warning The agent-browser backend exposes the value in the process list
+
+On the default **agent-browser** backend, the value is passed to the browser process as a **command-line argument**. For the duration of that call it is readable in `ps` and `/proc/<pid>/cmdline` by any process running as your user. This is a property of the `agent-browser` CLI's interface and cannot be fixed from the Hermes side.
+
+The **Camofox** backend sends it in an HTTP request body and does not have this weakness. **Prefer Camofox when the secret actually matters.** Hermes prints this warning again at the prompt when the backend in use is affected.
+:::
+
+### What gets recorded
+
+Handover and secret events are always written to `~/.hermes/logs/tool-audit.log` — `browser.help_requested`, `browser.control_taken`, `browser.control_released`, `browser.action_refused`, `browser.secret_requested`, `browser.secret_supplied`. They are **not** behind the `audit.tool_calls` config flag, because they are rare, security-relevant, and have no other record anywhere. The secret's value is never part of those records; only its length is.
+
 ## Practical Examples
 
 ### Filling Out a Web Form
+
+> If one of these fields is a password you would rather the agent never see, have it call `browser_ask_human(need="secret", ...)` and type the value yourself — see [Handing Over to a Human](#handing-over-to-a-human).
 
 ```
 User: Sign up for an account on example.com with my email john@example.com

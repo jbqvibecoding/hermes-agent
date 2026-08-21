@@ -157,6 +157,57 @@ rides the universal `post_tool_call` emitter but is **off by default**
 (`audit.tool_calls: true`): it writes a line per call forever with no rotation,
 and turning that on unasked is a disk-usage decision made on someone's behalf.
 
+### B5 — the agent-side half, and one dead gate
+
+B1–B4 shipped the machinery and the human's half of it. A review afterwards found
+the model could not reach any of it, and that one of the guards was inert:
+
+| Gap | Why it mattered |
+|---|---|
+| No `registry.register()` in `browser_control.py` or `browser_secret.py` | `AGENTS.md:548`: a `tools/*.py` with no top-level register is never discovered, never exposed. B1 had only its human half; B2 was unreachable from either side |
+| `browser_click` / `browser_type` handlers dropped `snapshot_id` | The schema told the model to always send it; the handler lambda did not forward it, so `_stale_view_error(tid, None)` waved every click through. **B3's guard was dead on arrival** — my omission in the previous round, two lines to fix |
+| No real filler | The only `filler` in the tree was the test double |
+
+**One tool, not two.** `browser_ask_human(need="help"|"secret", ...)` covers both
+requests. Per the Footprint Ladder (`AGENTS.md:182`) every model-facing tool costs
+tokens on every API call, and the two requests share one shape: *I cannot do this
+part; a person must.* `need="help"` raises a hand and returns immediately — it
+does not transfer control, because only a person can do that.
+
+A test now walks every entry in `BROWSER_TOOL_SCHEMAS` and asserts each declared
+parameter is forwarded by its handler, so the next dropped argument fails a test
+rather than silently disabling a guard.
+
+**The secret fill deliberately bypasses the takeover gate.** B1's gate refuses
+*agent* actions and fails closed; filling a secret is a *person's* action, so
+routing it through the agent gate would let the feature refuse its own user. The
+two flows are alternatives, not stages — takeover means the person drives, scoped
+secret means the agent keeps driving and the person passes one value in. Stated in
+`tools/browser_secret_fill.py`'s docstring rather than left implicit.
+
+**It also bypasses `browser_type`, and that is the point.** `browser_type`'s
+result reaches the transcript, and `agent/display.redact_browser_typed_text_for_display`
+is redact-*if-it-looks-like-a-secret*: it runs `redact_sensitive_text(..., force=True)`
+and returns the value **verbatim** when nothing matched. A human-chosen password
+matches no API-key or JWT pattern, so it would land in the `"typed"` field → tool
+result → transcript → session database. The fill drives the backend directly and
+constructs nothing containing the value.
+
+⚠️ **Known weakness: argv exposure on the agent-browser backend.**
+`_run_browser_command` builds an argv list for `subprocess.Popen`
+(`tools/browser_tool.py` ~:2380-2464), so on that backend the secret is a
+**command-line argument** — readable in `ps` and `/proc/<pid>/cmdline` by any
+process running as the same user, for the duration of the call. This is the
+`agent-browser` CLI's interface and is not fixable from the Hermes side. Camofox
+sends it in an HTTP body and does not have this problem; **prefer Camofox when the
+secret matters.** The warning is in the module docstring, printed at the prompt,
+and in the user documentation — not buried in one of the three.
+
+Relatedly, `_run_browser_command` logs backend stderr at WARNING. The filler
+therefore raises `SecretFillUnavailable("the browser backend rejected the fill")`
+and never carries `result["error"]` forward, since a failing backend can echo what
+it was given.
+
 ## Not adopted, with the reason
 
 Several headline README features do not survive reading the code, and are not
@@ -175,8 +226,9 @@ credited here:
 
 ## Testing, and what is not verified
 
-242 new tests. The pure modules and all three gate paths are covered, including
-coverage guards designed to fail if a browser path loses its hook.
+242 new tests for B1–B4, plus 58 for B5. The pure modules and all three gate
+paths are covered, including coverage guards designed to fail if a browser path
+loses its hook or a handler stops forwarding a declared parameter.
 
 ⚠️ **Not verified end to end against a live browser.** The `agent-browser` npm
 CLI is not installed in the development environment used for this work, and the
@@ -190,3 +242,9 @@ What remains unproven is the last inch: that a refused Camofox click really does
 fail to reach a real browser, and that a filled secret really does land in the
 right field on a real page. Anyone running this with a browser configured should
 exercise those paths before relying on them.
+
+`tools/browser_secret_fill.py` is the single piece most in need of that
+verification, because it is the only code here where a mistake sends a password
+somewhere it should not go. The two backends normalise the element ref in
+**opposite** directions — agent-browser prepends `@`, Camofox strips it — and
+both directions are asserted in the tests, but against stubs.
