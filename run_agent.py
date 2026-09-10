@@ -5297,8 +5297,18 @@ class AIAgent:
 
     def _build_api_kwargs(self, api_messages: list) -> dict:
         """Forwarder — see ``agent.chat_completion_helpers.build_api_kwargs``."""
-        from agent.chat_completion_helpers import build_api_kwargs
-        return build_api_kwargs(self, api_messages)
+        from agent.chat_completion_helpers import (
+            apply_tool_choice_none,
+            build_api_kwargs,
+        )
+        kwargs = build_api_kwargs(self, api_messages)
+        # One-shot: the budget grace call asks for an answer, not another tool
+        # call (F1). Consumed here rather than in build_api_kwargs because that
+        # function has six return points, one per api_mode.
+        if getattr(self, "_strip_tools_this_call", False):
+            self._strip_tools_this_call = False
+            apply_tool_choice_none(kwargs, self.api_mode)
+        return kwargs
 
     def _supports_reasoning_extra_body(self) -> bool:
         """Return True when reasoning extra_body is safe to send for this route/model.

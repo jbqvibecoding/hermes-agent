@@ -663,6 +663,35 @@ def interruptible_api_call(agent, api_kwargs: dict):
 
 
 
+def apply_tool_choice_none(api_kwargs: dict, api_mode: str) -> bool:
+    """Ask this one request to answer in text instead of calling a tool.
+
+    Used by the budget grace call (F1, ``agent/finalization_reserve.py``): the
+    run is out of iterations, so a tool call is worthless — its result would
+    never be read. Removing the option is what makes "give me an answer"
+    mechanical instead of a request the model can decline.
+
+    Returns whether it was applied. **Deliberately a no-op on Anthropic.** The
+    Anthropic adapter maps ``tool_choice="none"`` to *dropping the tools array*
+    (``anthropic_adapter.py``: "Anthropic has no tool_choice 'none' — omit tools
+    entirely to prevent use"), and a request whose history contains ``tool_use``
+    blocks but no ``tools`` is rejected by the API. Since the grace call happens
+    at the end of a tool-using run, that history always has them. Burning the
+    one recovery call on a 400 is strictly worse than letting the model see the
+    notice and choose to answer, so on that path the notice stands alone.
+    """
+    if not isinstance(api_kwargs, dict):
+        return False
+    if api_mode == "anthropic_messages":
+        return False
+    # Meaningless without tools in the payload, and some strict providers
+    # reject the pairing.
+    if not api_kwargs.get("tools"):
+        return False
+    api_kwargs["tool_choice"] = "none"
+    return True
+
+
 def build_api_kwargs(agent, api_messages: list) -> dict:
     """Build the keyword arguments dict for the active API mode."""
     tools_for_api = agent.tools

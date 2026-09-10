@@ -12,15 +12,19 @@ that use 198.18.0.0/15 or 100.64.0.0/10).  Even when disabled, cloud
 metadata hostnames (metadata.google.internal, 169.254.169.254) are
 **always** blocked — those are never legitimate agent targets.
 
-Limitations (documented, not fixable at pre-flight level):
+Limitations:
   - DNS rebinding (TOCTOU): an attacker-controlled DNS server with TTL=0
     can return a public IP for the check, then a private IP for the actual
-    connection. Fixing this requires connection-level validation (e.g.
-    Python's Champion library or an egress proxy like Stripe's Smokescreen).
+    connection. ``resolve_safe_addresses()`` + ``pin_to_address()`` close
+    this **for callers that use them** — the check hands back the addresses
+    it validated and the request dials one of those instead of resolving
+    again. A caller that still uses the boolean ``is_safe_url()`` alone
+    remains exposed, so the pin is opt-in per call site, not automatic.
   - Redirect-based bypass is mitigated by httpx event hooks that re-validate
     each redirect target in vision_tools, gateway platform adapters, and
     media cache helpers. Web tools use third-party SDKs (Firecrawl/Tavily)
-    where redirect handling is on their servers.
+    where redirect handling is on their servers — **pinning cannot reach
+    those**, because the connection is made inside the vendor's process.
 """
 
 import ipaddress
@@ -381,8 +385,20 @@ def _allows_private_ip_resolution(hostname: str, scheme: str) -> bool:
     return scheme == "https" and hostname in _TRUSTED_PRIVATE_IP_HOSTS
 
 
-def is_safe_url(url: str) -> bool:
-    """Return True if the URL target is not a private/internal address.
+def resolve_safe_addresses(url: str) -> tuple[bool, tuple[str, ...]]:
+    """Return ``(is_safe, resolved_addresses)`` for *url*.
+
+    The addresses are what makes a DNS-rebinding defence possible. Checking a
+    hostname and then letting the HTTP client resolve it a second time is a
+    TOCTOU: an attacker-controlled resolver with TTL=0 can answer with a
+    public address for this check and a private one for the connection. A
+    caller that hands these addresses to :func:`pin_to_address` dials the
+    address that was actually vetted.
+
+    :func:`is_safe_url` is the boolean-only wrapper and remains the entry
+    point for callers that cannot pin.
+
+    Original contract:
 
     Resolves the hostname to an IP and checks against private ranges.
     Fails closed: DNS errors and unexpected exceptions block the request.
@@ -396,16 +412,17 @@ def is_safe_url(url: str) -> bool:
         parsed = urlparse(url)
         hostname = (parsed.hostname or "").strip().lower().rstrip(".")
         scheme = (parsed.scheme or "").strip().lower()
+        _resolved: list[str] = []
         if scheme not in {"http", "https"}:
             logger.warning("Blocked request — unsupported URL scheme: %s", scheme or "<empty>")
-            return False
+            return False, ()
         if not hostname:
-            return False
+            return False, ()
 
         # Block known internal hostnames — ALWAYS, even with toggle on
         if hostname in _BLOCKED_HOSTNAMES:
             logger.warning("Blocked request to internal hostname: %s", hostname)
-            return False
+            return False, ()
 
         # Check the global toggle AFTER blocking metadata hostnames
         allow_all_private = _global_allow_private_urls()
@@ -419,7 +436,7 @@ def is_safe_url(url: str) -> bool:
             # DNS resolution failed — fail closed. If DNS can't resolve it,
             # the HTTP client will also fail, so blocking loses nothing.
             logger.warning("Blocked request — DNS resolution failed for: %s", hostname)
-            return False
+            return False, ()
 
         for family, _, _, _, sockaddr in addr_info:
             ip_str = sockaddr[0]
@@ -427,10 +444,11 @@ def is_safe_url(url: str) -> bool:
                 ip_str = ip_str.split('%')[0]
             try:
                 ip = ipaddress.ip_address(ip_str)
+                _resolved.append(ip_str)
             except ValueError:
                 # Still unparseable after scope ID strip — fail closed
                 logger.warning("Blocked request — unparseable IP address %r for hostname %s", sockaddr[0], hostname)
-                return False
+                return False, ()
 
             # Always block cloud metadata IPs and link-local, even with toggle on
             if ip in _ALWAYS_BLOCKED_IPS or any(ip in net for net in _ALWAYS_BLOCKED_NETWORKS):
@@ -438,14 +456,14 @@ def is_safe_url(url: str) -> bool:
                     "Blocked request to cloud metadata address: %s -> %s",
                     hostname, ip_str,
                 )
-                return False
+                return False, ()
 
             if not allow_all_private and not allow_private_ip and _is_blocked_ip(ip):
                 logger.warning(
                     "Blocked request to private/internal address: %s -> %s",
                     hostname, ip_str,
                 )
-                return False
+                return False, ()
 
         if allow_all_private:
             logger.debug(
@@ -458,13 +476,116 @@ def is_safe_url(url: str) -> bool:
                 hostname,
             )
 
-        return True
+        return True, tuple(_resolved)
 
     except Exception as exc:
         # Fail closed on unexpected errors — don't let parsing edge cases
         # become SSRF bypass vectors
         logger.warning("Blocked request — URL safety check error for %s: %s", url, exc)
-        return False
+        return False, ()
+
+def is_safe_url(url: str) -> bool:
+    """Return True if the URL target is not a private/internal address.
+
+    Boolean-only view of :func:`resolve_safe_addresses`, kept as the entry point
+    for the many callers that only need a verdict.
+    """
+    return resolve_safe_addresses(url)[0]
+
+
+#: Headers that authenticate the caller. They must not survive a redirect to a
+#: different origin — httpx strips them itself when it follows redirects, but a
+#: hand-rolled hop loop has to do it explicitly or it hands the credential to
+#: whatever host the first origin names.
+_CREDENTIAL_HEADERS = frozenset({
+    "authorization",
+    "cookie",
+    "proxy-authorization",
+    "www-authenticate",
+})
+
+
+def pin_to_address(
+    url: str,
+    addresses: tuple,
+    headers: Optional[dict] = None,
+) -> tuple:
+    """Rewrite a request to dial an address that was already vetted.
+
+    Ported from ApodexAI's FrontierAgent (Apache-2.0),
+    ``plugins/tools/_bounded_fetch.py::pin_to_address``. It is the
+    connection-level validation the Limitations note at the top of this module
+    says is required — the pre-flight check and the socket now agree on one
+    address instead of trusting a second DNS lookup.
+
+    Returns ``(url, headers, extensions)`` for httpx. The address replaces the
+    URL host so no second lookup can happen, while the original hostname is
+    preserved **twice**:
+
+    * in the ``Host`` header, so virtual-host routing still works;
+    * in the ``sni_hostname`` extension, which drives TLS SNI *and* the
+      certificate hostname check — so a pinned HTTPS request still fails closed
+      on a mismatched certificate.
+
+    Getting that second one wrong is the only way this function can quietly make
+    things less safe rather than more, which is why it is asserted explicitly in
+    the tests.
+
+    A no-op when there is nothing to pin (no addresses, unparseable URL, or a
+    URL that already names a literal IP).
+    """
+    headers = dict(headers or {})
+    if not addresses:
+        return url, headers, {}
+    try:
+        parsed = urlsplit(url)
+        hostname = (parsed.hostname or "").strip()
+        if not hostname or hostname == addresses[0]:
+            return url, headers, {}
+        address = str(addresses[0])
+        # IPv6 literals need brackets in the authority.
+        if ":" in address:
+            address = f"[{address}]"
+        netloc = address
+        if parsed.port:
+            netloc = f"{netloc}:{parsed.port}"
+        pinned = urlunsplit(
+            (parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment)
+        )
+        headers["Host"] = parsed.netloc.split("@")[-1]
+        return pinned, headers, {"sni_hostname": hostname}
+    except Exception as exc:  # noqa: BLE001
+        # Pinning is a hardening step, not the gate. The gate already ran and
+        # said yes; failing to pin leaves the pre-existing behaviour, which is
+        # what every caller had before this function existed.
+        logger.debug("Could not pin %s to a vetted address: %s", url, exc)
+        return url, headers, {}
+
+
+def strip_cross_origin_credentials(
+    headers: dict, from_url: str, to_url: str
+) -> dict:
+    """Drop caller credentials when a redirect hop changes origin.
+
+    Same-origin hops keep them, so an authenticated fetch that redirects within
+    one host still works.
+    """
+    try:
+        a, b = urlsplit(from_url), urlsplit(to_url)
+        if (a.scheme, a.hostname, a.port) == (b.scheme, b.hostname, b.port):
+            return dict(headers or {})
+    except Exception:  # noqa: BLE001 — an unparseable hop is a changed origin
+        pass
+    return {
+        name: value
+        for name, value in (headers or {}).items()
+        if name.lower() not in _CREDENTIAL_HEADERS
+    }
+
+
+async def async_resolve_safe_addresses(url: str) -> tuple:
+    """Async form of :func:`resolve_safe_addresses` — DNS off the event loop."""
+    return await asyncio.to_thread(resolve_safe_addresses, url)
 
 
 async def async_is_safe_url(url: str) -> bool:

@@ -350,7 +350,12 @@ class AIAgent:
 ### Agent Loop
 
 The core loop is inside `run_conversation()` — entirely synchronous, with
-interrupt checks, budget tracking, and a one-turn grace call:
+interrupt checks, budget tracking, and a one-turn grace call. When the iteration
+budget is refused, the loop injects one runtime notice into the last tool result
+and allows a single extra request sent with `tool_choice="none"`, so the run ends
+with an answer instead of a dangling tool call (`agent/finalization_reserve.py`).
+An opt-in earlier nudge lives behind `agent.finalization_reserve_turns`
+(default `0` — see #7915 on intermediate pressure warnings):
 
 ```python
 while (api_call_count < self.max_iterations and self.iteration_budget.remaining > 0) \

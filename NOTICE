@@ -39,3 +39,44 @@ in its module docstring:
   plugins/observability/ndjson/__init__.py
       inspired by packages/cli/src/loop-observability.ts (NDJSON event log
       and heartbeat file)
+
+This product includes software developed by ApodexAI
+(https://github.com/ApodexAI/FrontierAgent), licensed under the Apache
+License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+
+Portions of the following files are derived from FrontierAgent source and have
+been modified. Each file carries the attribution and a description of the
+changes in its module docstring:
+
+  agent/finalization_reserve.py
+      derived from frontier_agent/components/observers/finalization_reserve.py
+      and last_turn_forcer.py (hold back budget to produce an answer; force a
+      tool-free final request). Reshaped around Hermes' own documented
+      budget-exhaustion grace call rather than an early pressure warning.
+
+  agent/reasoning_runaway.py
+      derived from frontier_agent/core/runtime/loop/_runaway.py
+      (detecting a reply whose whole output budget went to reasoning, and
+      resampling it at a reduced max_tokens). Extended with a tier that reads
+      the reasoning fields Hermes' transports already capture.
+
+  agent/text_repetition.py
+      derived from frontier_agent/components/observers/text_repetition_guard.py
+      (word-bigram shingles + Jaccard similarity across recent assistant
+      turns, localised hints, advisory-only by default)
+
+  agent/budget_consistency.py
+      derived from frontier_agent/core/runtime/loop/budget_consistency.py
+      (startup warnings for token budgets that cannot all hold at once)
+
+  tools/subagent_rescue.py
+      derived from workflows/agent_team/subagent_runtime.py::force_final_answer
+      and frontier_agent/components/finalization/recovery.py (recovering an
+      answer from a subagent that ended without writing one; recording which
+      fallback produced it)
+
+  tools/url_safety.py
+      pin_to_address / strip_cross_origin_credentials derived from
+      plugins/tools/_bounded_fetch.py (dialling an already-validated address
+      while preserving the Host header and TLS SNI, so certificate
+      verification still fails closed)

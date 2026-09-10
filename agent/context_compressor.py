@@ -236,6 +236,17 @@ _PATH_MENTION_RE = re.compile(r"(?:/|~/?|[A-Za-z]:\\)[^\s`'\")\]}<>]+")
 _MEDIA_DIRECTIVE_RE = re.compile(r"MEDIA:\S+")
 
 
+def _strip_budget_notices(text: str) -> str:
+    """Forwarder with a lazy import — ``prompt_builder`` pulls in the skills
+    machinery, and this module is imported on every agent construction."""
+    try:
+        from agent.prompt_builder import strip_budget_notices
+
+        return strip_budget_notices(text)
+    except Exception:  # noqa: BLE001 — summarisation must not break on this
+        return text
+
+
 def _dedupe_append(items: list[str], value: str, *, limit: int) -> None:
     value = value.strip()
     if value and value not in items and len(items) < limit:
@@ -1509,6 +1520,11 @@ class ContextCompressor(ContextEngine):
             role = msg.get("role", "unknown")
             content = redact_sensitive_text(msg.get("content") or "")
             content = _MEDIA_DIRECTIVE_RE.sub("[media attachment]", content)
+            # Runtime budget notices (F1) ride the end of a tool result. They
+            # describe the run's remaining budget, not the task — summarising
+            # them would leave a later turn reading "you are entering the
+            # finalization reserve" as a fact about work it is just beginning.
+            content = _strip_budget_notices(content)
 
             # Tool results: keep enough content for the summarizer
             if role == "tool":

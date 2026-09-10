@@ -975,6 +975,12 @@ DEFAULT_CONFIG = {
     "max_live_sessions": 16,
     "agent": {
         "max_turns": 90,
+        # Iterations reserved at the end of a run for wrapping up, as an
+        # opt-in nudge. 0 = off (the default): #7915 found that intermediate
+        # pressure warnings made models abandon complex tasks early. Turning
+        # this on trades some depth for a more reliably-written answer.
+        # Independent of the budget-exhaustion grace call, which always runs.
+        "finalization_reserve_turns": 0,
         # Inactivity timeout for gateway agent execution (seconds).
         # The agent can run indefinitely as long as it's actively calling
         # tools or receiving API responses.  Only fires when the agent has
@@ -2211,6 +2217,11 @@ DEFAULT_CONFIG = {
         "inherit_mcp_toolsets": True,
         "max_iterations": 50,  # per-subagent iteration cap (each subagent gets its own budget,
                                # independent of the parent's max_iterations)
+        # When a subagent ends abnormally having written no conclusion, spend
+        # one tool-free LLM call recovering an answer from its own transcript
+        # rather than returning nothing. Only fires when the alternative is an
+        # empty result, so a delegation that worked never pays for it.
+        "rescue_empty_results": True,
         # Subagent summaries return to the parent's context verbatim. A batch
         # fan-out (N children) returns N summaries at once, which can exceed
         # the parent's context window and trigger a compression/429 death

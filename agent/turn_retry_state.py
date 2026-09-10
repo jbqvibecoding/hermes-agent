@@ -74,6 +74,19 @@ class TurnRetryState:
     # call against the newly-activated provider (#32421).
     restart_with_rebuilt_messages: bool = False
 
+    # ── Reasoning-runaway resample (F2, agent/reasoning_runaway.py) ──────
+    # One resample per API call when the reply spent its whole output budget
+    # on reasoning and came back empty. Lives here rather than on the agent so
+    # it is scoped to the call, like every other guard in this class — an
+    # agent-level flag would allow exactly one resample per process.
+    #
+    # Note this is a guard, not a ``restart_with_*`` signal: the retry happens
+    # inline in the inner attempt loop. Going out to the outer loop would
+    # rebuild ``api_messages`` (discarding the throwaway reminder) and, on the
+    # length-continuation path, *boost* ``_ephemeral_max_output_tokens`` —
+    # undoing the reduced cap that is the actual fix.
+    runaway_resample_attempted: bool = False
+
     def __iter__(self):
         # Convenience for debugging / tests: iterate (name, value) pairs.
         for f in fields(self):

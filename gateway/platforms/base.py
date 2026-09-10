@@ -740,12 +740,28 @@ async def cache_image_from_url(url: str, ext: str = ".jpg", retries: int = 2) ->
     Raises:
         ValueError: If the URL targets a private/internal network (SSRF protection).
     """
-    from tools.url_safety import is_safe_url
-    if not is_safe_url(url):
+    from tools.url_safety import async_resolve_safe_addresses, pin_to_address
+    _safe, _addresses = await async_resolve_safe_addresses(url)
+    if not _safe:
         raise ValueError(f"Blocked unsafe URL (SSRF protection): {safe_url_for_log(url)}")
 
     import httpx
     _log = logging.getLogger(__name__)
+
+    # Dial the address the check above actually vetted (F4). Without this the
+    # client resolves the name a second time, and a resolver answering with a
+    # public address for the check and a private one for the connection walks
+    # straight through. Scoped honestly: this pins the FIRST hop only —
+    # redirects are still resolved by httpx, and _ssrf_redirect_guard
+    # re-validates each hop but cannot pin them.
+    _request_url, _pinned_headers, _extensions = pin_to_address(
+        url,
+        _addresses,
+        {
+            "User-Agent": "Mozilla/5.0 (compatible; HermesAgent/1.0)",
+            "Accept": "image/*,*/*;q=0.8",
+        },
+    )
 
     async with httpx.AsyncClient(
         timeout=30.0,
@@ -756,11 +772,9 @@ async def cache_image_from_url(url: str, ext: str = ".jpg", retries: int = 2) ->
             try:
                 async with client.stream(
                     "GET",
-                    url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (compatible; HermesAgent/1.0)",
-                        "Accept": "image/*,*/*;q=0.8",
-                    },
+                    _request_url,
+                    headers=_pinned_headers,
+                    extensions=_extensions,
                 ) as response:
                     response.raise_for_status()
                     content = await _read_httpx_body_with_limit(

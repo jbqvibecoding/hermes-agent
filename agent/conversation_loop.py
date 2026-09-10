@@ -656,11 +656,96 @@ def run_conversation(
         # this iteration regardless of outcome.
         if agent._budget_grace_call:
             agent._budget_grace_call = False
+            # The whole point of the grace call is to get an ANSWER, not one
+            # more tool call whose result nobody will ever read. Sending it
+            # without tools is what makes that mechanical rather than a
+            # request the model can decline. (F1)
+            agent._strip_tools_this_call = True
         elif not agent.iteration_budget.consume():
+            # ── Budget exhaustion: one notice, one tool-free grace call ──
+            # This is the design agent_init.py:624-629 and AGENTS.md have
+            # described since forever; nothing ever set either flag, so the
+            # loop simply broke here and whatever the model was mid-way
+            # through was the result. See agent/finalization_reserve.py.
+            if not agent._budget_exhausted_injected:
+                agent._budget_exhausted_injected = True
+                try:
+                    from agent.finalization_reserve import (
+                        EXHAUSTION_NOTICE,
+                        deliver_notice,
+                    )
+
+                    delivered = deliver_notice(messages, EXHAUSTION_NOTICE)
+                except Exception:  # noqa: BLE001 — never break the loop on this
+                    logger.debug("budget exhaustion notice failed", exc_info=True)
+                    delivered = False
+                if delivered:
+                    agent._budget_grace_call = True
+                    agent._session_messages = messages
+                    api_call_count -= 1  # this pass did no work; don't count it
+                    agent._api_call_count = api_call_count
+                    if not agent.quiet_mode:
+                        agent._safe_print(
+                            f"\n⚠️  Iteration budget spent "
+                            f"({agent.iteration_budget.used}/"
+                            f"{agent.iteration_budget.max_total}) — asking for a "
+                            f"final answer without tools"
+                        )
+                    continue
+                # Nothing to attach the notice to (no tool result in this
+                # conversation). There is no landing to arrange, so fall
+                # through to the original behaviour rather than sending a
+                # request that says nothing new.
             _turn_exit_reason = "budget_exhausted"
             if not agent.quiet_mode:
                 agent._safe_print(f"\n⚠️  Iteration budget exhausted ({agent.iteration_budget.used}/{agent.iteration_budget.max_total} iterations used)")
             break
+
+        # ── Drain any runtime notice stashed by a guard last iteration ───
+        # Currently just F3's repetition hint. Rides the same tool-result slot
+        # as the budget notices below, so the model sees one channel for
+        # "Hermes talking about this run" rather than two.
+        _stashed_notice = getattr(agent, "_pending_runtime_notice", "")
+        if _stashed_notice:
+            agent._pending_runtime_notice = ""
+            try:
+                from agent.finalization_reserve import deliver_notice as _deliver_note
+
+                if _deliver_note(messages, _stashed_notice):
+                    agent._session_messages = messages
+            except Exception:  # noqa: BLE001 — advisory, never fatal
+                logger.debug("runtime notice delivery failed", exc_info=True)
+
+        # ── Opt-in early reserve (agent.finalization_reserve_turns) ──────
+        # Default OFF: #7915 records that intermediate pressure warnings made
+        # models give up early on complex tasks. The grace call above needs no
+        # such warning — it fires when the run is over either way.
+        _reserve = getattr(agent, "_finalization_reserve", 0)
+        if _reserve > 0:
+            try:
+                from agent.finalization_reserve import (
+                    deliver_notice as _deliver,
+                    notice_text as _notice_text,
+                    plan_iteration as _plan_iteration,
+                )
+
+                _plan = _plan_iteration(
+                    iteration=api_call_count,
+                    max_iterations=agent.max_iterations,
+                    reserve=_reserve,
+                    reserve_fired=getattr(agent, "_finalization_fired", False),
+                )
+                if _plan.notice:
+                    if _deliver(messages, _notice_text(_plan.notice)):
+                        if _plan.phase == "reserve":
+                            agent._finalization_fired = True
+                        agent._session_messages = messages
+                        logger.debug(
+                            "finalization reserve: injected %s at iteration %d/%d",
+                            _plan.phase, api_call_count, agent.max_iterations,
+                        )
+            except Exception:  # noqa: BLE001 — advisory only, never fatal
+                logger.debug("finalization reserve planning failed", exc_info=True)
 
         # Fire step_callback for gateway hooks (agent:step event)
         if agent.step_callback is not None:
@@ -1836,6 +1921,72 @@ def run_conversation(
                             or _trunc_content is None
                         )
                     )
+
+                    # ── F2: the same failure where the tags are not visible ──
+                    # A gateway that strips the reasoning channel (SGLang,
+                    # vLLM, most aggregators) returns content=None with no
+                    # tags, so the check above cannot see it and the reply
+                    # falls through to four continuation retries that each
+                    # repeat the runaway. Two more tiers of evidence, then one
+                    # resample at half the cap — the smaller cap is what
+                    # changes the outcome. See agent/reasoning_runaway.py.
+                    _runaway_tier = ""
+                    try:
+                        from agent.reasoning_runaway import (
+                            RECOVERY_REMINDER,
+                            classify_runaway,
+                            retry_max_tokens,
+                        )
+
+                        _usage_obj = getattr(response, "usage", None)
+                        _completion_tokens = int(
+                            getattr(_usage_obj, "completion_tokens", 0) or 0
+                        )
+                        _is_runaway, _runaway_tier = classify_runaway(
+                            content=_trunc_content,
+                            has_tool_calls=_trunc_has_tool_calls,
+                            finish_reason=finish_reason,
+                            provider_data=getattr(_trunc_msg, "provider_data", None),
+                            completion_tokens=_completion_tokens,
+                            has_think_tags=_has_think_tags,
+                        )
+                    except Exception:  # noqa: BLE001 — detection must not break the loop
+                        logger.debug("runaway classification failed", exc_info=True)
+                        _is_runaway = False
+
+                    if _is_runaway and not _retry.runaway_resample_attempted:
+                        _retry.runaway_resample_attempted = True
+                        _new_cap = retry_max_tokens(
+                            completion_tokens=_completion_tokens,
+                            active_cap=agent.max_tokens,
+                        )
+                        if _new_cap:
+                            agent._ephemeral_max_output_tokens = _new_cap
+                        # Appended to api_messages, NOT to `messages`. That is
+                        # the whole reason this retries the INNER loop instead
+                        # of signalling the outer one: the outer restart
+                        # rebuilds api_messages from `messages`, which would
+                        # throw the reminder away before it was ever sent — and
+                        # the continuation path there also *boosts*
+                        # _ephemeral_max_output_tokens, undoing the reduced cap
+                        # that is the actual fix.
+                        api_messages.append(
+                            {"role": "user", "content": RECOVERY_REMINDER}
+                        )
+                        agent._vprint(
+                            f"{agent.log_prefix}💭 Reasoning consumed the whole "
+                            f"output budget ({_runaway_tier}) — resampling at "
+                            f"max_tokens={_new_cap or agent.max_tokens}...",
+                            force=True,
+                        )
+                        retry_count += 1
+                        continue
+
+                    # The resample did not help either: this model will keep
+                    # doing it, so stop rather than spend the continuation
+                    # retries proving it again.
+                    if _is_runaway:
+                        _thinking_exhausted = True
 
                     if _thinking_exhausted:
                         _exhaust_error = (
@@ -4645,6 +4796,32 @@ def run_conversation(
                 # answer and calls memory/skill tools as a side-effect in the same
                 # turn. If the follow-up turn after tools is empty, we use this.
                 turn_content = assistant_message.content or ""
+
+                # ── F3: is the model just restating itself every turn? ───
+                # tool_guardrails covers repeated tool CALLS; this covers the
+                # prose. Advisory only — stashed here and delivered on the next
+                # iteration through the same runtime-notice channel, because a
+                # notice can only ride the end of a tool result and those are
+                # not appended yet. See agent/text_repetition.py.
+                try:
+                    _rep = getattr(agent, "_text_repetition", None)
+                    if _rep is not None:
+                        _rep_hint = _rep.observe(
+                            agent._strip_think_blocks(turn_content)
+                            if turn_content
+                            else ""
+                        )
+                        if _rep_hint:
+                            agent._pending_runtime_notice = _rep_hint
+                            logger.info(
+                                "Text repetition guard fired at iteration %d "
+                                "(streak %d)",
+                                api_call_count,
+                                _rep.streak,
+                            )
+                except Exception:  # noqa: BLE001 — advisory, never fatal
+                    logger.debug("text repetition guard failed", exc_info=True)
+
                 if turn_content and agent._has_content_after_think_block(turn_content):
                     agent._last_content_with_tools = turn_content
                     # Only mute subsequent output when EVERY tool call in

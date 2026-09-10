@@ -627,8 +627,43 @@ def init_agent(
     # model doesn't produce a text response, force a user-message asking
     # it to summarise.  No intermediate pressure warnings — they caused
     # models to "give up" prematurely on complex tasks (#7915).
+    # Implemented in agent/finalization_reserve.py + conversation_loop.py (F1).
+    # Both flags existed here — and the mechanism was described in AGENTS.md —
+    # for a long time with nothing ever setting either to True, so the loop's
+    # ``or agent._budget_grace_call`` could not fire and the budget simply
+    # broke the loop mid-tool-call.
     agent._budget_exhausted_injected = False
     agent._budget_grace_call = False
+    # One-shot: send the next request with tool_choice="none".
+    agent._strip_tools_this_call = False
+
+    # F3: prose-repetition guard. tool_guardrails covers repeated tool calls;
+    # this covers a model that stops calling tools and just restates its plan.
+    # Advisory only — it can produce a hint, never a halt.
+    agent._pending_runtime_notice = ""
+    try:
+        from agent.text_repetition import RepetitionTracker
+
+        agent._text_repetition = RepetitionTracker()
+    except Exception:
+        agent._text_repetition = None
+
+    # Opt-in early finalization reserve. Default 0 = off, because the comment
+    # above is a real lesson: intermediate pressure warnings made models give
+    # up early (#7915). The grace call needs none of this — it fires at
+    # exhaustion, when the run is over either way.
+    agent._finalization_fired = False
+    agent._finalization_reserve = 0
+    try:
+        from agent.finalization_reserve import resolve_reserve as _resolve_reserve
+        from hermes_cli.config import load_config as _load_fr_cfg
+
+        _fr_cfg = _load_fr_cfg().get("agent", {}) or {}
+        agent._finalization_reserve = _resolve_reserve(
+            agent.max_iterations, _fr_cfg.get("finalization_reserve_turns")
+        )
+    except Exception:
+        pass
 
     # Activity tracking — updated on each API call, tool execution, and
     # stream chunk.  Used by the gateway timeout handler to report what the
@@ -1849,6 +1884,25 @@ def init_agent(
             f"model.context_length in config.yaml to the real value "
             f"(this must be at least {MINIMUM_CONTEXT_LENGTH // 1000}K)."
         )
+
+    # Warn (never raise) when the window and the output reservation cannot both
+    # hold. _compute_threshold_tokens falls back to the raw window when
+    # context_length - max_tokens <= 0, which keeps the compressor working and
+    # therefore hides the misconfiguration completely — the user sees provider
+    # rejections instead. Say it once, at startup, in terms of the knob to turn.
+    try:
+        from agent.budget_consistency import check_token_budget
+
+        check_token_budget(
+            context_length=_ctx,
+            max_tokens=agent.max_tokens,
+            threshold_tokens=getattr(
+                agent.context_compressor, "threshold_tokens", None
+            ),
+            label=f"model {agent.model}",
+        )
+    except Exception:  # noqa: BLE001 — a diagnostic must never break startup
+        _ra().logger.debug("token budget consistency check failed", exc_info=True)
 
     # Nous Hermes 3/4 are chat models, not tool-call-tuned. The interactive
     # CLI already warns via cli.py show_banner() (richer output + /model hint),

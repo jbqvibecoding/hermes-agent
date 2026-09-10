@@ -1404,6 +1404,66 @@ def _build_child_agent(
     return child
 
 
+def _rescue_enabled() -> bool:
+    """Whether to spend one LLM call recovering an answer. On by default.
+
+    ``delegation.rescue_empty_results: false`` turns it off. On is the right
+    default: it only fires when the alternative is returning nothing, so the
+    call is never wasted on a delegation that worked.
+    """
+    try:
+        cfg = _load_config()
+        value = cfg.get("rescue_empty_results", True)
+        return value is not False
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _attempt_rescue(*, child, result, goal: str, partial: str) -> tuple[str, str]:
+    """Recover an answer from a child that produced none. Returns (text, mode).
+
+    Runs the model rung on the **child's own model** — it is the one with the
+    context, and using a different one would report on work it never saw. The
+    call carries no tools: the budget is already spent, and another tool call
+    would just be one more result nobody reads.
+
+    Never raises. Returning ``("", "")`` leaves the caller exactly where it was.
+    """
+    try:
+        from tools import subagent_rescue
+    except Exception:  # noqa: BLE001
+        return "", ""
+
+    messages = result.get("messages") if isinstance(result, dict) else None
+
+    caller = None
+    if _rescue_enabled():
+
+        def caller(recovery_messages):  # noqa: F811 — deliberate conditional def
+            from agent.auxiliary_client import call_llm
+
+            response = call_llm(
+                task="compression",
+                provider=getattr(child, "provider", None),
+                model=getattr(child, "model", None),
+                base_url=getattr(child, "base_url", None),
+                api_key=getattr(child, "api_key", None),
+                api_mode=getattr(child, "api_mode", None),
+                messages=recovery_messages,
+                max_tokens=1024,
+                timeout=90,
+            )
+            return response.choices[0].message.content or ""
+
+    try:
+        return subagent_rescue.rescue(
+            messages, goal=goal, partial=partial, caller=caller
+        )
+    except Exception as exc:  # noqa: BLE001 — a failed rescue is not a failure
+        logger.debug("subagent rescue failed: %s", type(exc).__name__)
+        return "", ""
+
+
 def _dump_subagent_timeout_diagnostic(
     *,
     child: Any,
@@ -2102,6 +2162,25 @@ def _run_single_child(
         interrupted = result.get("interrupted", False)
         api_calls = result.get("api_calls", 0)
 
+        # ── F1e: recover an answer from a child that wrote none ──────────
+        # Only when the run did NOT complete normally and selection found
+        # nothing — a healthy delegation pays nothing for this. One attempt,
+        # no recursion. See tools/subagent_rescue.py.
+        rescue_mode = ""
+        if not summary and not completed and not interrupted:
+            summary, rescue_mode = _attempt_rescue(
+                child=child,
+                result=result,
+                goal=goal,
+                partial=_termination["partial"],
+            )
+            if rescue_mode:
+                logger.info(
+                    "Subagent %d left no conclusion; recovered via %s",
+                    task_index,
+                    rescue_mode,
+                )
+
         # The child emits the literal "(empty)" sentinel (see run_agent.py) when
         # it gives up after repeated empty-LLM-response retries — typically a
         # transport bug (misrouted provider, adapter returning empty
@@ -2187,6 +2266,12 @@ def _run_single_child(
             "stop_reason": stop_reason,
             "settlement": _termination["settlement"],
             "partial_output": _termination["partial"],
+            # F1e: which rung produced `summary` when the child wrote nothing.
+            # "" means the child wrote its own. Text the model produced under
+            # rescue and a sentence Hermes assembled are not the same kind of
+            # thing, and the parent has to be able to tell them apart — the
+            # same reason `settlement` is kept out of `summary`.
+            "rescue_mode": rescue_mode,
             "tokens": {
                 "input": (
                     _input_tokens if isinstance(_input_tokens, (int, float)) else 0
