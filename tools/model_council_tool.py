@@ -73,6 +73,10 @@ async def _handle_model_council(args: Dict[str, Any], **kwargs: Any) -> str:
         result["answer"] = result.pop("report", "")
         result.pop("verification_summary", None)
         result.pop("stats", None)
+        # No web research happens here, so a citation audit would have
+        # nothing to audit against; drop it rather than report an empty one.
+        result.pop("citation_audit", None)
+        result.pop("citation_audit_path", None)
     return json.dumps(result, ensure_ascii=False)
 
 

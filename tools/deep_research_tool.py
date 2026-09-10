@@ -86,6 +86,7 @@ async def _run_pipeline(
     question: str, depth: str, max_minutes: int,
     pipeline: str = "deep_research",
     peer_review: bool = False,
+    research_mode: str = "",
 ) -> Dict[str, Any]:
     """Shared subprocess driver for all AgentHarness research pipelines
     (also used by tools/model_council_tool.py)."""
@@ -100,6 +101,13 @@ async def _run_pipeline(
     ]
     if peer_review:
         cmd.append("--peer-review")
+    if research_mode in {"fanout", "swarm"}:
+        # Passed through metadata rather than a dedicated flag: the depth
+        # preset already carries a default, and this only overrides it.
+        cmd += [
+            "--metadata-json",
+            json.dumps({"research_mode": research_mode}),
+        ]
     logger.info(
         "%s: starting pipeline (depth=%s, deadline=%dmin, out=%s)",
         pipeline, depth, max_minutes, out_dir,
@@ -213,7 +221,19 @@ async def _run_pipeline(
         },
         "pipeline_errors": result.get("errors", [])[:10],
     }
-    for key in ("vault_dir", "patch_log_path", "polish_log_path"):
+    # Integrity and cost signals. Present only when the pipeline produced
+    # them, so a reader can tell "no findings" from "not checked".
+    if result.get("citation_audit"):
+        out["citation_audit"] = result["citation_audit"]
+    if result.get("token_budget"):
+        out["token_budget"] = result["token_budget"]
+    if result.get("capped_branches"):
+        # Sub-questions researched only partially. Their evidence is in the
+        # report; saying which were cut short is what keeps a partial
+        # answer from reading as a complete one.
+        out["capped_branches"] = result["capped_branches"]
+    for key in ("vault_dir", "patch_log_path", "polish_log_path",
+                "citation_audit_path"):
         if result.get(key):
             out[key] = result[key]
     if pipeline != "deep_research":
@@ -271,6 +291,7 @@ async def _handle_deep_research(args: Dict[str, Any], **kwargs: Any) -> str:
             question, depth, max_minutes,
             pipeline="deep_council_research" if council else "deep_research",
             peer_review=council and bool(args.get("peer_review", False)),
+            research_mode=str(args.get("research_mode", "")).lower(),
         )
     except FileNotFoundError as exc:  # uv missing despite check_fn
         return tool_error(f"deep_research launch failed: {exc}")
@@ -290,7 +311,11 @@ DEEP_RESEARCH_SCHEMA = {
         "searchable evidence vault, contested claims are mapped into a "
         "contradiction graph with prioritized loci for deeper "
         "investigation, four adversarial critics review the draft, and "
-        "revisions are applied as surgical patches. Use for substantive "
+        "revisions are applied as surgical patches. Every report is then "
+        "audited mechanically: citations are validated against the "
+        "evidence whitelist and every figure is checked against the text "
+        "behind its own citation, with anything unresolved disclosed in a "
+        "Verification appendix rather than left silent. Use for substantive "
         "research questions that deserve verified, sourced answers — not "
         "for quick lookups (use web_search for those). mode='council' runs "
         "the FULL pipeline once per configured council member model "
@@ -332,6 +357,19 @@ DEEP_RESEARCH_SCHEMA = {
                     "solo; requires COUNCIL_MODEL_* in the harness .env)."
                 ),
                 "default": "solo",
+            },
+            "research_mode": {
+                "type": "string",
+                "enum": ["fanout", "swarm"],
+                "description": (
+                    "How the research stage gathers evidence. fanout: one "
+                    "researcher per sub-question — predictable and "
+                    "cheapest. swarm: a coordinator opens and assigns "
+                    "researchers itself, so effort follows what the "
+                    "question turns out to need; better on broad or "
+                    "unevenly-deep questions, and costs more. Omit to use "
+                    "the depth default (deep uses swarm, others fanout)."
+                ),
             },
             "peer_review": {
                 "type": "boolean",
