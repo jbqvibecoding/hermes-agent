@@ -1,0 +1,12 @@
+name: hermes-crew
+version: 0.1.0
+description: "Always-on AI teammates, each a Hermes profile with its own computer. Adds the `crew` toolset (report grammar, draft-and-hold approvals, visible memory, routines, teammate handoffs, takeover login) and the /crew dashboard surface."
+author: NousResearch
+kind: backend
+provides_tools:
+  - message_user
+  - hold_for_approval
+  - save_memory_rule
+  - create_routine
+  - message_bot
+  - ask_for_login

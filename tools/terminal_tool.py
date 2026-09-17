@@ -1080,7 +1080,14 @@ def register_task_env_overrides(task_id: str, overrides: Dict[str, Any]):
     Supported override keys:
         - modal_image: str -- Path to Dockerfile or Docker Hub image name
         - docker_image: str -- Docker image name
+        - env_type: str -- Backend for this task ("docker", "modal", ...)
         - cwd: str -- Working directory inside the sandbox
+        - any container_config key (``docker_volumes``, ``docker_extra_args``,
+          ``docker_env``, ``container_cpu``/``memory``/``disk``/``persistent``,
+          ``docker_network``, ...) -- same names as the ``terminal.*`` config
+          keys, applied only to this task's sandbox. This is what lets one
+          process run tasks needing different container shapes; without it a
+          caller could pick the image but not the flags that make it usable.
 
     Args:
         task_id: The rollout's unique task identifier
@@ -2199,21 +2206,35 @@ def terminal_tool(
 
                         container_config = None
                         if env_type in {"docker", "singularity", "modal", "daytona"}:
+                            # Per-task overrides win over the process-global
+                            # TERMINAL_* config, exactly as they already do for
+                            # `image` and `cwd` above. Without this, a caller
+                            # that registers a per-task sandbox can pick the
+                            # image but not the volumes, resource limits, or
+                            # `docker run` flags that make it usable — so two
+                            # tasks needing different container shapes in one
+                            # process had to fight over the same env vars.
+                            # (hermes-crew registers per-teammate port
+                            # publishing this way so each teammate's screen and
+                            # CDP endpoint land on their own loopback ports.)
+                            def _cc(key: str, fallback: Any) -> Any:
+                                return overrides.get(key, config.get(key, fallback))
+
                             container_config = {
-                                "container_cpu": config.get("container_cpu", 1),
-                                "container_memory": config.get("container_memory", 5120),
-                                "container_disk": config.get("container_disk", 51200),
-                                "container_persistent": config.get("container_persistent", True),
-                                "modal_mode": config.get("modal_mode", "auto"),
-                                "docker_volumes": config.get("docker_volumes", []),
-                                "docker_mount_cwd_to_workspace": config.get("docker_mount_cwd_to_workspace", False),
-                                "docker_forward_env": config.get("docker_forward_env", []),
-                                "docker_env": config.get("docker_env", {}),
-                                "docker_run_as_host_user": config.get("docker_run_as_host_user", False),
-                                "docker_extra_args": config.get("docker_extra_args", []),
-                                "docker_network": config.get("docker_network", True),
-                                "docker_persist_across_processes": config.get("docker_persist_across_processes", True),
-                                "docker_orphan_reaper": config.get("docker_orphan_reaper", True),
+                                "container_cpu": _cc("container_cpu", 1),
+                                "container_memory": _cc("container_memory", 5120),
+                                "container_disk": _cc("container_disk", 51200),
+                                "container_persistent": _cc("container_persistent", True),
+                                "modal_mode": _cc("modal_mode", "auto"),
+                                "docker_volumes": _cc("docker_volumes", []),
+                                "docker_mount_cwd_to_workspace": _cc("docker_mount_cwd_to_workspace", False),
+                                "docker_forward_env": _cc("docker_forward_env", []),
+                                "docker_env": _cc("docker_env", {}),
+                                "docker_run_as_host_user": _cc("docker_run_as_host_user", False),
+                                "docker_extra_args": _cc("docker_extra_args", []),
+                                "docker_network": _cc("docker_network", True),
+                                "docker_persist_across_processes": _cc("docker_persist_across_processes", True),
+                                "docker_orphan_reaper": _cc("docker_orphan_reaper", True),
                             }
 
                         local_config = None
