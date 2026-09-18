@@ -1,0 +1,134 @@
+/**
+ * The nine chip kinds, carried over from the zero-build IIFE this package
+ * replaces (`plugins/hermes-crew/dashboard/dist/index.js`), which in turn
+ * ported them from OpenGrokBot's web client.
+ *
+ * A chip exists because some of what a teammate produces is *structured* and
+ * loses its meaning as prose. "Salesforce → list pulled · 52 accounts" scans in
+ * a second; the same sentence buried in a paragraph does not. Errand has no
+ * equivalent — its `MessagePart` union is text, activity or attachment — which
+ * is why `ChipPart` is our one addition to its domain model.
+ */
+
+import { Check, Clock, CornerDownRight, KeyRound, ShieldAlert } from "lucide-react";
+import type { ChipKind } from "../../domain/types";
+
+interface ReportLine { system?: string; result?: string; count?: string }
+
+function Chip({ label, kind = "", children }: { label?: string; kind?: string; children: React.ReactNode }) {
+  return <div className={`crew-chip ${kind}`}>
+    {label && <div className="crew-chip-label">{label}</div>}
+    {children}
+  </div>;
+}
+
+function ReportChip({ payload }: { payload: { lines?: ReportLine[]; closing?: string } }) {
+  return <Chip kind="report">
+    {(payload.lines ?? []).map((line, index) => <div className="crew-report-line" key={index}>
+      <span className="crew-report-check"><Check size={13} /></span>
+      <span className="crew-report-system">{line.system}</span>
+      <span className="crew-report-arrow">→</span>
+      <span>{line.result}{line.count && <span className="crew-report-count"> · {line.count}</span>}</span>
+    </div>)}
+    {payload.closing && <div className="crew-report-closing">{payload.closing}</div>}
+  </Chip>;
+}
+
+function ApprovalChip({ payload, onDecide }: {
+  payload: { approval_id?: number; action?: string; detail?: string; status?: string };
+  onDecide(approvalId: string, decision: "allow" | "deny"): void;
+}) {
+  const resolved = payload.status === "approved" || payload.status === "discarded";
+  return <div className={`crew-chip approval ${resolved ? "resolved" : ""}`}>
+    <div className="crew-chip-label"><ShieldAlert size={13} /> {resolved ? "Decided" : "Needs you"}</div>
+    <div className="crew-approval-action">{payload.action}</div>
+    {payload.detail && <div className="crew-approval-detail">{payload.detail}</div>}
+    {resolved
+      ? <div className="crew-approval-outcome">{payload.status === "approved" ? "Approved" : "Discarded"}</div>
+      : <div className="crew-approval-buttons">
+          <button className="crew-btn danger" onClick={() => onDecide(String(payload.approval_id), "deny")}>Discard</button>
+          <button className="crew-btn primary" onClick={() => onDecide(String(payload.approval_id), "allow")}>Approve</button>
+        </div>}
+  </div>;
+}
+
+function ResolvedChip({ payload }: { payload: { action?: string; status?: string } }) {
+  return <Chip label="You decided">
+    <div className="crew-approval-action">{payload.action}</div>
+    <div className="crew-approval-outcome">{payload.status === "approved" ? "Approved" : "Discarded"}</div>
+  </Chip>;
+}
+
+function MemoryChip({ payload }: { payload: { rule?: string; diff?: string } }) {
+  return <Chip label="Memory updated">
+    <div className="crew-memory-rule">{payload.rule}</div>
+    {payload.diff && <pre className="crew-memory-diff">{payload.diff}</pre>}
+  </Chip>;
+}
+
+function RoutineChip({ payload }: { payload: { name?: string; human?: string; cron?: string } }) {
+  return <Chip label="Routine created">
+    <div className="crew-routine-name"><Clock size={13} /> {payload.name}</div>
+    <div className="crew-routine-when">{payload.human || payload.cron}</div>
+  </Chip>;
+}
+
+function BotRefChip({ payload }: { payload: { from?: string; from_name?: string; content?: string } }) {
+  return <Chip label={`Handed over by @${payload.from_name || payload.from || "a teammate"}`}>
+    <div className="crew-botref-body"><CornerDownRight size={13} /> {payload.content}</div>
+  </Chip>;
+}
+
+function LoginChip({ payload, onOpenScreen }: {
+  payload: { site?: string; why?: string };
+  onOpenScreen(): void;
+}) {
+  return <Chip label="Needs you at the keyboard">
+    <div className="crew-login-site"><KeyRound size={13} /> Sign in to {payload.site || "a site"}</div>
+    {payload.why && <div className="crew-login-why">{payload.why}</div>}
+    {/* The point of the whole container: the operator takes the wheel, signs in
+        once, and the session persists in /workspace/.browser across restarts. */}
+    <button className="crew-btn" onClick={onOpenScreen}>Take the wheel</button>
+  </Chip>;
+}
+
+function ScreenshotChip({ payload, screenshotUrl }: {
+  payload: { url?: string; file?: string; bot_id?: string; caption?: string };
+  screenshotUrl(agentId: string, filename: string): string;
+}) {
+  const source = payload.url
+    ?? (payload.bot_id && payload.file ? screenshotUrl(payload.bot_id, payload.file) : undefined);
+  if (!source) return null;
+  return <figure className="crew-shot">
+    <img src={source} alt={payload.caption || "the teammate's screen"} loading="lazy" />
+    {payload.caption && <figcaption>{payload.caption}</figcaption>}
+  </figure>;
+}
+
+export interface ChipHandlers {
+  onDecide(approvalId: string, decision: "allow" | "deny"): void;
+  onOpenScreen(): void;
+  screenshotUrl(agentId: string, filename: string): string;
+}
+
+export function ChipView({ kind, payload, handlers }: {
+  kind: ChipKind;
+  payload: unknown;
+  handlers: ChipHandlers;
+}) {
+  // Payloads come from the model by way of `crew/tools.py`, which validates
+  // shape but not every field, so each chip reads defensively rather than
+  // letting one missing key blank the thread.
+  const data = (payload ?? {}) as Record<string, never>;
+  switch (kind) {
+    case "report": return <ReportChip payload={data} />;
+    case "approval_request": return <ApprovalChip payload={data} onDecide={handlers.onDecide} />;
+    case "approval_resolved": return <ResolvedChip payload={data} />;
+    case "memory_updated": return <MemoryChip payload={data} />;
+    case "routine_created": return <RoutineChip payload={data} />;
+    case "bot_ref": return <BotRefChip payload={data} />;
+    case "login_request": return <LoginChip payload={data} onOpenScreen={handlers.onOpenScreen} />;
+    case "screenshot": return <ScreenshotChip payload={data} screenshotUrl={handlers.screenshotUrl} />;
+    default: return null;
+  }
+}

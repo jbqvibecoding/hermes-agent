@@ -178,6 +178,7 @@ def handle_hold_for_approval(args: dict, **_kw: Any) -> str:
         thread_id=turn.thread_id,
         sender=turn.bot_id,
         kind="approval_request",
+        turn_id=turn.turn_id,
         payload={
             "approval_id": approval["id"],
             "action": action,
@@ -189,6 +190,15 @@ def handle_hold_for_approval(args: dict, **_kw: Any) -> str:
     # Without it, resolving cannot flip *this* chip and the operator gets a
     # second one instead of an answered first.
     crew_approvals.attach_approval_message(conn, int(approval["id"]), int(chip["id"]))
+
+    # The chip rides the message tail like any other row. These two do not have
+    # a row to ride: the detail panel keeps its own approvals list, and the
+    # sidebar's amber `waiting_for_approval` is computed, not stored. Without
+    # them the operator sees the chip but the roster still reads "idle".
+    from crew import contract as crew_contract
+
+    orchestrator.emit_event(crew_contract.approval_updated(approval))
+    orchestrator.emit_status(turn.bot_id, "waiting_for_approval")
 
     return json.dumps(
         {

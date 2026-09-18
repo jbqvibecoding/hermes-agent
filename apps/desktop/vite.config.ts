@@ -59,6 +59,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@hermes/shared': path.resolve(__dirname, '../shared/src'),
+      '@hermes/crew-ui/styles.css': path.resolve(__dirname, '../crew-ui/src/ui/styles.css'),
+      '@hermes/crew-ui': path.resolve(__dirname, '../crew-ui/src/index.ts'),
       react: path.resolve(__dirname, '../../node_modules/react'),
       'react-dom': path.resolve(__dirname, '../../node_modules/react-dom'),
       'react/jsx-dev-runtime': path.resolve(__dirname, '../../node_modules/react/jsx-dev-runtime.js'),

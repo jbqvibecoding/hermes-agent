@@ -3,7 +3,7 @@
   "label": "Crew",
   "description": "Always-on AI teammates — one thread each, a computer each, work held at the door until you approve it",
   "icon": "Users",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "tab": {
     "path": "/crew",
     "position": "before:sessions"

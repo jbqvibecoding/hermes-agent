@@ -221,6 +221,9 @@ def endpoints(bot_id: str) -> dict:
         "container_id": cid,
         "vnc_url": f"http://127.0.0.1:{vnc}" if vnc else None,
         "cdp_url": f"http://127.0.0.1:{cdp}" if cdp else None,
+        # The WebSocket websockify serves on the same port. This is what the
+        # noVNC RFB client connects to directly — see `vnc_session()`.
+        "vnc_ws_url": f"ws://127.0.0.1:{vnc}/websockify" if vnc else None,
     }
     if not vnc:
         result["error"] = (
@@ -229,6 +232,58 @@ def endpoints(bot_id: str) -> dict:
             f"`docker rm -f {cid[:12]}` and it will come back configured."
         )
     return result
+
+
+def vnc_session(bot_id: str, *, start: bool = False) -> Optional[dict]:
+    """Return an Errand ``CloudComputerSession``, or ``None`` when there is no screen.
+
+    ``{url, protocols, mode}`` is exactly what the ported ``VncSurface`` feeds
+    to ``new RFB(target, session.url, {wsProtocols: session.protocols})``.
+    Driving the RFB client directly — rather than pointing an iframe at
+    ``vnc.html`` — is what buys the things that matter for *this* container:
+
+    * a **view-only** mode, so the thread can show a live preview that the
+      operator cannot accidentally type into, separate from taking the wheel;
+    * a first-frame deadline. Xvfb + x11vnc will happily accept a connection
+      before Chromium has painted anything, and "connected but black forever"
+      is this image's most likely failure. An iframe cannot tell the difference;
+      the RFB client plus ``canvasHasVisualFrame`` can.
+
+    ``protocols`` is empty because websockify on loopback needs no ticket —
+    there is no gateway to authenticate to. The field stays in the shape so the
+    component is unmodified and a future remote computer can fill it.
+    """
+    info = ensure(bot_id) if start else endpoints(bot_id)
+    url = info.get("vnc_ws_url")
+    if not url:
+        return None
+    return {"url": url, "protocols": [], "mode": "remote"}
+
+
+def cloud_computer(bot_id: str) -> dict:
+    """Errand's ``CloudComputer`` shape for the detail panel.
+
+    ``starting`` is reported when the container is up but has not published a
+    screen yet, which is the window where the panel should say "starting" rather
+    than offering a Connect button that would fail.
+    """
+    info = endpoints(bot_id)
+    if not info.get("running"):
+        status = "offline"
+    elif info.get("vnc_ws_url"):
+        status = "online"
+    else:
+        status = "starting"
+    computer = {
+        "id": task_id_for(bot_id),
+        "agentId": bot_id,
+        "runtimeName": task_id_for(bot_id),
+        "status": status,
+        "capabilities": ["open", "takeover"],
+    }
+    if info.get("error"):
+        computer["error"] = info["error"]
+    return computer
 
 
 def ensure(bot_id: str, *, timeout: int = 120) -> dict:

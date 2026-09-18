@@ -31,6 +31,8 @@ from __future__ import annotations
 import contextvars
 import logging
 import threading
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Sequence
 
@@ -52,10 +54,17 @@ class TurnContext:
     ``tools/approval.py`` uses to carry the gateway session identity into tool
     dispatch, and for the same reason: turns run concurrently in executor
     threads, so a module-global would race.
+
+    ``turn_id`` is minted per turn and is the root of the message ids this turn
+    produces (``{turn_id}:user`` / ``{turn_id}:agent``). That convention is not
+    cosmetic: the ported ``useCrewController`` reconciles optimistic bubbles
+    against server messages by parsing exactly those shapes, so changing it
+    silently breaks message identity in the UI.
     """
 
     bot_id: str
     thread_id: str
+    turn_id: str = ""
     hop: int = 0
     group_title: Optional[str] = None
 
@@ -106,12 +115,17 @@ def resolve_turn() -> Optional[TurnContext]:
     return TurnContext(bot_id=bot_id, thread_id=crew_db.ensure_dm_thread(conn, bot_id))
 
 
-# Broadcast sink, installed by the dashboard plugin. Kept as a plain hook so
+# Broadcast sinks, installed by the dashboard plugin. Kept as plain hooks so
 # the orchestrator is testable, and usable, with no web server running — a
 # routine firing in the gateway process has no WebSocket to talk to and must
 # still work.
 StatusSink = Callable[[str, str], None]
 _status_sink: Optional[StatusSink] = None
+
+#: Called with one ready-to-send event frame. Used for the transients that have
+#: no durable row to tail: token deltas and stream boundaries.
+EventSink = Callable[[dict], None]
+_event_sink: Optional[EventSink] = None
 
 
 def set_status_sink(sink: Optional[StatusSink]) -> None:
@@ -119,13 +133,155 @@ def set_status_sink(sink: Optional[StatusSink]) -> None:
     _status_sink = sink
 
 
-def _emit_status(bot_id: str, state: str) -> None:
+def set_event_sink(sink: Optional[EventSink]) -> None:
+    global _event_sink
+    _event_sink = sink
+
+
+def emit_status(bot_id: str, state: str) -> None:
     if _status_sink is None:
         return
     try:
         _status_sink(bot_id, state)
     except Exception:
         log.debug("crew: status sink failed", exc_info=True)
+
+
+def emit_event(event: dict) -> None:
+    if _event_sink is None:
+        return
+    try:
+        _event_sink(event)
+    except Exception:
+        log.debug("crew: event sink failed", exc_info=True)
+
+
+def new_turn_id() -> str:
+    """Mint the id every message and activity in one turn hangs off."""
+    return f"turn_{uuid.uuid4().hex[:16]}"
+
+
+# Who is mid-turn right now. Deliberately in-process and not persisted: a
+# crashed or restarted process must not leave a teammate looking busy forever,
+# and the truthful answer after a restart is "nobody is working", because
+# nobody is. A counter rather than a set because a teammate can be running a
+# DM turn and a group round at the same time.
+_working: dict[str, int] = {}
+_working_lock = threading.Lock()
+
+
+def working_bot_ids() -> frozenset[str]:
+    with _working_lock:
+        return frozenset(bot_id for bot_id, depth in _working.items() if depth > 0)
+
+
+def _mark_working(bot_id: str, delta: int) -> None:
+    with _working_lock:
+        depth = _working.get(bot_id, 0) + delta
+        if depth > 0:
+            _working[bot_id] = depth
+        else:
+            _working.pop(bot_id, None)
+
+
+# ---------------------------------------------------------------------------
+# Per-turn agent callbacks
+#
+# These are attached to the cached agent at the start of every turn rather than
+# read from a contextvar inside the callback. Two reasons, both load-bearing:
+# the agent instance is cached per thread and outlives any one turn, so a
+# closure baked in at construction would report into the wrong turn; and the
+# tool-completion callback can fire from a tool executor worker thread, where
+# the turn contextvar may not have been propagated. Binding explicitly per turn
+# sidesteps both.
+# ---------------------------------------------------------------------------
+
+
+#: How often an in-flight reply's accumulated text is written to SQLite.
+#: The live text reaches the browser over the event stream, so the row only has
+#: to be correct for whoever opens the thread *later* — persisting every token
+#: would be one write per token for no reader.
+_DELTA_PERSIST_INTERVAL_S = 0.5
+
+
+def _attach_turn_callbacks(agent: Any, context: TurnContext, reply: Optional[dict] = None) -> None:
+    from crew import activity as crew_activity
+
+    def on_tool_start(tool_call_id: str, name: str, args: Any) -> None:
+        try:
+            event = crew_activity.upsert_activity(
+                crew_db.connect(),
+                tool_call_id=str(tool_call_id),
+                thread_id=context.thread_id,
+                turn_id=context.turn_id,
+                tool_name=str(name),
+                args=args,
+                status="running",
+            )
+            emit_event({"type": "activity.updated", "activity": event})
+        except Exception:
+            log.debug("crew: tool start not recorded", exc_info=True)
+
+    def on_tool_complete(tool_call_id: str, name: str, args: Any, result: Any) -> None:
+        try:
+            event = crew_activity.upsert_activity(
+                crew_db.connect(),
+                tool_call_id=str(tool_call_id),
+                thread_id=context.thread_id,
+                turn_id=context.turn_id,
+                tool_name=str(name),
+                args=args,
+                status="failed" if crew_activity.looks_failed(result) else "completed",
+                output=crew_activity.tool_result_text(result),
+            )
+            emit_event({"type": "activity.updated", "activity": event})
+        except Exception:
+            log.debug("crew: tool completion not recorded", exc_info=True)
+
+    buffer: list[str] = []
+    last_persist = [0.0]
+
+    def on_delta(text: Optional[str]) -> None:
+        # Hermes sends ``None`` to flush the stream before it runs tools
+        # (agent/conversation_loop.py). That is exactly Errand's
+        # ``message.completed {notify: false}``: the assistant turn was
+        # interrupted by tool use, so the bubble blanks but keeps streaming.
+        try:
+            if text is None:
+                buffer.clear()
+                emit_event(
+                    {
+                        "type": "message.completed",
+                        "messageId": f"{context.turn_id}:agent",
+                        "threadId": context.thread_id,
+                        "notify": False,
+                    }
+                )
+                return
+            if not text:
+                return
+            buffer.append(text)
+            emit_event(
+                {
+                    "type": "message.delta",
+                    "messageId": f"{context.turn_id}:agent",
+                    "threadId": context.thread_id,
+                    "delta": text,
+                }
+            )
+            if reply is not None:
+                now = time.monotonic()
+                if now - last_persist[0] >= _DELTA_PERSIST_INTERVAL_S:
+                    last_persist[0] = now
+                    crew_db.update_message_text(
+                        crew_db.connect(), int(reply["id"]), "".join(buffer), streaming=True
+                    )
+        except Exception:
+            log.debug("crew: delta not forwarded", exc_info=True)
+
+    agent.tool_start_callback = on_tool_start
+    agent.tool_complete_callback = on_tool_complete
+    agent.stream_delta_callback = on_delta
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +532,7 @@ def start_turn(
     text: str,
     *,
     persist_user_message: bool = True,
+    turn_id: Optional[str] = None,
     hop: int = 0,
     group: Optional[tuple[str, Sequence[str]]] = None,
 ) -> dict:
@@ -384,61 +541,135 @@ def start_turn(
     Synchronous by design: the HTTP layer answers 202 and calls this on a
     worker, so everything the operator sees arrives over the event stream. The
     caller is responsible for not blocking a request thread on it.
+
+    ``turn_id`` is normally minted here. The HTTP layer passes one in because
+    ``sendMessage`` has to *return* the ``{turn}:user`` message before the
+    worker starts — the client parses that id to learn which ``{turn}:agent``
+    its optimistic reply bubble will become (``useCrewController``'s
+    ``sendMessage``). Minting it on the worker would be a round-trip too late.
     """
+    from crew import activity as crew_activity
+
     conn = crew_db.connect()
     bot = crew_db.get_bot(conn, bot_id)
     if bot is None:
         raise ValueError(f"No teammate called {bot_id}.")
 
+    turn_id = turn_id or new_turn_id()
+
     if persist_user_message:
         crew_db.insert_message(
-            conn, thread_id=thread_id, sender="user", kind="text", content=text
+            conn,
+            thread_id=thread_id,
+            sender="user",
+            kind="text",
+            content=text,
+            turn_id=turn_id,
+            ext_id=f"{turn_id}:user",
         )
 
     context = TurnContext(
         bot_id=bot_id,
         thread_id=thread_id,
+        turn_id=turn_id,
         hop=hop,
         group_title=group[0] if group else None,
     )
     token = _turn_context.set(context)
-    _emit_status(bot_id, "thinking")
+    _mark_working(bot_id, +1)
+    emit_status(bot_id, "working")
+
+    # The reply row exists from the first moment so deltas have somewhere to
+    # accumulate and the client has a stable id to stream into. It is empty and
+    # `streaming` until the turn settles.
+    #
+    # Reserving the slot up front means the reply sits *above* any chip the
+    # turn goes on to file. That is deliberate rather than tolerated: the
+    # client appends its optimistic reply bubble at send time for the same
+    # reason, so the live thread and a reloaded one agree. Ordering them the
+    # other way would need the id before the row, which is the whole problem.
+    reply = crew_db.insert_message(
+        conn,
+        thread_id=thread_id,
+        sender=bot_id,
+        kind="text",
+        content="",
+        turn_id=turn_id,
+        ext_id=f"{turn_id}:agent",
+        streaming=True,
+    )
+
     try:
         with _thread_lock(thread_id), _profile_scope(bot_id):
             computer_live = _prepare_computer(bot_id, want=has_computer(bot_id))
             agent = _get_agent(bot, thread_id, has_computer=computer_live, group=group)
+            _attach_turn_callbacks(agent, context, reply)
             result = agent.run_conversation(
                 user_message=text,
                 task_id=crew_computer.task_id_for(bot_id),
             )
 
-        final = (result or {}).get("final_response") or ""
-        if final.strip():
-            crew_db.insert_message(
-                conn, thread_id=thread_id, sender=bot_id, kind="text", content=final.strip()
-            )
-        elif (result or {}).get("error"):
-            crew_db.insert_message(
-                conn,
-                thread_id=thread_id,
-                sender=bot_id,
-                kind="text",
-                content=f"⚠️ {bot['name']} hit an error: {result['error']}",
-            )
+        final = ((result or {}).get("final_response") or "").strip()
+        if not final and (result or {}).get("error"):
+            final = f"⚠️ {bot['name']} hit an error: {result['error']}"
+        _settle_reply(conn, reply, final)
         return result or {}
     except Exception as exc:  # noqa: BLE001 — the thread must show what broke
         log.exception("crew: turn failed for %s in %s", bot_id, thread_id)
-        crew_db.insert_message(
-            conn,
-            thread_id=thread_id,
-            sender=bot_id,
-            kind="text",
-            content=f"⚠️ {bot['name']} hit an error: {exc}",
-        )
+        _settle_reply(conn, reply, f"⚠️ {bot['name']} hit an error: {exc}")
         return {"error": str(exc)}
     finally:
+        # A tool left `running` because the turn died would spin in the UI
+        # forever, reading as "still working" long after nothing is.
+        for stale in crew_activity.interrupt_running(conn, turn_id):
+            emit_event({"type": "activity.updated", "activity": stale})
         _turn_context.reset(token)
-        _emit_status(bot_id, "idle")
+        _mark_working(bot_id, -1)
+        # Not a hardcoded "idle": a teammate that ended its turn by holding an
+        # action is waiting for a *person*, and announcing idle here would
+        # repaint the sidebar grey the instant the amber badge was earned.
+        emit_status(bot_id, roster.teammate_status(conn, bot_id, working=bot_id in working_bot_ids()))
+
+
+def _settle_reply(conn, reply: dict, final: str) -> None:
+    """Finish the streaming reply row: write the text, clear the flag, announce.
+
+    An empty final response is normal — a teammate that filed a report chip and
+    had nothing left to say produces one. The row is deleted rather than left
+    as an empty bubble, and the client is told to drop it.
+
+    Two frames, and both are needed. ``message.updated`` carries the *text*:
+    the row was created empty and finished with an UPDATE, so the rowid tail
+    will never re-deliver it, and a provider that does not stream at all would
+    otherwise leave the bubble blank forever. ``message.completed`` then clears
+    the spinner and fires the notification.
+    """
+    from crew import contract as crew_contract
+
+    if final:
+        crew_db.update_message_text(conn, int(reply["id"]), final, streaming=False)
+        emit_event(
+            crew_contract.message_updated({**reply, "content": final, "streaming": False})
+        )
+        emit_event(
+            {
+                "type": "message.completed",
+                "messageId": reply["ext_id"],
+                "threadId": reply["thread_id"],
+                "notify": True,
+            }
+        )
+        return
+
+    conn.execute("DELETE FROM messages WHERE id = ?", (int(reply["id"]),))
+    conn.commit()
+    emit_event(
+        {
+            "type": "message.dropped",
+            "messageId": reply["ext_id"],
+            "threadId": reply["thread_id"],
+        }
+    )
 
 
 def start_turn_async(bot_id: str, thread_id: str, text: str, **kwargs) -> threading.Thread:
@@ -511,7 +742,13 @@ def relay(from_bot_id: str, to_bot_id: str, content: str, hop: int) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def run_group_round(thread_id: str, text: str) -> None:
+def run_group_round(
+    thread_id: str,
+    text: str,
+    *,
+    turn_id: str = "",
+    persist_user_message: bool = True,
+) -> None:
     """Ask the room, then let the chief close it.
 
     Members speak **sequentially**, non-chief first and the chief last. The
@@ -526,7 +763,10 @@ def run_group_round(thread_id: str, text: str) -> None:
     if thread is None:
         raise ValueError(f"No thread called {thread_id}.")
 
-    crew_db.insert_message(conn, thread_id=thread_id, sender="user", kind="text", content=text)
+    if persist_user_message:
+        crew_db.insert_message(
+            conn, thread_id=thread_id, sender="user", kind="text", content=text
+        )
 
     chief = roster.chief_id()
     members = [crew_db.get_bot(conn, bot_id) for bot_id in crew_db.thread_members(conn, thread_id)]
@@ -534,22 +774,28 @@ def run_group_round(thread_id: str, text: str) -> None:
     names = [m["name"] for m in members]
     speakers = [m for m in members if m["id"] != chief] + [m for m in members if m["id"] == chief]
 
-    for bot in speakers:
+    for index, bot in enumerate(speakers):
         seed = prompts.group_chief_seed(text) if bot["id"] == chief else prompts.group_member_seed(text)
         start_turn(
             bot["id"],
             thread_id,
             seed,
             persist_user_message=False,
+            # Only the first speaker inherits the caller's turn. The client is
+            # holding one optimistic reply bubble keyed on `{turn}:agent`, so
+            # exactly one reply has to claim it; everyone after that is a new
+            # message arriving in the room, which is what a group round looks
+            # like anyway.
+            turn_id=turn_id if index == 0 else None,
             group=(thread["title"], names),
         )
 
 
-def run_group_round_async(thread_id: str, text: str) -> threading.Thread:
+def run_group_round_async(thread_id: str, text: str, **kwargs) -> threading.Thread:
     ctx = contextvars.copy_context()
     thread = threading.Thread(
         target=ctx.run,
-        args=(lambda: run_group_round(thread_id, text),),
+        args=(lambda: run_group_round(thread_id, text, **kwargs),),
         name=f"crew-group-{thread_id}",
         daemon=True,
     )
@@ -578,17 +824,24 @@ def settle_approval(approval_id: int, decision: str) -> str:
     if approval is None:
         return "settled"
 
+    from crew import contract as crew_contract
+
     if approval["message_id"]:
-        crew_db.update_message_payload(
-            conn,
-            approval["message_id"],
-            {
-                "approval_id": approval["id"],
-                "action": approval["action"],
-                "detail": approval["detail"],
-                "status": approval["status"],
-            },
-        )
+        payload = {
+            "approval_id": approval["id"],
+            "action": approval["action"],
+            "detail": approval["detail"],
+            "status": approval["status"],
+        }
+        crew_db.update_message_payload(conn, approval["message_id"], payload)
+        # Same reason as _settle_reply: rewriting a payload in place is an
+        # UPDATE, which the rowid tail cannot see. Without this the chip stays
+        # on "Waiting for you" until the operator reloads the thread.
+        chip = crew_db.get_message(conn, int(approval["message_id"]))
+        if chip is not None:
+            emit_event(crew_contract.message_updated(chip))
+
+    emit_event(crew_contract.approval_updated(approval))
 
     crew_db.insert_message(
         conn,
@@ -619,29 +872,61 @@ def settle_approval(approval_id: int, decision: str) -> str:
 
 
 def handle_user_message(thread_id: str, text: str) -> dict:
-    """Route one typed message. Returns what the HTTP layer should report.
+    """Route one typed message. Returns the **persisted user message row**.
 
     Three shapes, in priority order: a bare 👍 releases the newest pending
     approval in this thread, a group thread runs a round, and anything else is
     a turn for that teammate.
+
+    All three persist the operator's words first and hand back that row, and
+    the turn id is minted here rather than on the worker. Both are required by
+    the client: it shows an optimistic bubble the instant Enter is pressed and
+    reconciles it against the returned id, reading ``{turn}`` out of
+    ``{turn}:user`` to know which ``{turn}:agent`` its reply bubble becomes.
+    A 202 with no message would leave that bubble unclaimed, and it would
+    vanish on the next snapshot refresh — including for 👍, which used to
+    persist nothing at all.
+
+    The thread is validated *before* the insert so a bad id cannot leave an
+    orphan row in a thread nobody will ever open.
     """
     conn = crew_db.connect()
     body = (text or "").strip()
     if not body:
         raise ValueError("Say something.")
 
+    is_group = crew_db.is_group_thread(thread_id)
+    bot_id = crew_db.bot_id_of_dm(thread_id)
+    if is_group:
+        if crew_db.get_thread(conn, thread_id) is None:
+            raise ValueError(f"No thread called {thread_id}.")
+    elif not bot_id or crew_db.get_bot(conn, bot_id) is None:
+        raise ValueError(f"No thread called {thread_id}.")
+
+    turn_id = new_turn_id()
+    message = crew_db.insert_message(
+        conn,
+        thread_id=thread_id,
+        sender="user",
+        kind="text",
+        content=body,
+        turn_id=turn_id,
+        ext_id=f"{turn_id}:user",
+    )
+
     if crew_approvals.is_thumbs_up(body):
         pending = crew_approvals.latest_pending_approval(conn, thread_id)
         if pending is not None:
-            outcome = settle_approval(int(pending["id"]), "approve")
-            return {"ok": True, "approved": outcome == "ok", "approval_id": pending["id"]}
+            # The continuation turn mints its own id — it is a different turn,
+            # started by the decision rather than by these two characters.
+            settle_approval(int(pending["id"]), "approve")
+            return message
 
-    if crew_db.is_group_thread(thread_id):
-        run_group_round_async(thread_id, body)
-        return {"ok": True, "group": True}
+    if is_group:
+        run_group_round_async(thread_id, body, turn_id=turn_id, persist_user_message=False)
+        return message
 
-    bot_id = crew_db.bot_id_of_dm(thread_id)
-    if not bot_id or crew_db.get_bot(conn, bot_id) is None:
-        raise ValueError(f"No thread called {thread_id}.")
-    start_turn_async(bot_id, thread_id, body)
-    return {"ok": True}
+    start_turn_async(
+        bot_id, thread_id, body, turn_id=turn_id, persist_user_message=False
+    )
+    return message

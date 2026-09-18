@@ -17,9 +17,15 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": ["./src/*"],
-      "@hermes/shared": ["../shared/src/index.ts"]
+      "@hermes/shared": ["../shared/src/index.ts"],
+      "@hermes/crew-ui": ["../crew-ui/src/index.ts"],
+      "@hermes/crew-ui/styles.css": ["../crew-ui/src/ui/styles.css"]
     }
   },
-  "include": ["src", "../shared/src"],
+  "include": ["src", "../shared/src", "../crew-ui/src"],
+  // crew-ui's tests run under its own vitest config and expect globals this
+  // project does not declare; type-checking them here would fail on matchers
+  // that are perfectly well typed where they actually run.
+  "exclude": ["../crew-ui/src/**/*.test.ts", "../crew-ui/src/**/*.test.tsx", "../crew-ui/src/test"],
   "references": []
 }

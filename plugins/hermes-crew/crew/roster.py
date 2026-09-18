@@ -25,6 +25,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+from crew import approvals as crew_approvals
 from crew import db as crew_db
 
 log = logging.getLogger(__name__)
@@ -159,22 +160,59 @@ def configure_profile_for_crew(bot_id: str, *, with_computer: bool = True) -> No
 # ---------------------------------------------------------------------------
 
 
-def teammate_view(conn: sqlite3.Connection, bot: dict) -> dict:
+#: Errand's four agent states. ``waiting_for_approval`` is the one that earns
+#: its keep: it is the only state that needs a *person*, and before this the
+#: sidebar rendered it identically to "idle" — a teammate stopped at the door
+#: with a drafted email looked exactly like a teammate with nothing to do.
+AGENT_STATUSES = ("working", "idle", "waiting_for_approval", "offline")
+
+
+def teammate_status(conn: sqlite3.Connection, bot_id: str, *, working: bool = False) -> str:
+    """Resolve a teammate's state for the roster.
+
+    ``waiting_for_approval`` outranks ``working``: a teammate can have a held
+    action *and* a running follow-up turn, and the held action is the one the
+    operator has to do something about.
+    """
+    thread_id = crew_db.dm_thread_id(bot_id)
+    if crew_approvals.latest_pending_approval(conn, thread_id) is not None:
+        return "waiting_for_approval"
+    if working:
+        return "working"
+    return "idle" if profile_dir(bot_id).is_dir() else "offline"
+
+
+def teammate_view(conn: sqlite3.Connection, bot: dict, *, working: bool = False) -> dict:
     """Shape one roster row the way the sidebar wants it."""
+    thread_id = crew_db.dm_thread_id(bot["id"])
     return {
         "id": bot["id"],
         "name": bot["name"],
         "role": bot["role"],
         "emoji": bot["emoji"],
         "section_id": bot["section_id"],
-        "thread_id": crew_db.dm_thread_id(bot["id"]),
+        "thread_id": thread_id,
+        "created_at": bot["created_at"],
+        "status": teammate_status(conn, bot["id"], working=working),
         "exists": profile_dir(bot["id"]).is_dir(),
-        "last_message": crew_db.last_message(conn, crew_db.dm_thread_id(bot["id"])),
+        "last_message": crew_db.last_message(conn, thread_id),
     }
 
 
 def list_teammates(conn: sqlite3.Connection) -> list[dict]:
-    return [teammate_view(conn, bot) for bot in crew_db.list_bots(conn)]
+    """The roster, with each teammate's live state.
+
+    "Who is working right now" lives in the orchestrator's in-process registry,
+    not the database — it is a transient, and a crashed process must not leave
+    a teammate looking busy forever.
+    """
+    from crew.orchestrator import working_bot_ids
+
+    busy = working_bot_ids()
+    return [
+        teammate_view(conn, bot, working=bot["id"] in busy)
+        for bot in crew_db.list_bots(conn)
+    ]
 
 
 def list_conversations(conn: sqlite3.Connection) -> list[dict]:
@@ -188,6 +226,7 @@ def list_conversations(conn: sqlite3.Connection) -> list[dict]:
 
     for bot in bots.values():
         thread_id = crew_db.dm_thread_id(bot["id"])
+        thread = crew_db.get_thread(conn, thread_id)
         conversations.append(
             {
                 "id": thread_id,
@@ -196,6 +235,7 @@ def list_conversations(conn: sqlite3.Connection) -> list[dict]:
                 "emoji": bot["emoji"],
                 "subtitle": bot["role"],
                 "members": [bot["id"]],
+                "created_at": (thread or {}).get("created_at") or bot["created_at"],
                 "last_message": crew_db.last_message(conn, thread_id),
             }
         )
@@ -213,11 +253,54 @@ def list_conversations(conn: sqlite3.Connection) -> list[dict]:
                 "emoji": "👥",
                 "subtitle": ", ".join(bots[m]["name"] if m in bots else m for m in members),
                 "members": members,
+                "created_at": row["created_at"],
                 "last_message": crew_db.last_message(conn, row["id"]),
             }
         )
 
     return conversations
+
+
+def conversations_for(conn: sqlite3.Connection, bot_id: str) -> list[dict]:
+    """This teammate's threads: its DM first, then any room it sits in.
+
+    The DM has to come first — the ported controller opens ``conversations[0]``
+    when a teammate is selected (``useCrewController``'s snapshot effect), and
+    clicking a name in the sidebar means "talk to them", not "join whichever
+    room they happen to be in".
+    """
+    dm_id = crew_db.dm_thread_id(bot_id)
+    return [
+        view
+        for view in list_conversations(conn)
+        if view["id"] == dm_id or bot_id in (view.get("members") or [])
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Model providers
+# ---------------------------------------------------------------------------
+
+
+def model_providers() -> list[dict]:
+    """The providers a new teammate can be pointed at.
+
+    ``explicit_only`` is the important flag: it keeps ambient, auto-discovered
+    credentials out of the list, so the hire dialog can only offer a provider
+    the operator has actually configured. Offering one they have not would
+    produce a teammate that fails on its first turn.
+
+    Network probing is off — this is a dialog open, not a model refresh, and a
+    slow local endpoint must not hold up hiring.
+    """
+    from hermes_cli.inventory import build_models_payload, load_picker_context
+
+    payload = build_models_payload(
+        load_picker_context(),
+        explicit_only=True,
+        probe_custom_providers=False,
+    )
+    return [row for row in (payload.get("providers") or []) if isinstance(row, dict)]
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +312,40 @@ class HireError(ValueError):
     """A hire that cannot proceed, with a message meant for the operator."""
 
 
+def apply_model_provider(bot_id: str, provider_id: str) -> None:
+    """Point one teammate at a specific provider from the catalog.
+
+    Written into *that teammate's* ``config.yaml`` under a HERMES_HOME
+    override, which is what lets one crew run on several providers at once —
+    ``orchestrator._resolve_model_and_runtime`` re-reads both keys inside the
+    same override at the start of every turn.
+
+    Only providers :func:`model_providers` offered can arrive here, and it only
+    offers ones the operator has explicitly configured, so this cannot point a
+    teammate at an endpoint it has no credentials for.
+    """
+    provider = (provider_id or "").strip()
+    if not provider:
+        return
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    token = set_hermes_home_override(str(profile_dir(bot_id)))
+    try:
+        from hermes_cli.config import load_config, save_config
+
+        cfg = load_config()
+        model_cfg = cfg.get("model")
+        if not isinstance(model_cfg, dict):
+            # A bare string means "just the model id". Keep it as the default
+            # rather than dropping the operator's choice on the floor.
+            model_cfg = {"default": model_cfg} if isinstance(model_cfg, str) else {}
+        model_cfg["provider"] = provider
+        cfg["model"] = model_cfg
+        save_config(cfg)
+    finally:
+        reset_hermes_home_override(token)
+
+
 def hire(
     conn: sqlite3.Connection,
     *,
@@ -238,6 +355,8 @@ def hire(
     clone_from: Optional[str] = "default",
     with_computer: bool = True,
     group_id: Optional[str] = None,
+    soul: Optional[str] = None,
+    model_provider: str = "",
 ) -> dict:
     """Hire a teammate: a name and one line of job description, nothing more.
 
@@ -286,7 +405,12 @@ def hire(
     except Exception as exc:  # noqa: BLE001 — surfaced to the operator verbatim
         raise HireError(f"Could not create the profile for {bot_id}: {exc}") from exc
 
-    write_soul(bot_id, soul_from_job(display_name, role))
+    write_soul(bot_id, (soul or "").strip() or soul_from_job(display_name, role))
+    if model_provider:
+        try:
+            apply_model_provider(bot_id, model_provider)
+        except Exception:
+            log.exception("crew: could not set the provider for %s", bot_id)
     try:
         configure_profile_for_crew(bot_id, with_computer=with_computer)
     except Exception:
@@ -305,6 +429,47 @@ def hire(
             crew_db.ensure_group_thread(conn, group_id, thread["title"], members)
 
     return teammate_view(conn, crew_db.get_bot(conn, bot_id))  # type: ignore[arg-type]
+
+
+def duplicate(conn: sqlite3.Connection, bot_id: str) -> dict:
+    """Hire a second teammate cloned from an existing one.
+
+    Because a teammate *is* a profile, this is genuinely a copy: cloning from
+    ``bot_id`` brings its model, provider keys and config across, and its
+    ``SOUL.md`` is carried over verbatim. What deliberately does **not** come
+    with it is the original's ``MEMORY.md`` and thread history — those are the
+    record of work *that* teammate did, and inheriting somebody else's memories
+    of conversations they were not in is a bug, not a feature.
+
+    Errand leaves this unimplemented (``contract_pending``). It costs us almost
+    nothing because ``create_profile`` already clones.
+    """
+    from hermes_cli.profiles import profile_exists
+
+    source = crew_db.get_bot(conn, bot_id)
+    if source is None:
+        raise HireError(f"There is no teammate called {bot_id}.")
+
+    base = source["name"]
+    for suffix in range(2, 100):
+        candidate = f"{base} {suffix}"
+        candidate_id = slugify_bot_id(candidate)
+        if crew_db.get_bot(conn, candidate_id) is None and not profile_exists(candidate_id):
+            # "You are Atlas" on a teammate the roster calls "Atlas 2" would
+            # have it introduce itself as its original. The name is the one
+            # thing about the soul that must not be inherited verbatim.
+            soul = read_soul(bot_id)
+            if soul and base:
+                soul = re.sub(rf"\b{re.escape(base)}\b", candidate, soul)
+            return hire(
+                conn,
+                name=candidate,
+                role=source["role"],
+                emoji=source["emoji"],
+                clone_from=bot_id,
+                soul=soul or None,
+            )
+    raise HireError(f"There are already too many copies of {base}.")
 
 
 # ---------------------------------------------------------------------------

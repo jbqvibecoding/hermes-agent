@@ -68,6 +68,7 @@ import {
   ARTIFACTS_ROUTE,
   COMMAND_CENTER_ROUTE,
   CRON_ROUTE,
+  CREW_ROUTE,
   MESSAGING_ROUTE,
   NEW_CHAT_ROUTE,
   PROFILES_ROUTE,
@@ -430,6 +431,13 @@ export function CommandPalette() {
             keywords: ['skills', 'tools', 'toolsets', 'mcp', 'capabilities'],
             label: cc.nav.skills.title,
             run: go(SKILLS_ROUTE)
+          },
+          {
+            action: 'nav.crew',
+            icon: Layers3,
+            id: 'nav-crew',
+            label: cc.nav.crew.title,
+            run: go(CREW_ROUTE)
           },
           {
             action: 'nav.messaging',

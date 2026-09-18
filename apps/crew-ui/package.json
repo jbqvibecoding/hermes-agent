@@ -1,0 +1,35 @@
+{
+  "name": "@hermes/crew-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "The Crew workspace: one React surface shared by the dashboard plugin and the desktop app.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/ui/styles.css"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@novnc/novnc": "^1.7.0",
+    "lucide-react": "^0.468.0",
+    "streamdown": "^2.6.0"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
+  }
+}

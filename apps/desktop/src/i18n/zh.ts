@@ -1202,6 +1202,7 @@ export const zh: Translations = {
       settings: { title: '设置', detail: '配置 Hermes 桌面端' },
       skills: { title: '技能与工具', detail: '启用技能、工具集与提供方' },
       messaging: { title: '消息平台', detail: '配置 Telegram、Slack、Discord 等' },
+      crew: { title: '团队', detail: '常驻队友，每人一个线程和一台电脑' },
       artifacts: { title: '产物', detail: '浏览生成的输出' }
     },
     sectionEntries: {

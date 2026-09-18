@@ -30,6 +30,8 @@ import os
 import sqlite3
 import threading
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -80,16 +82,25 @@ CREATE TABLE IF NOT EXISTS thread_members (
     PRIMARY KEY (thread_id, bot_id)
 );
 
+-- `id` stays an AUTOINCREMENT integer because it is the event tail's cursor.
+-- `ext_id` is the *client-facing* identity: `{turn}:user`, `{turn}:agent`,
+-- `{turn}:chip:{n}`. The ported useCrewController reconciles optimistic
+-- bubbles against server messages by parsing exactly those shapes, so the two
+-- identities have different jobs and both have to exist. See crew/contract.py.
 CREATE TABLE IF NOT EXISTS messages (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ext_id      TEXT,
+    turn_id     TEXT NOT NULL DEFAULT '',
     thread_id   TEXT NOT NULL,
     sender      TEXT NOT NULL,
     kind        TEXT NOT NULL DEFAULT 'text',
     content     TEXT NOT NULL DEFAULT '',
     payload     TEXT,
+    streaming   INTEGER NOT NULL DEFAULT 0,
     created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_ext ON messages(ext_id) WHERE ext_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS approvals (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,6 +121,37 @@ CREATE TABLE IF NOT EXISTS sections (
     position    INTEGER NOT NULL DEFAULT 0,
     collapsed   INTEGER NOT NULL DEFAULT 0
 );
+
+-- One row per tool call, keyed by the model's tool_call_id so start and
+-- completion upsert the same row (see crew/activity.py). `seq` is a monotonic
+-- counter the event tail rides, because the primary key is a string id and
+-- rowid would be reused after a delete.
+CREATE TABLE IF NOT EXISTS activities (
+    id          TEXT PRIMARY KEY,
+    seq         INTEGER,
+    thread_id   TEXT NOT NULL,
+    turn_id     TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL DEFAULT 'status',
+    title       TEXT NOT NULL DEFAULT '',
+    detail      TEXT NOT NULL DEFAULT '',
+    output      TEXT,
+    status      TEXT NOT NULL DEFAULT 'running',
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activities_thread ON activities(thread_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_activities_seq ON activities(seq);
+CREATE INDEX IF NOT EXISTS idx_activities_turn ON activities(turn_id, status);
+
+-- A single monotonic counter shared by every tailable table. The messages tail
+-- can use AUTOINCREMENT rowids, but activities are upserted — an update has to
+-- move the row to the *end* of the stream so subscribers see the change, which
+-- a rowid cannot do.
+CREATE TABLE IF NOT EXISTS stream_cursor (
+    id   INTEGER PRIMARY KEY CHECK (id = 1),
+    seq  INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO stream_cursor (id, seq) VALUES (1, 0);
 """
 
 # Additive column migrations, applied idempotently after _SCHEMA. Each entry is
@@ -207,6 +249,18 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def iso(epoch_ms: Optional[int]) -> str:
+    """Epoch milliseconds → ISO-8601.
+
+    Everything that crosses the wire uses this: the ported React components
+    call ``Date.parse()`` on timestamps (``WorkingActivity`` computes its
+    elapsed-time label that way), and ``Date.parse`` of a bare number is NaN.
+    """
+    if not epoch_ms:
+        return datetime.now(timezone.utc).isoformat()
+    return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc).isoformat()
+
+
 # ---------------------------------------------------------------------------
 # Thread ids
 #
@@ -261,6 +315,32 @@ def upsert_bot(
         (bot_id, name, role, emoji, section_id, now_ms()),
     )
     conn.commit()
+
+
+def update_bot(
+    conn: sqlite3.Connection,
+    bot_id: str,
+    *,
+    name: Optional[str] = None,
+    role: Optional[str] = None,
+    emoji: Optional[str] = None,
+    section_id: Optional[str] = None,
+) -> Optional[dict]:
+    """Change a teammate's display fields. ``None`` means "leave this alone".
+
+    Only the presentation layer is editable here. The teammate's *identity* is
+    its ``SOUL.md`` and its id is its profile name, and neither can be renamed
+    from a text field without moving a directory out from under a running turn.
+    """
+    updates = {"name": name, "role": role, "emoji": emoji, "section_id": section_id}
+    changes = {key: value for key, value in updates.items() if value is not None}
+    if changes:
+        assignments = ", ".join(f"{key} = ?" for key in changes)
+        conn.execute(
+            f"UPDATE bots SET {assignments} WHERE id = ?", (*changes.values(), bot_id)
+        )
+        conn.commit()
+    return get_bot(conn, bot_id)
 
 
 def get_bot(conn: sqlite3.Connection, bot_id: str) -> Optional[dict]:
@@ -354,6 +434,7 @@ def _parse_message(row: sqlite3.Row) -> dict:
     msg = dict(row)
     raw = msg.get("payload")
     msg["payload"] = json.loads(raw) if raw else None
+    msg["streaming"] = bool(msg.get("streaming"))
     return msg
 
 
@@ -365,6 +446,9 @@ def insert_message(
     kind: str = "text",
     content: str = "",
     payload: Any = None,
+    turn_id: str = "",
+    ext_id: Optional[str] = None,
+    streaming: bool = False,
 ) -> dict:
     """Append one chip to a thread and return it as the client will see it.
 
@@ -372,28 +456,55 @@ def insert_message(
     ``/events`` tail will broadcast, so callers that need the new ``id``
     (approvals must backfill it — see :mod:`crew.approvals`) get it here
     without a second read.
+
+    ``ext_id`` defaults to ``{turn_id}:chip:{uuid}`` for chips when a turn is
+    known; the orchestrator passes the explicit ``{turn}:user`` / ``{turn}:agent``
+    for the two messages the client reconciles against.
     """
     if kind not in MESSAGE_KINDS:
         raise ValueError(f"unknown message kind: {kind!r}")
     created_at = now_ms()
     payload_json = None if payload is None else json.dumps(payload, ensure_ascii=False)
+    if ext_id is None and turn_id:
+        ext_id = f"{turn_id}:chip:{uuid.uuid4().hex[:8]}"
     cur = conn.execute(
         """
-        INSERT INTO messages (thread_id, sender, kind, content, payload, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO messages (ext_id, turn_id, thread_id, sender, kind, content, payload, streaming, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (thread_id, sender, kind, content, payload_json, created_at),
+        (ext_id, turn_id, thread_id, sender, kind, content, payload_json,
+         1 if streaming else 0, created_at),
     )
     conn.commit()
     return {
         "id": int(cur.lastrowid),
+        "ext_id": ext_id,
+        "turn_id": turn_id,
         "thread_id": thread_id,
         "sender": sender,
         "kind": kind,
         "content": content,
         "payload": payload,
+        "streaming": streaming,
         "created_at": created_at,
     }
+
+
+def update_message_text(
+    conn: sqlite3.Connection, message_id: int, content: str, *, streaming: bool
+) -> None:
+    """Replace a streaming message's accumulated text.
+
+    Called on a throttle while deltas arrive, and once more when the turn
+    settles. Persisting every token would mean one SQLite write per token for
+    no benefit: the live text reaches the browser over the event stream, and
+    the row only has to be correct for whoever opens the thread *later*.
+    """
+    conn.execute(
+        "UPDATE messages SET content = ?, streaming = ? WHERE id = ?",
+        (content, 1 if streaming else 0, message_id),
+    )
+    conn.commit()
 
 
 def update_message_payload(conn: sqlite3.Connection, message_id: int, payload: Any) -> None:
@@ -408,6 +519,11 @@ def update_message_payload(conn: sqlite3.Connection, message_id: int, payload: A
         (json.dumps(payload, ensure_ascii=False), message_id),
     )
     conn.commit()
+
+
+def get_message(conn: sqlite3.Connection, message_id: int) -> Optional[dict]:
+    row = conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
+    return _parse_message(row) if row else None
 
 
 def list_messages(conn: sqlite3.Connection, thread_id: str, limit: int = 200) -> list[dict]:
@@ -444,3 +560,38 @@ def messages_after(conn: sqlite3.Connection, after_id: int, limit: int = 200) ->
 def max_message_id(conn: sqlite3.Connection) -> int:
     row = conn.execute("SELECT COALESCE(MAX(id), 0) AS m FROM messages").fetchone()
     return int(row["m"])
+
+
+# ---------------------------------------------------------------------------
+# Stream cursor
+#
+# Messages are append-only, so their AUTOINCREMENT rowid is a perfectly good
+# tail cursor. Activities are not: a tool call is upserted from `running` to
+# `completed` under the same id, and an UPDATE leaves the rowid where it was —
+# so a rowid tail would never re-deliver it and the spinner would spin forever.
+# A shared counter bumped on every write puts the updated row back at the end
+# of the stream, which is what the subscriber needs to see.
+# ---------------------------------------------------------------------------
+
+
+def next_seq(conn: sqlite3.Connection) -> int:
+    """Claim the next stream sequence number."""
+    conn.execute("UPDATE stream_cursor SET seq = seq + 1 WHERE id = 1")
+    row = conn.execute("SELECT seq FROM stream_cursor WHERE id = 1").fetchone()
+    return int(row["seq"])
+
+
+def max_activity_seq(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT COALESCE(MAX(seq), 0) AS m FROM activities").fetchone()
+    return int(row["m"])
+
+
+def activities_after(conn: sqlite3.Connection, after_seq: int, limit: int = 200) -> list[dict]:
+    """Activities whose sequence is greater than ``after_seq``, oldest first."""
+    from crew.activity import _to_event
+
+    rows = conn.execute(
+        "SELECT * FROM activities WHERE seq > ? ORDER BY seq ASC LIMIT ?",
+        (after_seq, limit),
+    ).fetchall()
+    return [_to_event(r) for r in rows]

@@ -102,6 +102,28 @@ def list_pending(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def list_approvals(
+    conn: sqlite3.Connection, bot_id: Optional[str] = None, limit: int = 50
+) -> list[dict]:
+    """Recent approvals, newest first, optionally for one teammate.
+
+    Decided ones are included rather than filtered to pending: the panel shows
+    only what is still open, but a decision the operator made a minute ago
+    disappearing from the record entirely is how "did I approve that?" becomes
+    unanswerable.
+    """
+    if bot_id:
+        rows = conn.execute(
+            "SELECT * FROM approvals WHERE bot_id = ? ORDER BY id DESC LIMIT ?",
+            (bot_id, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM approvals ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # A bare 👍 in the thread releases the newest pending approval, because that is
 # what people actually type. Strip the modifiers a keyboard may attach — skin
 # tone (U+1F3FB..U+1F3FF), the emoji/text variation selectors, and ZWJ — and

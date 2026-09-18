@@ -1022,6 +1022,7 @@ export const en: Translations = {
       settings: { title: 'Settings', detail: 'Configure Hermes desktop' },
       skills: { title: 'Capabilities', detail: 'Skills, tools, and MCP servers' },
       messaging: { title: 'Messaging', detail: 'Set up Telegram, Slack, Discord, and more' },
+      crew: { title: 'Crew', detail: 'Always-on teammates, each with a thread and a computer' },
       artifacts: { title: 'Artifacts', detail: 'Browse generated outputs' }
     },
     sectionEntries: {

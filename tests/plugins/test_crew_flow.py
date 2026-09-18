@@ -222,8 +222,12 @@ def test_a_bare_thumbs_up_releases_the_newest_hold(crew):
     crew.scripts["scout"] = ["Sent."]
     result = orchestrator.handle_user_message("dm:scout", "👍")
 
-    assert result["approved"] is True
     assert chips(crew.conn, "dm:scout", "approval_request")[0]["payload"]["status"] == "approved"
+    # The 👍 itself is persisted like any other typed message. It used to be
+    # swallowed, which left the client holding an optimistic bubble that no
+    # server message ever claimed — it vanished on the next refresh.
+    assert result["content"] == "👍"
+    assert result["ext_id"].endswith(":user")
 
 
 def test_a_thumbs_up_with_words_is_just_a_message(crew):
@@ -233,7 +237,7 @@ def test_a_thumbs_up_with_words_is_just_a_message(crew):
     crew.scripts["scout"] = ["Noted."]
     result = orchestrator.handle_user_message("dm:scout", "👍 but change the subject line")
 
-    assert "approved" not in result
+    assert result["content"] == "👍 but change the subject line"
     assert chips(crew.conn, "dm:scout", "approval_request")[0]["payload"]["status"] == "pending"
 
 

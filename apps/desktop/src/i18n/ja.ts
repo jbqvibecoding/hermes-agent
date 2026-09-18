@@ -1038,6 +1038,7 @@ export const ja = defineLocale({
       settings: { title: '設定', detail: 'Hermes デスクトップを設定' },
       skills: { title: 'スキルとツール', detail: 'スキル、ツールセット、プロバイダーを有効化' },
       messaging: { title: 'メッセージング', detail: 'Telegram、Slack、Discord などを設定' },
+      crew: { title: 'クルー', detail: '常時稼働のチームメイト。各自にスレッドとコンピュータ' },
       artifacts: { title: 'アーティファクト', detail: '生成された出力を閲覧' }
     },
     sectionEntries: {
