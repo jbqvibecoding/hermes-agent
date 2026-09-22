@@ -454,12 +454,24 @@ class UnifiedMemoryProvider(MemoryProvider):
             "(exact past words), unified_memory_reflect (synthesized reasoning)."
         )
 
+    # One line, injected only when memory could not be consulted at all, so the
+    # model does not mistake "I could not look" for "there is nothing".
+    # Deliberately NOT emitted for a structurally degraded sidecar (no semantic
+    # brain installed): that is the default zero-dependency deployment, and
+    # noting it on every empty turn would be permanent prompt noise. It is
+    # already stated once in system_prompt_block().
+    _UNAVAILABLE_NOTE = (
+        "## Unified Memory\n"
+        "Unavailable this turn (the memory service could not be reached), so no "
+        "past context was retrieved. Treat this as unknown, not as absent."
+    )
+
     def prefetch(self, query: str, *, session_id: str = "") -> str:
         """Synchronous recall — inject fused memory context for this turn."""
         if not query:
             return ""
         if not self._ensure_alive_for_request() or not self._client:
-            return ""
+            return self._UNAVAILABLE_NOTE
         try:
             result = self._client.recall(
                 query=query,
@@ -470,12 +482,13 @@ class UnifiedMemoryProvider(MemoryProvider):
             self._record_success()
             if context:
                 return f"## Unified Memory\n{context}"
+            # A genuinely empty memory costs no tokens to report.
             return ""
         except Exception as e:
             self._record_failure()
             logger.debug("unified-memory prefetch failed: %s", e)
             self._try_recover_sidecar()
-            return ""
+            return self._UNAVAILABLE_NOTE
 
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         """No-op — recall is synchronous in prefetch()."""

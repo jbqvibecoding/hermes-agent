@@ -73,12 +73,26 @@ class BreakerTests(unittest.TestCase):
 class OfflineBehaviourTests(unittest.TestCase):
     """Provider gracefully degrades when no sidecar exists at all."""
 
-    def test_prefetch_and_sync_are_safe_noops(self):
+    def test_prefetch_reports_unavailability_instead_of_silence(self):
         p = UnifiedMemoryProvider()
-        # Not initialized: no supervisor, breaker closed.
-        self.assertEqual(p.prefetch("anything"), "")
+        # Not initialized: no supervisor, breaker closed. "Could not look" must
+        # not be indistinguishable from "nothing to find".
+        out = p.prefetch("anything")
+        self.assertIn("Unavailable", out)
+        self.assertIn("not as absent", out)
         p.sync_turn("u", "a")  # must not raise
         self.assertEqual(p.system_prompt_block(), "")
+
+    def test_prefetch_stays_silent_on_a_genuinely_empty_memory(self):
+        p = UnifiedMemoryProvider()
+        p._client = mock.Mock()
+        p._client.recall.return_value = {"context": "", "results": []}
+        p._sidecar_available = True
+        # An empty memory costs no tokens to report; only a failure earns a line.
+        self.assertEqual(p.prefetch("anything"), "")
+
+    def test_prefetch_empty_query_is_silent(self):
+        self.assertEqual(UnifiedMemoryProvider().prefetch(""), "")
 
     def test_tool_call_reports_unavailable(self):
         p = UnifiedMemoryProvider()
