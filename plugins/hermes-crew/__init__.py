@@ -49,9 +49,32 @@ def register(ctx) -> None:
     ctx.register_hook("pre_tool_call", crew_hooks.on_pre_tool_call)
     ctx.register_hook("post_tool_call", crew_hooks.on_post_tool_call)
 
+    _register_skills(ctx)
+
     _record_policy()
 
     log.debug("crew: registered %d tools and 2 hooks", len(CREW_TOOLS))
+
+
+def _register_skills(ctx) -> None:
+    """Make the plugin's own skills loadable as ``hermes-crew:<name>``.
+
+    Plugin skills are explicit loads — they do not enter the profile's flat
+    skills tree and are not listed in the system prompt's index. That is the
+    right shape here: the house style for a deck is worth several hundred words
+    when a teammate is making one, and worth nothing in the prompt of one that
+    never will.
+    """
+    skills_root = Path(__file__).resolve().parent / "skills"
+    if not skills_root.is_dir():
+        return
+    for skill_dir in sorted(skills_root.iterdir()):
+        if not (skill_dir / "SKILL.md").is_file():
+            continue
+        try:
+            ctx.register_skill(name=skill_dir.name, path=skill_dir)
+        except Exception:
+            log.debug("crew: could not register the skill %s", skill_dir.name, exc_info=True)
 
 
 def _record_policy() -> None:

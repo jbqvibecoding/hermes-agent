@@ -24,6 +24,7 @@ out below, because they are the parts worth not re-deciding.
 | `crew/activity.py` | `errand/src/domain/types.ts`, `src/clients/http/RuntaCloudAgentsClient.ts` | Apache-2.0 | `ActivityEvent` and its five kinds |
 | `crew/contract.py` | `errand/src/domain/CloudAgentsClient.ts` | Apache-2.0 | the whole `/v1` domain model |
 | `crew/db.py`, `crew/sections.py` | `grok-bot/shared/sidebar-sections.ts` | MIT | the org chart and its `__agents__` sentinel |
+| `crew/artifacts.py` | `octop/infra/agents/middleware/thread_artifacts.py` | MIT | the path keys, the "looks like a file" predicate, args-before-result |
 
 ## The decisions worth not re-deciding
 
@@ -49,7 +50,22 @@ outage into an unguarded teammate; failing closed costs one card nobody needed.
 other than what you read is the single failure the hold exists to prevent, and
 between render and click the card can be rewritten underneath the operator.
 
+**A tool result is read for paths only when the arguments gave none** (octop).
+A result is text the tool wrote and may mention a file it never touched; an
+argument is what the call was actually about.
+
 ## Where we diverged, and why
+
+**Artifacts come from the workspace, not from an allow-list of tools.** octop
+records files from `write_file`, `edit_file`, `send_file` and
+`desktop_screenshot`. That is right for an agent that writes files by calling a
+file tool. Ours does not: asked for a deck, a teammate writes `make_deck.py` and
+runs it, and the `.pptx` appears as a side effect of a `terminal` call whose
+result says nothing about it. A tool-name allow-list would miss the exact case
+the operator cares about, so `crew/artifacts.py` scans the workspace and treats
+the filesystem as the truth. The tool-name list is kept for the case where one
+of those tools *is* used, because then its arguments are the better answer.
+
 
 **The risk table.** OpenBot's grants are a pure allow-list: no row, no tool.
 That works for a product where a plugin declares the handful of things it does.
@@ -79,6 +95,11 @@ dashboard can read is the wrong place for them to be at all.
 forks and derivative works, and which conflicts with this repo's MIT. Nothing
 from it is vendored and no file here is derived from it. Where it shaped a
 design decision the code says so in prose and nothing was copied.
+`crew/verify.py` is the clearest case: the observations behind it — that a
+zero-byte file is a failed delivery, that announcing the check and running it
+are both necessary, that the whole thing must lean toward letting work through
+— came from reading about its incidents, and every line of the file is written
+from scratch against our own workspace and turn loop.
 
 **`octop/experts/library/office-automation/skills/{docx,xlsx,pptx,pdf}/`**
 carries an Anthropic proprietary licence and is *not* covered by octop's MIT.

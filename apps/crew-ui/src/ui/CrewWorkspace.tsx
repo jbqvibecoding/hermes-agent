@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CloudAgentsClient } from "../domain/CloudAgentsClient";
-import type { Agent, AuditEvent, Grant, Routine, Section } from "../domain/types";
+import type { Agent, Artifact, AuditEvent, Grant, Routine, Section } from "../domain/types";
 import { useCrewController, type CrewControllerOptions } from "../state/useCrewController";
 import { AgentList, type AgentAction } from "./AgentList";
 import { CommandPalette } from "./CommandPalette";
@@ -46,6 +46,7 @@ export function CrewWorkspace({ client, notify }: {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditView, setAuditView] = useState<{ id: string; types: string[] }>({ id: "all", types: [] });
   const [auditBefore, setAuditBefore] = useState<number | null>(null);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailWidth, setDetailWidth] = useState(storedDetailWidth);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -95,6 +96,25 @@ export function CrewWorkspace({ client, notify }: {
       .catch(() => { if (alive) setGrants([]); });
     return () => { alive = false; };
   }, [client, selectedAgentId]);
+
+  const refreshArtifacts = useCallback(() => {
+    if (!selectedAgentId) { setArtifacts([]); return; }
+    void client.listArtifacts(selectedAgentId)
+      .then(setArtifacts)
+      .catch(() => setArtifacts([]));
+  }, [client, selectedAgentId]);
+  useEffect(refreshArtifacts, [refreshArtifacts]);
+
+  // A file written during a turn should appear without the operator reloading,
+  // so re-list when the teammate stops working. Re-listing rather than
+  // appending the event's row: the server reconciles the list against the disk,
+  // and trusting an append would leave rows here for files that were
+  // overwritten or have since gone.
+  const agentStatus = selectedAgent?.status;
+  useEffect(() => {
+    if (agentStatus === "working") return;
+    refreshArtifacts();
+  }, [agentStatus, refreshArtifacts]);
 
   const loadAudit = useCallback((types: string[], beforeId?: number) => {
     if (!selectedAgentId) { setAudit([]); setAuditBefore(null); return; }
@@ -250,6 +270,8 @@ export function CrewWorkspace({ client, notify }: {
       auditLoading={auditLoading}
       auditView={auditView.id}
       auditHasMore={auditBefore !== null}
+      artifacts={artifacts}
+      artifactUrl={(artifact) => client.artifactUrl(artifact)}
       onApproval={(id, decision, note, contentHash) => crew.respondToApproval(id, decision, note, contentHash)}
       onComputerAction={(action) => crew.openComputer(action)}
       onDeleteRoutine={async (routineId) => {

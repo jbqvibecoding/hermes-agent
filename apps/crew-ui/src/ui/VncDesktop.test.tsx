@@ -174,6 +174,8 @@ it.each(["session", "connection"])(
       auditLoading={false}
       auditView="all"
       auditHasMore={false}
+      artifacts={[]}
+      artifactUrl={() => ""}
       onApproval={vi.fn()}
       onComputerAction={computerAction}
       onDeleteRoutine={vi.fn()}

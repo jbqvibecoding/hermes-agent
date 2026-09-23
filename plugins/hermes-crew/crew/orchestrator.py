@@ -599,6 +599,7 @@ def start_turn(
         streaming=True,
     )
 
+    started_at = crew_db.now_ms()
     try:
         with _thread_lock(thread_id), profile_scope(bot_id):
             computer_live = _prepare_computer(bot_id, want=has_computer(bot_id))
@@ -608,11 +609,17 @@ def start_turn(
                 user_message=text,
                 task_id=crew_computer.task_id_for(bot_id),
             )
+            if computer_live:
+                result = _deliver(
+                    agent, bot, context, result, started_at=started_at,
+                )
 
         final = ((result or {}).get("final_response") or "").strip()
         if not final and (result or {}).get("error"):
             final = f"⚠️ {bot['name']} hit an error: {result['error']}"
         _settle_reply(conn, reply, final)
+        if computer_live:
+            _record_artifacts(conn, context, started_at)
         return result or {}
     except Exception as exc:  # noqa: BLE001 — the thread must show what broke
         log.exception("crew: turn failed for %s in %s", bot_id, thread_id)
@@ -629,6 +636,137 @@ def start_turn(
         # action is waiting for a *person*, and announcing idle here would
         # repaint the sidebar grey the instant the amber badge was earned.
         emit_status(bot_id, roster.teammate_status(conn, bot_id, working=bot_id in working_bot_ids()))
+
+
+#: How much extra wall time the delivery check may spend sending a turn back.
+#: A pushback runs a whole turn, so this is a real cost — and a teammate that
+#: has already been going for five minutes producing nothing is not one more
+#: attempt away from producing something.
+_DELIVERY_BUDGET_S = 180.0
+
+
+def _deliver(agent, bot: dict, context: TurnContext, result: Optional[dict], *, started_at: int) -> dict:
+    """Check the reply's delivery claims, and send the turn back if they are false.
+
+    This runs inside the profile scope and the thread lock, on the same agent,
+    so the pushback continues the same conversation rather than starting a cold
+    one — the model still has the script it wrote and the error it hit.
+
+    The seed goes in as a **user** turn. A system note would be advice; a user
+    turn is the operator asking again, which is what actually moves a model that
+    has decided it is finished. It is sent with the turn's own id so the reply
+    row it produces replaces the first one rather than appending a second.
+    """
+    from crew import verify as crew_verify
+
+    result = result or {}
+    for attempt in range(1, crew_verify.MAX_PUSHBACKS + 1):
+        final = (result.get("final_response") or "").strip()
+        if not final:
+            return result
+
+        verdict = crew_verify.check_delivery(context.bot_id, final)
+        if verdict.ok:
+            return result
+
+        spent = (crew_db.now_ms() - started_at) / 1000.0
+        if spent + crew_verify.MIN_BUDGET_S > _DELIVERY_BUDGET_S:
+            # Out of room. Say so in the thread rather than silently accepting
+            # a claim we know is false — the operator would go looking for the
+            # file otherwise, which is the failure this whole check exists to
+            # prevent.
+            log.info("crew: %s claimed files it did not produce; out of budget", context.bot_id)
+            result["final_response"] = final + "\n\n" + _undelivered_note(verdict)
+            return result
+
+        log.info(
+            "crew: sending %s's turn back — %s",
+            context.bot_id, ", ".join(p.rel_path for p in verdict.problems),
+        )
+        _announce_pushback(agent, context, verdict, attempt)
+        emit_status(context.bot_id, "working")
+        result = agent.run_conversation(
+            user_message=crew_verify.pushback_seed(verdict, attempt),
+            task_id=crew_computer.task_id_for(context.bot_id),
+        ) or {}
+
+    # Two pushbacks and the claim is still false. Stop asking and tell the
+    # truth on the thread: the alternative is a loop the operator pays for.
+    final = (result.get("final_response") or "").strip()
+    verdict = crew_verify.check_delivery(context.bot_id, final)
+    if not verdict.ok:
+        result["final_response"] = final + "\n\n" + _undelivered_note(verdict)
+    return result
+
+
+def _announce_pushback(agent, context: TurnContext, verdict, attempt: int) -> None:
+    """Clear the answer that was wrong and say why, before asking again.
+
+    Two things happen here, and both are about not confusing the person
+    watching. The reply bubble is blanked through the same path Hermes uses
+    when a turn is interrupted by tool use — otherwise the second answer
+    streams in underneath the first and the operator reads a contradiction.
+    And a line goes into the working strip, because a teammate that suddenly
+    starts working again after it had clearly finished looks broken unless
+    something says what happened.
+    """
+    from crew import activity as crew_activity
+    from crew import contract as crew_contract
+    from crew import verify as crew_verify
+
+    try:
+        if callable(getattr(agent, "stream_delta_callback", None)):
+            agent.stream_delta_callback(None)
+    except Exception:
+        log.debug("crew: could not blank the reply before a pushback", exc_info=True)
+
+    names = ", ".join(verdict.missing + verdict.empty)
+    try:
+        event = crew_activity.upsert_activity(
+            crew_db.connect(),
+            tool_call_id=f"{context.turn_id}:delivery:{attempt}",
+            thread_id=context.thread_id,
+            turn_id=context.turn_id,
+            tool_name="delivery_check",
+            args={"files": names},
+            status="failed",
+            output=(
+                f"{names} was claimed but not produced — asking again "
+                f"({attempt}/{crew_verify.MAX_PUSHBACKS})."
+            ),
+        )
+        emit_event(crew_contract.activity_updated(event))
+    except Exception:
+        log.debug("crew: pushback not shown in the activity strip", exc_info=True)
+
+
+def _undelivered_note(verdict) -> str:
+    """The line the operator reads instead of going to look for a file.
+
+    Addressed to the operator, not the teammate, and deliberately plain: it is
+    the product admitting something did not work, which is worth more than a
+    confident reply that wastes somebody's afternoon.
+    """
+    names = ", ".join(f"`{name}`" for name in (verdict.missing + verdict.empty))
+    return f"⚠️ Checked the workspace: {names} was not actually produced."
+
+
+def _record_artifacts(conn, context: TurnContext, started_at: int) -> None:
+    """Pin whatever this turn left on disk to the thread that asked for it."""
+    from crew import artifacts as crew_artifacts
+
+    try:
+        rows = crew_artifacts.record_turn_output(
+            conn, context.bot_id, thread_id=context.thread_id,
+            turn_id=context.turn_id, since_ms=started_at,
+        )
+    except Exception:
+        log.debug("crew: could not record this turn's files", exc_info=True)
+        return
+    from crew import contract as crew_contract
+
+    for row in rows:
+        emit_event(crew_contract.artifact_created(row))
 
 
 def _settle_reply(conn, reply: dict, final: str) -> None:

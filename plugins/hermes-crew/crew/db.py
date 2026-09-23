@@ -167,6 +167,25 @@ CREATE TABLE IF NOT EXISTS audit (
     duration_ms  INTEGER,
     created_at   INTEGER NOT NULL
 );
+-- What a teammate has actually produced. Keyed on (bot_id, rel_path) so
+-- re-running a script updates one row instead of stacking versions — the
+-- operator wants "the deck", not its history. The row is a claim about a file,
+-- not the file: `crew/artifacts.py::list_artifacts` reconciles against disk,
+-- because a container can be reset out from under it.
+CREATE TABLE IF NOT EXISTS artifacts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id     TEXT NOT NULL,
+    thread_id  TEXT NOT NULL DEFAULT '',
+    turn_id    TEXT NOT NULL DEFAULT '',
+    rel_path   TEXT NOT NULL,
+    kind       TEXT NOT NULL DEFAULT '',
+    size       INTEGER NOT NULL DEFAULT 0,
+    mtime      INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    UNIQUE (bot_id, rel_path)
+);
+CREATE INDEX IF NOT EXISTS idx_artifacts_bot ON artifacts(bot_id, mtime DESC);
+
 CREATE INDEX IF NOT EXISTS idx_audit_bot ON audit(bot_id, id);
 CREATE INDEX IF NOT EXISTS idx_audit_type ON audit(event_type, id);
 

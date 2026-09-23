@@ -1101,3 +1101,51 @@ kbd {
 .audit-detail dt { color: var(--crew-faint); }
 .audit-detail dd { margin: 0; color: var(--crew-dim); overflow-wrap: anywhere; }
 .audit-detail code { font-family: var(--crew-mono); font-size: 0.7rem; }
+
+/* --- the files a teammate produced --------------------------------------- */
+
+.drawer-count {
+  margin-left: 0.3rem;
+  padding: 0.02rem 0.28rem;
+  border-radius: 999px;
+  background: var(--crew-selected);
+  color: var(--crew-dim);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+}
+.files-empty { margin: 0; color: var(--crew-faint); font-size: 0.78rem; }
+.files-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.files-row { border-bottom: 1px solid color-mix(in srgb, var(--crew-line) 45%, transparent); }
+.files-link {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.2rem;
+  color: var(--crew-text);
+  font-size: 0.76rem;
+  text-decoration: none;
+  border-radius: var(--crew-radius);
+}
+.files-link:hover { background: var(--crew-hover); }
+.files-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files-meta {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--crew-faint);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+.files-when { flex: 0 0 auto; color: var(--crew-faint); font-size: 0.68rem; }
+.files-download { flex: 0 0 auto; color: var(--crew-faint); opacity: 0; }
+.files-link:hover .files-download { opacity: 1; }
+/* Shown and marked rather than hidden: an empty file is the visible half of the
+   delivery check, and an absent row would leave the operator guessing. */
+.files-row.is-empty .files-name { color: var(--crew-dim); }
+.files-warning {
+  padding: 0.02rem 0.28rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--crew-amber) 22%, transparent);
+  color: var(--crew-amber);
+}

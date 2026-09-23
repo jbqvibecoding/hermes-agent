@@ -236,6 +236,41 @@ def approval(row: dict) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Deliverables
+# ---------------------------------------------------------------------------
+
+
+def artifact(row: dict) -> dict:
+    """One file a teammate produced, as the file panel renders it.
+
+    ``downloadPath`` rather than a full URL: the client knows its own base (it
+    already builds the screenshot URL the same way), and a server-built absolute
+    URL would be wrong the moment the dashboard is reached through a tunnel or a
+    different host than it thinks it has.
+    """
+    return {
+        "id": str(row.get("id") or row["rel_path"]),
+        "agentId": row.get("bot_id") or "",
+        "conversationId": row.get("thread_id") or "",
+        "path": row["rel_path"],
+        "name": row["rel_path"].split("/")[-1],
+        "kind": row.get("kind") or "file",
+        "size": int(row.get("size") or 0),
+        "updatedAt": iso(row.get("mtime")),
+        "downloadPath": f"/bots/{row.get('bot_id', '')}/files/{row['rel_path']}",
+    }
+
+
+def artifact_created(row: dict) -> dict:
+    return {
+        "type": "artifact.created",
+        "agentId": row.get("bot_id") or "",
+        "threadId": row.get("thread_id") or "",
+        "artifact": artifact(row),
+    }
+
+
 def approval_decision(decision: str) -> str:
     """Errand's `allow`/`deny` → our `approve`/`discard`."""
     if decision == "allow":

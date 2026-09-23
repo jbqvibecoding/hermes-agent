@@ -24,6 +24,7 @@ import type {
   CreateAgentInput,
   Message,
   ModelProviderCatalog,
+  Artifact,
   AuditPage,
   AuditQuery,
   Grant,
@@ -77,6 +78,10 @@ export interface CloudAgentsClient {
   setGrant(input: SetGrantInput, signal?: AbortSignal): Promise<Grant>;
   clearGrant(agentId: string, tool: string, signal?: AbortSignal): Promise<Grant>;
   listAuditEvents(query?: AuditQuery, signal?: AbortSignal): Promise<AuditPage>;
+
+  /** What the teammate actually produced, and where to fetch one from. */
+  listArtifacts(agentId: string, signal?: AbortSignal): Promise<Artifact[]>;
+  artifactUrl(artifact: Artifact): string;
   deleteRoutine(agentId: string, routineId: string, signal?: AbortSignal): Promise<void>;
   screenshotUrl(agentId: string, filename: string): string;
 }

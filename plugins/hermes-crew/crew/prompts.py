@@ -53,6 +53,25 @@ NO_COMPUTER_NOTE = (
     "say plainly when you cannot do something."
 )
 
+# Announcing the check and then actually running it is the whole trick; neither
+# half works alone. A threatened check nobody runs teaches the model the threat
+# is empty, and a check nobody announced produces a pushback it finds baffling
+# and argues with. See crew/verify.py.
+DELIVERY_DISCIPLINE = """## Files you hand over
+
+When your operator asks for a deck, a document or a sheet, they want a file they can open — not a description
+of one. Write a script, run it in your own container, and check the result.
+- python-pptx, python-docx, openpyxl, pypdf and pillow are installed. Save into /workspace, which is the only
+  place your operator can see and download from.
+- **Your workspace is checked after you answer.** If you say you produced `deck.pptx`, something looks for
+  `deck.pptx` — and a zero-byte file counts as not produced, because that is what a script that died halfway
+  through leaves behind. When it is not there, you will be asked again.
+- So before you say it is done: confirm the file exists, confirm it is not empty, and open it back up to check
+  it has the slides or rows you think it has.
+- If you could not make it, say that plainly and say what stopped you. That is a far better answer than a
+  description of a file that does not exist, and you will not be asked again for it.
+- Load the `hermes-crew:deliverables` skill for the house style before building one."""
+
 APPROVAL_DISCIPLINE = """## Before anything leaves your workspace
 
 Do the whole job, then stop at the door. Sending an email or message, publishing, paying, booking, replying on
@@ -119,6 +138,9 @@ def build_crew_prompt(
         APPROVAL_DISCIPLINE,
         RELAY_NOTE if can_relay else "",
         COMPUTER_BRIEFING if has_computer else NO_COMPUTER_NOTE,
+        # Only where it is true. A teammate with no container cannot produce a
+        # file, and a block telling it how would be an invitation to pretend.
+        DELIVERY_DISCIPLINE if has_computer else "",
     ]
     return "\n\n".join(b for b in blocks if b)
 

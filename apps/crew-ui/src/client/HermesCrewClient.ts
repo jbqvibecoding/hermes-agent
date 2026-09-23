@@ -13,6 +13,7 @@ import {
   CrewError,
   type Agent,
   type ApprovalRequest,
+  type Artifact,
   type AuditPage,
   type AuditQuery,
   type Grant,
@@ -298,6 +299,22 @@ export class HermesCrewClient implements CloudAgentsClient {
     if (query.limit) params.set("limit", String(query.limit));
     const suffix = params.toString();
     return this.request<AuditPage>(`/audit${suffix ? `?${suffix}` : ""}`, { signal });
+  }
+
+  listArtifacts(agentId: string, signal?: AbortSignal) {
+    return this.request<{ files: Artifact[] }>(
+      `/bots/${encodeURIComponent(agentId)}/files`,
+      { signal },
+    ).then((r) => r.files);
+  }
+
+  artifactUrl(artifact: Artifact) {
+    // The server hands back a path, not a URL, so the base stays this client's
+    // business — same as screenshotUrl. Each segment is encoded separately so a
+    // file named in Chinese, or with a space, survives the round trip while the
+    // slashes stay slashes.
+    const encoded = artifact.downloadPath.split("/").map(encodeURIComponent).join("/");
+    return `${this.baseUrl}${encoded}`;
   }
 
   screenshotUrl(agentId: string, filename: string) {

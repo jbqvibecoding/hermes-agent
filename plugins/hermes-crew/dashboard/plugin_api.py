@@ -66,6 +66,7 @@ if _PLUGIN_ROOT not in sys.path:
 
 from crew import activity as crew_activity  # noqa: E402
 from crew import approvals as crew_approvals  # noqa: E402
+from crew import artifacts as crew_artifacts  # noqa: E402
 from crew import audit as crew_audit  # noqa: E402
 from crew import computer as crew_computer  # noqa: E402
 from crew import contract  # noqa: E402
@@ -609,6 +610,61 @@ def get_screenshot(bot_id: str, filename: str):
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(
         path, media_type="image/png", headers={"Cache-Control": "immutable, max-age=31536000"}
+    )
+
+
+# ---------------------------------------------------------------------------
+# Crew-native: the files a teammate produced
+#
+# The teammate's `/workspace` is a real directory on this host — the container
+# side of a bind mount — so these are ordinary reads of it. What they are not
+# is a file browser: the path guard in `crew/artifacts.py` is what keeps a route
+# reachable from a browser from serving `crew.db`.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/bots/{bot_id}/files")
+def get_files(bot_id: str, refresh: bool = Query(True)):
+    """What this teammate has produced.
+
+    ``refresh`` re-scans the workspace before answering, which is the default
+    because a teammate can write a file from a routine in another process and
+    the panel would otherwise show yesterday's list. Turning it off is for a
+    caller polling this often enough that the walk would cost more than it is
+    worth.
+    """
+    conn = _conn()
+    _bot_or_404(conn, bot_id)
+    if refresh:
+        try:
+            crew_artifacts.record_turn_output(
+                conn, bot_id, thread_id=crew_db.dm_thread_id(bot_id), turn_id="", since_ms=0,
+            )
+        except Exception:
+            log.debug("crew: could not re-scan %s's workspace", bot_id, exc_info=True)
+    return {"files": [contract.artifact(row) for row in crew_artifacts.list_artifacts(conn, bot_id)]}
+
+
+@router.get("/bots/{bot_id}/files/{rel_path:path}")
+def download_file(bot_id: str, rel_path: str):
+    """Hand one file back.
+
+    ``Content-Disposition: attachment`` on everything, deliberately. A teammate
+    writes files from things it read on the web, and an `.html` or `.svg` served
+    inline would run as script on the dashboard's own origin — the file panel is
+    for downloading work, not for rendering whatever a teammate saved.
+    """
+    path = crew_artifacts.artifact_file_path(bot_id, rel_path)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        # Starlette builds the `attachment` disposition from this, and encodes a
+        # non-ASCII name correctly — which matters, because a teammate working
+        # in Chinese will name the file in Chinese.
+        filename=path.name,
+        headers={"X-Content-Type-Options": "nosniff"},
     )
 
 

@@ -169,6 +169,24 @@ export interface AuditEvent {
   created_at: number;
 }
 
+/**
+ * A file a teammate produced. `downloadPath` rather than a URL: the client
+ * knows its own base — it already builds the screenshot URL the same way — and
+ * a server-built absolute URL is wrong the moment the dashboard is reached
+ * through a tunnel or a different host than it thinks it has.
+ */
+export interface Artifact {
+  id: string;
+  agentId: string;
+  conversationId: string;
+  path: string;
+  name: string;
+  kind: "slides" | "document" | "sheet" | "image" | "data" | "text" | "code" | "archive" | "file";
+  size: number;
+  updatedAt: string;
+  downloadPath: string;
+}
+
 export interface CloudComputer {
   id: string;
   agentId: string;
@@ -231,6 +249,7 @@ export type ConversationEvent =
   | { type: "message.dropped"; threadId: string; messageId: string }
   | { type: "activity.updated"; threadId: string; activity: ActivityEvent }
   | { type: "approval.updated"; threadId: string; approval: ApprovalRequest }
+  | { type: "artifact.created"; agentId: string; threadId: string; artifact: Artifact }
   | { type: "agent.status"; agentId: string; status: AgentStatus }
   | { type: "connection.changed"; state: ConnectionState };
 
