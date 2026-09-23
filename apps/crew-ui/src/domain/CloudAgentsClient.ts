@@ -24,8 +24,12 @@ import type {
   CreateAgentInput,
   Message,
   ModelProviderCatalog,
+  AuditPage,
+  AuditQuery,
+  Grant,
   RespondApprovalInput,
   Routine,
+  SetGrantInput,
   Section,
   SendMessageInput,
   Subscription,
@@ -64,6 +68,15 @@ export interface CloudAgentsClient {
   listSections(signal?: AbortSignal): Promise<Section[]>;
   saveSections(sections: Section[], signal?: AbortSignal): Promise<Section[]>;
   listRoutines(agentId: string, signal?: AbortSignal): Promise<Routine[]>;
+
+  /**
+   * What this teammate may reach, and what it has done. Errand has neither
+   * concept — it assumes an agent may do whatever its tools allow.
+   */
+  listGrants(agentId: string, signal?: AbortSignal): Promise<Grant[]>;
+  setGrant(input: SetGrantInput, signal?: AbortSignal): Promise<Grant>;
+  clearGrant(agentId: string, tool: string, signal?: AbortSignal): Promise<Grant>;
+  listAuditEvents(query?: AuditQuery, signal?: AbortSignal): Promise<AuditPage>;
   deleteRoutine(agentId: string, routineId: string, signal?: AbortSignal): Promise<void>;
   screenshotUrl(agentId: string, filename: string): string;
 }

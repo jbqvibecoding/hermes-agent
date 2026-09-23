@@ -13,6 +13,8 @@ export { Conversation, MessageView } from "./ui/Conversation";
 export { AgentList } from "./ui/AgentList";
 export { AgentAvatar } from "./ui/AgentAvatar";
 export { DetailPanel } from "./ui/DetailPanel";
+export { PermissionsPanel } from "./ui/PermissionsPanel";
+export { AuditTimeline } from "./ui/AuditTimeline";
 export { CommandPalette } from "./ui/CommandPalette";
 export { HireDialog } from "./ui/HireDialog";
 export { Select } from "./ui/Select";

@@ -349,7 +349,7 @@ def _resolve_model_and_runtime() -> tuple[str, dict]:
     return str(model or ""), resolve_runtime_provider()
 
 
-def _toolsets_for(bot_id: str, *, has_computer: bool) -> list[str]:
+def toolsets_for(bot_id: str, *, has_computer: bool) -> list[str]:
     """Which toolsets this teammate's turn gets.
 
     ``crew`` is the product surface. The computer toolsets are added only when
@@ -401,7 +401,7 @@ def _build_agent(bot: dict, thread_id: str, *, has_computer: bool, group: Option
         api_mode=runtime.get("api_mode"),
         acp_command=runtime.get("command"),
         acp_args=runtime.get("args"),
-        enabled_toolsets=_toolsets_for(bot["id"], has_computer=has_computer),
+        enabled_toolsets=toolsets_for(bot["id"], has_computer=has_computer),
         quiet_mode=True,
         verbose_logging=False,
         # SOUL.md is the teammate's identity and Hermes loads it itself; the
@@ -451,7 +451,7 @@ def _get_agent(bot: dict, thread_id: str, *, has_computer: bool, group: Optional
 # ---------------------------------------------------------------------------
 
 
-def _profile_scope(bot_id: str):
+def profile_scope(bot_id: str):
     """Context manager scoping config, secrets and skills to a teammate."""
     import contextlib
 
@@ -600,7 +600,7 @@ def start_turn(
     )
 
     try:
-        with _thread_lock(thread_id), _profile_scope(bot_id):
+        with _thread_lock(thread_id), profile_scope(bot_id):
             computer_live = _prepare_computer(bot_id, want=has_computer(bot_id))
             agent = _get_agent(bot, thread_id, has_computer=computer_live, group=group)
             _attach_turn_callbacks(agent, context, reply)
@@ -808,29 +808,57 @@ def run_group_round_async(thread_id: str, text: str, **kwargs) -> threading.Thre
 # ---------------------------------------------------------------------------
 
 
-def settle_approval(approval_id: int, decision: str) -> str:
+def settle_approval(
+    approval_id: int, decision: str, *, expect_hash: str = "", note: str = ""
+) -> str:
     """Resolve an approval and resume the teammate. Returns a status token.
 
     ``"gone"`` — no such approval (404).
-    ``"settled"`` — someone already decided it (409). **No turn is started**,
-    which is what stops a double-clicked Approve from sending twice.
+    ``"settled"`` — someone already decided it, or it lapsed unanswered (409).
+    **No turn is started**, which is what stops a double-clicked Approve from
+    sending twice.
+    ``"stale"`` — the card changed since the operator opened it (409). Nothing
+    is decided: approving something other than what you read is the one failure
+    this whole mechanism exists to prevent.
     ``"ok"`` — decided now; the teammate is resuming on a worker.
     """
     conn = crew_db.connect()
     if crew_approvals.get_approval(conn, approval_id) is None:
         return "gone"
 
-    approval = crew_approvals.resolve_approval(conn, approval_id, decision)  # type: ignore[arg-type]
+    try:
+        approval = crew_approvals.resolve_approval(
+            conn, approval_id, decision, expect_hash=expect_hash, note=note  # type: ignore[arg-type]
+        )
+    except crew_approvals.StaleApproval:
+        return "stale"
     if approval is None:
         return "settled"
 
+    from crew import audit as crew_audit
     from crew import contract as crew_contract
+
+    crew_audit.record(
+        conn,
+        event_type="approval.decided",
+        bot_id=approval["bot_id"],
+        actor=crew_audit.ACTOR_OPERATOR,
+        thread_id=approval["thread_id"],
+        turn_id=approval.get("turn_id") or "",
+        tool_call_id=approval.get("tool_call_id") or "",
+        tool=approval.get("tool") or "",
+        subject=approval["action"],
+        detail=note,
+        status=approval["status"],
+    )
 
     if approval["message_id"]:
         payload = {
             "approval_id": approval["id"],
+            "ref": approval.get("ref"),
             "action": approval["action"],
             "detail": approval["detail"],
+            "scope": approval.get("scope") or [],
             "status": approval["status"],
         }
         crew_db.update_message_payload(conn, approval["message_id"], payload)
@@ -856,9 +884,9 @@ def settle_approval(approval_id: int, decision: str) -> str:
     )
 
     seed = (
-        prompts.approved_seed(approval["action"])
+        prompts.approved_seed(approval["action"], note)
         if decision == "approve"
-        else prompts.discarded_seed(approval["action"])
+        else prompts.discarded_seed(approval["action"], note)
     )
     start_turn_async(
         approval["bot_id"], approval["thread_id"], seed, persist_user_message=False

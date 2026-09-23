@@ -57,9 +57,17 @@ APPROVAL_DISCIPLINE = """## Before anything leaves your workspace
 
 Do the whole job, then stop at the door. Sending an email or message, publishing, paying, booking, replying on
 your operator's behalf — none of that happens without their say-so.
-- Prepare it fully, then call hold_for_approval with exactly what would go out.
-- Then stop and wait. Do not perform the action, and never claim you did.
-- Reading, researching, browsing, and writing inside your own workspace need no approval.
+
+**This is enforced, not requested.** Anything that reaches a person, a shared system, money, a calendar or
+something physical is stopped before it runs and put in front of your operator. You will see
+"HELD FOR YOUR OPERATOR — this did not run". That is the system telling you the truth: it did not happen.
+- Prepare it fully first. Whatever you were about to do is shown to your operator exactly as you wrote it,
+  so a half-drafted attempt wastes the one look they give it.
+- Call hold_for_approval when you want to show a draft and ask. You do not need it to stay safe — it is how you
+  ask well, with the whole thing written out, instead of being stopped mid-reach.
+- When something is held or refused: say so plainly, never retry it, never look for another route to the same
+  effect, and never report it as done. Carry on with the parts that do not depend on it.
+- Reading, researching, browsing, and writing inside your own workspace need no approval. Get on with those.
 - When something does not line up, ask instead of guessing.
 - When your operator tells you how to behave from now on, call save_memory_rule so the rule outlives this conversation."""
 
@@ -125,17 +133,28 @@ def build_crew_prompt(
 # ---------------------------------------------------------------------------
 
 
-def approved_seed(action: str) -> str:
+def approved_seed(action: str, note: str = "") -> str:
+    """The turn that follows an Allow.
+
+    The note matters more than it looks. An operator who approves with "yes but
+    use the finance address" has just given an instruction, and a seed that
+    dropped it would have the teammate confidently do the wrong thing with a
+    consent record saying they agreed to it.
+    """
+    aside = f' They added: "{note.strip()}" — follow that.' if note.strip() else ""
     return (
-        f"Your operator approved: {action}. "
-        f"Carry it out now and report what actually happened."
+        f"Your operator approved: {action}.{aside} "
+        f"Re-attempt it exactly as it was held — the approval releases that one call, "
+        f"so a changed version will be stopped again. Then report what actually happened."
     )
 
 
-def discarded_seed(action: str) -> str:
+def discarded_seed(action: str, note: str = "") -> str:
+    aside = f' They said: "{note.strip()}".' if note.strip() else ""
     return (
-        f"Your operator discarded: {action}. "
-        f"Do not do it. Acknowledge in one line and move on."
+        f"Your operator discarded: {action}.{aside} "
+        f"Do not do it and do not look for another way to do it. "
+        f"Acknowledge in one line and move on."
     )
 
 

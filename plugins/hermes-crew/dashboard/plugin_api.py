@@ -66,9 +66,11 @@ if _PLUGIN_ROOT not in sys.path:
 
 from crew import activity as crew_activity  # noqa: E402
 from crew import approvals as crew_approvals  # noqa: E402
+from crew import audit as crew_audit  # noqa: E402
 from crew import computer as crew_computer  # noqa: E402
 from crew import contract  # noqa: E402
 from crew import db as crew_db  # noqa: E402
+from crew import grants as crew_grants  # noqa: E402
 from crew import orchestrator, roster, routines, sections  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -350,6 +352,7 @@ def v1_list_approvals(agentId: str = Query("")):
 class RespondApprovalBody(BaseModel):
     decision: str
     note: str = ""
+    contentHash: str = ""
 
 
 @router.post("/v1/approvals/{approval_id}/respond")
@@ -360,19 +363,33 @@ def v1_respond_to_approval(approval_id: int, body: RespondApprovalBody):
     double-clicked Allow send one email instead of two. The idempotency is
     enforced in SQL (``crew/approvals.py``), not here.
 
-    ``note`` is accepted and echoed back because Errand's panel collects one,
-    but it is **not** yet fed to the teammate — doing that means changing the
-    continuation seed, which is a prompt change and belongs with the rest of
-    them rather than smuggled in here.
+    ``contentHash`` is the fingerprint of the card the client actually
+    rendered. When it no longer matches, this refuses rather than deciding: the
+    operator would be approving something other than what they read, which is
+    the single failure the whole mechanism exists to prevent. Clients that omit
+    it still work — a chat reply or a curl has no rendered card to stake — so
+    this hardens the panel without breaking the typed path.
+
+    ``note`` now reaches the teammate through the continuation seed. An
+    operator who allows with "yes, but use the finance address" has given an
+    instruction, and dropping it left the teammate doing the wrong thing with a
+    consent record saying otherwise.
     """
     try:
         decision = contract.approval_decision(body.decision)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    outcome = orchestrator.settle_approval(approval_id, decision)
+    outcome = orchestrator.settle_approval(
+        approval_id, decision, expect_hash=body.contentHash, note=body.note
+    )
     if outcome == "gone":
         raise HTTPException(status_code=404, detail="No such approval.")
+    if outcome == "stale":
+        raise HTTPException(
+            status_code=409,
+            detail="This request changed since you opened it. Read the latest version before deciding.",
+        )
     if outcome == "settled":
         raise HTTPException(status_code=409, detail="That was already decided.")
 
@@ -436,6 +453,130 @@ def _session_or_503(agent_id: str) -> dict:
             detail=info.get("error") or "This teammate's computer has no screen to show yet.",
         )
     return session
+
+
+# ---------------------------------------------------------------------------
+# Crew-native: what each teammate may reach
+#
+# Errand has no concept of this — it assumes an agent may do whatever its tools
+# allow. These routes are the operator's side of `crew/grants.py`.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/bots/{bot_id}/grants")
+def get_grants(bot_id: str):
+    """Every tool this teammate can call, with how it is currently decided.
+
+    Returns the defaults too, not only the rows. A panel that showed only
+    explicit grants would present an empty list for a brand-new teammate and
+    read as "this one may do nothing", when in fact the risk table is deciding
+    every call — which is precisely the misunderstanding a permissions screen
+    exists to prevent.
+    """
+    conn = _conn()
+    _bot_or_404(conn, bot_id)
+    tools = _tools_for(bot_id)
+    return {"grants": crew_grants.describe(conn, bot_id, tools)}
+
+
+def _tools_for(bot_id: str) -> list[str]:
+    """Every tool name this teammate's turn would actually be offered.
+
+    Read from the host's toolset registry for the toolsets this profile has
+    enabled, rather than from a list kept here: a permissions screen that names
+    tools this build does not have, or misses ones it does, is worse than no
+    screen at all.
+    """
+    names: list[str] = []
+    try:
+        from toolsets import TOOLSETS
+
+        with orchestrator.profile_scope(bot_id):
+            enabled = orchestrator.toolsets_for(
+                bot_id, has_computer=orchestrator.has_computer(bot_id)
+            )
+        for toolset in enabled:
+            names.extend(TOOLSETS.get(toolset, {}).get("tools") or ())
+    except Exception:
+        log.debug("crew: could not enumerate tools for %s", bot_id, exc_info=True)
+    return names
+
+
+class GrantBody(BaseModel):
+    mode: str
+    note: str = ""
+
+
+@router.put("/bots/{bot_id}/grants/{tool}")
+def put_grant(bot_id: str, tool: str, body: GrantBody):
+    """Pin one tool to deny / ask / allow for this teammate."""
+    conn = _conn()
+    _bot_or_404(conn, bot_id)
+    try:
+        crew_grants.set_grant(conn, bot_id, tool, body.mode, body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    crew_audit.record(
+        conn, event_type="grant.changed", bot_id=bot_id,
+        actor=crew_audit.ACTOR_OPERATOR, tool=tool,
+        subject=f"{tool} set to {body.mode}", detail=body.note, status=body.mode,
+    )
+    return _decision(conn, bot_id, tool)
+
+
+@router.delete("/bots/{bot_id}/grants/{tool}")
+def delete_grant(bot_id: str, tool: str):
+    """Drop the explicit row and fall back to the risk table."""
+    conn = _conn()
+    _bot_or_404(conn, bot_id)
+    crew_grants.clear_grant(conn, bot_id, tool)
+    crew_audit.record(
+        conn, event_type="grant.changed", bot_id=bot_id,
+        actor=crew_audit.ACTOR_OPERATOR, tool=tool,
+        subject=f"{tool} back to the default",
+    )
+    return _decision(conn, bot_id, tool)
+
+
+def _decision(conn, bot_id: str, tool: str) -> dict:
+    decision = crew_grants.decide(conn, bot_id, tool)
+    return {
+        "tool": tool,
+        "mode": decision.mode,
+        "why": decision.why,
+        "source": decision.source,
+        "protected": tool in crew_grants.CRITICAL_TOOLS,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Crew-native: the ledger
+# ---------------------------------------------------------------------------
+
+
+@router.get("/audit")
+def get_audit(
+    bot_id: str = Query(""),
+    event_type: str = Query(""),
+    before_id: int = Query(0),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """The ledger, newest first, keyset-paged on id.
+
+    ``event_type`` takes a comma-separated list on purpose. "Was anything
+    stopped?" spans ``tool.refused``, ``tool.held`` and ``approval.expired``,
+    and a single-value filter would quietly answer a third of the question
+    while looking like it answered all of it.
+    """
+    types = tuple(t.strip() for t in event_type.split(",") if t.strip())
+    rows = crew_audit.query(
+        _conn(), bot_id=bot_id, event_types=types,
+        before_id=before_id or None, limit=limit,
+    )
+    return {
+        "events": rows,
+        "nextBeforeId": rows[-1]["id"] if len(rows) == limit else None,
+    }
 
 
 # ---------------------------------------------------------------------------

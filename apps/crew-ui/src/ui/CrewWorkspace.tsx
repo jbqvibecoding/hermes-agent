@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CloudAgentsClient } from "../domain/CloudAgentsClient";
-import type { Agent, Routine, Section } from "../domain/types";
+import type { Agent, AuditEvent, Grant, Routine, Section } from "../domain/types";
 import { useCrewController, type CrewControllerOptions } from "../state/useCrewController";
 import { AgentList, type AgentAction } from "./AgentList";
 import { CommandPalette } from "./CommandPalette";
@@ -40,6 +40,12 @@ export function CrewWorkspace({ client, notify }: {
   const [search, setSearch] = useState("");
   const [sections, setSections] = useState<Section[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [grants, setGrants] = useState<Grant[]>([]);
+  const [grantsBusy, setGrantsBusy] = useState(false);
+  const [audit, setAudit] = useState<AuditEvent[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditView, setAuditView] = useState<{ id: string; types: string[] }>({ id: "all", types: [] });
+  const [auditBefore, setAuditBefore] = useState<number | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailWidth, setDetailWidth] = useState(storedDetailWidth);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -76,6 +82,37 @@ export function CrewWorkspace({ client, notify }: {
       .catch(() => { if (alive) setRoutines([]); });
     return () => { alive = false; };
   }, [client, selectedAgentId]);
+
+  // Permissions and history follow the same shape as routines: fetched per
+  // teammate, straight from the client. They are not in the controller because
+  // nothing streams them — they change when somebody changes them, and the
+  // panel that shows them is the thing that changes them.
+  useEffect(() => {
+    if (!selectedAgentId) { setGrants([]); return; }
+    let alive = true;
+    void client.listGrants(selectedAgentId)
+      .then((next) => { if (alive) setGrants(next); })
+      .catch(() => { if (alive) setGrants([]); });
+    return () => { alive = false; };
+  }, [client, selectedAgentId]);
+
+  const loadAudit = useCallback((types: string[], beforeId?: number) => {
+    if (!selectedAgentId) { setAudit([]); setAuditBefore(null); return; }
+    setAuditLoading(true);
+    void client.listAuditEvents({
+      agentId: selectedAgentId, eventTypes: types, beforeId, limit: 50,
+    })
+      // Append when paging, replace when the question changed. Getting this
+      // backwards silently mixes two different filters into one list.
+      .then((page) => {
+        setAudit((current) => (beforeId ? [...current, ...page.events] : page.events));
+        setAuditBefore(page.nextBeforeId);
+      })
+      .catch(() => { if (!beforeId) { setAudit([]); setAuditBefore(null); } })
+      .finally(() => setAuditLoading(false));
+  }, [client, selectedAgentId]);
+
+  useEffect(() => { loadAudit(auditView.types); }, [loadAudit, auditView]);
 
   // Open the panel when somebody is waiting on a person. Not on every status
   // change — a teammate that merely started working has not asked for anything.
@@ -207,12 +244,37 @@ export function CrewWorkspace({ client, notify }: {
       computer={crew.computer}
       approvals={crew.approvals}
       routines={routines}
-      onApproval={(id, decision, note) => crew.respondToApproval(id, decision, note)}
+      grants={grants}
+      grantsBusy={grantsBusy}
+      audit={audit}
+      auditLoading={auditLoading}
+      auditView={auditView.id}
+      auditHasMore={auditBefore !== null}
+      onApproval={(id, decision, note, contentHash) => crew.respondToApproval(id, decision, note, contentHash)}
       onComputerAction={(action) => crew.openComputer(action)}
       onDeleteRoutine={async (routineId) => {
         await client.deleteRoutine(selectedAgent.id, routineId);
         setRoutines((current) => current.filter((routine) => routine.id !== routineId));
       }}
+      onSetGrant={async (tool, mode) => {
+        setGrantsBusy(true);
+        try {
+          const next = await client.setGrant({ agentId: selectedAgent.id, tool, mode });
+          // Merge rather than refetch: the row carries its own new mode and
+          // source, and a full reload would scroll a long table back to the top
+          // under somebody who is working through it.
+          setGrants((current) => current.map((g) => (g.tool === tool ? { ...g, ...next } : g)));
+        } finally { setGrantsBusy(false); }
+      }}
+      onClearGrant={async (tool) => {
+        setGrantsBusy(true);
+        try {
+          const next = await client.clearGrant(selectedAgent.id, tool);
+          setGrants((current) => current.map((g) => (g.tool === tool ? { ...g, ...next } : g)));
+        } finally { setGrantsBusy(false); }
+      }}
+      onChangeAuditView={(id, types) => setAuditView({ id, types })}
+      onLoadMoreAudit={() => { if (auditBefore !== null) loadAudit(auditView.types, auditBefore); }}
       onClose={() => setDetailOpen(false)}
     />}
 

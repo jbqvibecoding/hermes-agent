@@ -168,9 +168,19 @@ it.each(["session", "connection"])(
       computer={{ id: "crew-scout", agentId: "scout", runtimeName: "crew-scout", status: "online", capabilities: ["open"] }}
       approvals={[]}
       routines={[]}
+      grants={[]}
+      grantsBusy={false}
+      audit={[]}
+      auditLoading={false}
+      auditView="all"
+      auditHasMore={false}
       onApproval={vi.fn()}
       onComputerAction={computerAction}
       onDeleteRoutine={vi.fn()}
+      onSetGrant={vi.fn()}
+      onClearGrant={vi.fn()}
+      onChangeAuditView={vi.fn()}
+      onLoadMoreAudit={vi.fn()}
       onClose={vi.fn()}
     />);
     if (failure === "connection") {

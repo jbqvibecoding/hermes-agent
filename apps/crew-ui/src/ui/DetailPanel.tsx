@@ -20,12 +20,16 @@
 
 import { Check, ChevronsRight, Loader2, Maximize2, ShieldAlert, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { ApprovalRequest, CloudComputer, CloudComputerSession, Routine } from "../domain/types";
+import type { ApprovalRequest, AuditEvent, CloudComputer, CloudComputerSession, Grant, Routine } from "../domain/types";
+import { AuditTimeline } from "./AuditTimeline";
+import { PermissionsPanel } from "./PermissionsPanel";
 import { VncDesktop, VncSurface } from "./VncDesktop";
 
 export function DetailPanel({
   open, width, onResize, agentName, computer, approvals, routines,
-  onApproval, onComputerAction, onDeleteRoutine, onClose,
+  grants, grantsBusy, audit, auditLoading, auditView, auditHasMore,
+  onApproval, onComputerAction, onDeleteRoutine, onSetGrant, onClearGrant,
+  onChangeAuditView, onLoadMoreAudit, onClose,
 }: {
   open: boolean;
   width: number;
@@ -34,12 +38,26 @@ export function DetailPanel({
   computer?: CloudComputer;
   approvals: ApprovalRequest[];
   routines: Routine[];
-  onApproval(id: string, decision: "allow" | "deny", note?: string): Promise<void>;
+  grants: Grant[];
+  grantsBusy: boolean;
+  audit: AuditEvent[];
+  auditLoading: boolean;
+  auditView: string;
+  auditHasMore: boolean;
+  onApproval(id: string, decision: "allow" | "deny", note?: string, contentHash?: string): Promise<void>;
   onComputerAction(action: "open" | "takeover"): Promise<CloudComputerSession>;
   onDeleteRoutine(routineId: string): Promise<void>;
+  onSetGrant(tool: string, mode: "deny" | "ask" | "allow"): Promise<void>;
+  onClearGrant(tool: string): Promise<void>;
+  onChangeAuditView(viewId: string, types: string[]): void;
+  onLoadMoreAudit(): void;
   onClose(): void;
 }) {
   const [note, setNote] = useState("");
+  // Which drawer the lower half is showing. Default to neither: somebody opens
+  // this panel to look at the screen, and a permissions table unfurled by
+  // default would push it off the fold.
+  const [drawer, setDrawer] = useState<"" | "permissions" | "audit">("");
   const [computerBusy, setComputerBusy] = useState(false);
   const [previewSessions, setPreviewSessions] = useState<ReadonlyMap<string, CloudComputerSession>>(() => new Map());
   const [previewLoadingId, setPreviewLoadingId] = useState("");
@@ -135,7 +153,14 @@ export function DetailPanel({
     <header><button className="icon-button" aria-label="Close the details panel" onClick={onClose}><ChevronsRight size={18} /></button></header>
 
     {pending.map((approval) => <section className="approval-card" key={approval.id}>
-      <div className="eyebrow warning"><ShieldAlert size={14} /> Waiting for you</div>
+      <div className="eyebrow warning">
+        <ShieldAlert size={14} /> Waiting for you
+        {/* Which piece of work is asking. With several teammates running at
+            once, a card that does not say goes unanswered while somebody
+            works out what it belongs to. */}
+        {approval.source && approval.source !== approval.agentId && <span className="approval-source">{approval.source}</span>}
+        {approval.ref && <code className="approval-ref" title="Reply with this in the thread to decide without opening the panel">{approval.ref}</code>}
+      </div>
       <h3>{approval.title}</h3>
       {approval.description && <p>{approval.description}</p>}
       {approval.scope.length > 0 && <div className="scope">
@@ -149,8 +174,11 @@ export function DetailPanel({
         onChange={(event) => setNote(event.target.value)}
       />
       <div className="approval-actions">
-        <button className="secondary-button danger-text" onClick={() => void onApproval(approval.id, "deny", note)}>Discard</button>
-        <button className="primary-button" onClick={() => void onApproval(approval.id, "allow", note)}>Approve</button>
+        {/* The hash goes back with the decision. If the card was rewritten
+            between rendering and this click, the server refuses rather than
+            recording consent to something that was never read. */}
+        <button className="secondary-button danger-text" onClick={() => void onApproval(approval.id, "deny", note, approval.contentHash)}>Discard</button>
+        <button className="primary-button" onClick={() => void onApproval(approval.id, "allow", note, approval.contentHash)}>Approve</button>
       </div>
     </section>)}
 
@@ -216,6 +244,40 @@ export function DetailPanel({
         ><Trash2 size={14} /></button>
       </div>)}
     </section>}
+
+    <section className="drawer-section">
+      <div className="drawer-tabs" role="tablist" aria-label="More about this teammate">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={drawer === "permissions"}
+          className={drawer === "permissions" ? "is-current" : ""}
+          onClick={() => setDrawer((current) => (current === "permissions" ? "" : "permissions"))}
+        >Permissions</button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={drawer === "audit"}
+          className={drawer === "audit" ? "is-current" : ""}
+          onClick={() => setDrawer((current) => (current === "audit" ? "" : "audit"))}
+        >History</button>
+      </div>
+      {drawer === "permissions" && <PermissionsPanel
+        agentName={agentName}
+        grants={grants}
+        busy={grantsBusy}
+        onSetGrant={onSetGrant}
+        onClearGrant={onClearGrant}
+      />}
+      {drawer === "audit" && <AuditTimeline
+        events={audit}
+        loading={auditLoading}
+        viewId={auditView}
+        hasMore={auditHasMore}
+        onChangeView={onChangeAuditView}
+        onLoadMore={onLoadMoreAudit}
+      />}
+    </section>
 
     {computerModalOpen && <VncDesktop
       session={computerSession}

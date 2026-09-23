@@ -76,7 +76,7 @@ def crew(tmp_path, monkeypatch):
     scripts: dict[str, list] = {}
 
     # The three seams the orchestrator keeps Hermes behind.
-    monkeypatch.setattr(orchestrator, "_profile_scope", lambda bot_id: contextlib.nullcontext())
+    monkeypatch.setattr(orchestrator, "profile_scope", lambda bot_id: contextlib.nullcontext())
     monkeypatch.setattr(orchestrator, "has_computer", lambda bot_id: False)
     monkeypatch.setattr(
         orchestrator,

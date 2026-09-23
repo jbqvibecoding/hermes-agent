@@ -44,4 +44,33 @@ def register(ctx) -> None:
             emoji=emoji,
         )
 
-    log.debug("crew: registered %d tools", len(CREW_TOOLS))
+    from crew import hooks as crew_hooks
+
+    ctx.register_hook("pre_tool_call", crew_hooks.on_pre_tool_call)
+    ctx.register_hook("post_tool_call", crew_hooks.on_post_tool_call)
+
+    _record_policy()
+
+    log.debug("crew: registered %d tools and 2 hooks", len(CREW_TOOLS))
+
+
+def _record_policy() -> None:
+    """Write the boundary in force at this boot into the audit ledger.
+
+    Grants live in SQLite, but the risk table that decides everything without a
+    grant lives in this build. An upgrade can therefore change what a teammate
+    may do without a single row changing, and somebody reading last month's
+    refusals would have no way to know which rules produced them. One row at
+    load time is the whole fix.
+
+    Best-effort: a plugin that fails to register because the audit table is
+    unavailable would take the teammates down with it, which is a much worse
+    outcome than a missing ledger line.
+    """
+    try:
+        from crew import audit as crew_audit
+        from crew import db as crew_db
+
+        crew_audit.record_policy_loaded(crew_db.connect())
+    except Exception:
+        log.debug("crew: policy not recorded at load", exc_info=True)

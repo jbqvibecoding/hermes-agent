@@ -669,6 +669,22 @@
   resize: vertical;
 }
 .approval-actions { display: flex; justify-content: flex-end; gap: 0.4rem; margin-top: 0.6rem; }
+.approval-source {
+  margin-left: auto;
+  color: var(--crew-dim);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.approval-ref {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: var(--crew-hover);
+  color: var(--crew-dim);
+  font-family: var(--crew-mono);
+  font-size: 0.68rem;
+}
 
 .screen-section { display: flex; flex-direction: column; gap: 0.45rem; }
 .screen-trigger {
@@ -938,3 +954,150 @@ kbd {
   .crew-workspace { grid-template-columns: 14rem minmax(0, 1fr); }
   .crew-workspace:has(.detail-panel) { grid-template-columns: 14rem minmax(0, 1fr) auto; }
 }
+
+
+/* --- permissions and history -------------------------------------------- */
+
+.drawer-section { display: flex; flex-direction: column; gap: 0.6rem; }
+.drawer-tabs { display: flex; gap: 0.3rem; border-bottom: 1px solid var(--crew-line); }
+.drawer-tabs button {
+  padding: 0.4rem 0.6rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--crew-dim);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.drawer-tabs button:hover { color: var(--crew-text); }
+.drawer-tabs button.is-current { border-bottom-color: var(--crew-accent); color: var(--crew-text); }
+
+.permissions-panel { display: flex; flex-direction: column; gap: 0.55rem; }
+.permissions-summary { margin: 0; color: var(--crew-dim); font-size: 0.75rem; }
+.permissions-filters { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.permissions-filters input[type="search"] {
+  flex: 1 1 8rem;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--crew-line);
+  border-radius: var(--crew-radius);
+  background: var(--crew-bg);
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+}
+.permissions-filters label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--crew-dim);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.permissions-empty, .audit-empty { margin: 0; color: var(--crew-faint); font-size: 0.78rem; }
+.permissions-group h4 {
+  margin: 0 0 0.3rem;
+  color: var(--crew-faint);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.permissions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--crew-line) 45%, transparent);
+}
+/* Greyed, not hidden: somebody looking for why a setting will not stick has to
+   be able to find the answer rather than an absence. */
+.permissions-row.is-protected, .permissions-row.is-unavailable { opacity: 0.55; }
+.permissions-tool { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.permissions-tool code { font-family: var(--crew-mono); font-size: 0.74rem; }
+.permissions-why {
+  color: var(--crew-faint);
+  font-size: 0.68rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.permissions-modes { display: flex; align-items: center; gap: 0.15rem; flex: 0 0 auto; }
+.permissions-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: var(--crew-radius);
+  background: none;
+  color: var(--crew-faint);
+  font: inherit;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+.permissions-mode:hover:not(:disabled) { background: var(--crew-hover); color: var(--crew-text); }
+.permissions-mode:disabled { cursor: default; }
+.permissions-mode.is-current {
+  border-color: var(--crew-line);
+  background: var(--crew-selected);
+  color: var(--crew-text);
+}
+.permissions-reset {
+  padding: 0.2rem;
+  border: 0;
+  border-radius: var(--crew-radius);
+  background: none;
+  color: var(--crew-faint);
+  cursor: pointer;
+}
+.permissions-reset:hover { background: var(--crew-hover); color: var(--crew-text); }
+
+.audit-timeline { display: flex; flex-direction: column; gap: 0.5rem; }
+.audit-views { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.audit-view {
+  padding: 0.22rem 0.5rem;
+  border: 1px solid var(--crew-line);
+  border-radius: 999px;
+  background: none;
+  color: var(--crew-dim);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.audit-view:hover { background: var(--crew-hover); color: var(--crew-text); }
+.audit-view.is-current { background: var(--crew-selected); color: var(--crew-text); }
+.audit-rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.audit-row { border-bottom: 1px solid color-mix(in srgb, var(--crew-line) 45%, transparent); }
+.audit-row.is-stopped .audit-head { color: var(--crew-amber); }
+.audit-row.is-failed .audit-head { color: var(--crew-red); }
+.audit-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.35rem 0;
+  border: 0;
+  background: none;
+  color: var(--crew-text);
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+.audit-subject { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-kind { flex: 0 0 auto; color: var(--crew-faint); font-size: 0.68rem; }
+.audit-when { flex: 0 0 auto; color: var(--crew-faint); font-size: 0.68rem; font-variant-numeric: tabular-nums; }
+.audit-detail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.15rem 0.6rem;
+  margin: 0 0 0.5rem;
+  padding-left: 1.3rem;
+  font-size: 0.72rem;
+}
+.audit-detail dt { color: var(--crew-faint); }
+.audit-detail dd { margin: 0; color: var(--crew-dim); overflow-wrap: anywhere; }
+.audit-detail code { font-family: var(--crew-mono); font-size: 0.7rem; }

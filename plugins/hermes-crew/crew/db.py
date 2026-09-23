@@ -102,18 +102,73 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_ext ON messages(ext_id) WHERE ext_id IS NOT NULL;
 
+-- `ref` is a short, typeable handle (4 hex) so a decision can be made from a
+-- chat reply rather than only from the panel — ported from octop's HITL store.
+-- `content_hash` covers what the operator was shown; deciding against a stale
+-- hash is refused, because approving something other than what you read is the
+-- one failure this whole mechanism exists to prevent.
+-- `scope` is the JSON the approval card renders as a checklist: for a held
+-- tool call it is what that call would actually touch.
 CREATE TABLE IF NOT EXISTS approvals (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    thread_id   TEXT NOT NULL,
-    bot_id      TEXT NOT NULL,
-    action      TEXT NOT NULL,
-    detail      TEXT NOT NULL DEFAULT '',
-    status      TEXT NOT NULL DEFAULT 'pending',
-    message_id  INTEGER,
-    created_at  INTEGER NOT NULL,
-    resolved_at INTEGER
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ref          TEXT,
+    thread_id    TEXT NOT NULL,
+    bot_id       TEXT NOT NULL,
+    action       TEXT NOT NULL,
+    detail       TEXT NOT NULL DEFAULT '',
+    scope        TEXT,
+    tool         TEXT NOT NULL DEFAULT '',
+    tool_call_id TEXT NOT NULL DEFAULT '',
+    turn_id      TEXT NOT NULL DEFAULT '',
+    source       TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL DEFAULT '',
+    idem_key     TEXT,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    note         TEXT NOT NULL DEFAULT '',
+    message_id   INTEGER,
+    created_at   INTEGER NOT NULL,
+    expires_at   INTEGER,
+    resolved_at  INTEGER,
+    -- An approved hold releases the blocked call exactly once. Without this the
+    -- approval would stand as a permanent permission for that exact call, and
+    -- "send this invoice" would quietly become "you may send this invoice
+    -- whenever you like".
+    consumed_at  INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_approvals_thread ON approvals(thread_id, status);
+
+-- What each teammate may reach. A row is the permission; no row means the
+-- risk table in crew/grants.py decides. Deliberately no `enabled` column —
+-- see that module.
+CREATE TABLE IF NOT EXISTS grants (
+    bot_id     TEXT NOT NULL,
+    tool       TEXT NOT NULL,          -- a tool name, or 'toolset:<name>'
+    mode       TEXT NOT NULL,          -- deny | ask | allow
+    note       TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (bot_id, tool)
+);
+
+-- Append-only. One row per attempt, including refused ones. Arguments are a
+-- digest plus a one-line subject, never the raw values — see crew/audit.py.
+CREATE TABLE IF NOT EXISTS audit (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id       TEXT NOT NULL DEFAULT '',
+    actor        TEXT NOT NULL DEFAULT '_system',
+    thread_id    TEXT NOT NULL DEFAULT '',
+    turn_id      TEXT NOT NULL DEFAULT '',
+    tool_call_id TEXT NOT NULL DEFAULT '',
+    event_type   TEXT NOT NULL,
+    tool         TEXT NOT NULL DEFAULT '',
+    args_digest  TEXT NOT NULL DEFAULT '',
+    subject      TEXT NOT NULL DEFAULT '',
+    detail       TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT '',
+    duration_ms  INTEGER,
+    created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_bot ON audit(bot_id, id);
+CREATE INDEX IF NOT EXISTS idx_audit_type ON audit(event_type, id);
 
 CREATE TABLE IF NOT EXISTS sections (
     id          TEXT PRIMARY KEY,
@@ -158,7 +213,38 @@ INSERT OR IGNORE INTO stream_cursor (id, seq) VALUES (1, 0);
 # (table, column, full ALTER statement). A column that already exists is
 # skipped by the PRAGMA check rather than by swallowing the OperationalError,
 # so a genuinely malformed statement still surfaces.
-_MIGRATIONS: tuple[tuple[str, str, str], ...] = ()
+#
+# The approvals columns are here rather than only in _SCHEMA because
+# `CREATE TABLE IF NOT EXISTS` is a no-op against a database created by an
+# earlier version — the table is there, the columns are not. The UNIQUE indexes
+# on `ref`/`idem_key` need no migration: _SCHEMA's `CREATE INDEX IF NOT EXISTS`
+# runs on every connect and lands once the columns exist.
+_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    ("approvals", "ref", "ALTER TABLE approvals ADD COLUMN ref TEXT"),
+    ("approvals", "scope", "ALTER TABLE approvals ADD COLUMN scope TEXT"),
+    ("approvals", "tool", "ALTER TABLE approvals ADD COLUMN tool TEXT NOT NULL DEFAULT ''"),
+    ("approvals", "tool_call_id", "ALTER TABLE approvals ADD COLUMN tool_call_id TEXT NOT NULL DEFAULT ''"),
+    ("approvals", "turn_id", "ALTER TABLE approvals ADD COLUMN turn_id TEXT NOT NULL DEFAULT ''"),
+    ("approvals", "source", "ALTER TABLE approvals ADD COLUMN source TEXT NOT NULL DEFAULT ''"),
+    ("approvals", "content_hash", "ALTER TABLE approvals ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''"),
+    ("approvals", "idem_key", "ALTER TABLE approvals ADD COLUMN idem_key TEXT"),
+    ("approvals", "note", "ALTER TABLE approvals ADD COLUMN note TEXT NOT NULL DEFAULT ''"),
+    ("approvals", "expires_at", "ALTER TABLE approvals ADD COLUMN expires_at INTEGER"),
+    ("approvals", "consumed_at", "ALTER TABLE approvals ADD COLUMN consumed_at INTEGER"),
+)
+
+# Indexes over columns that _MIGRATIONS may have just added. They cannot live in
+# _SCHEMA: that runs first, and on a database from an earlier version the column
+# does not exist yet, so `CREATE INDEX ON approvals(ref)` would raise inside
+# `executescript` and break every connect.
+_POST_MIGRATION_SCHEMA = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_approvals_ref ON approvals(ref) WHERE ref IS NOT NULL;
+-- Not unique: an approved hold is consumed by the call it released, and the
+-- same action asked for again next week is a new decision, not a replay of the
+-- old one. Uniqueness here would make "send the standup summary" approvable
+-- once and then permanently unaskable.
+CREATE INDEX IF NOT EXISTS idx_approvals_idem ON approvals(idem_key) WHERE idem_key IS NOT NULL;
+"""
 
 _local = threading.local()
 
@@ -220,6 +306,7 @@ def connect(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(_SCHEMA)
     _apply_migrations(conn)
+    conn.executescript(_POST_MIGRATION_SCHEMA)
     conn.commit()
     cache[key] = conn
     return conn

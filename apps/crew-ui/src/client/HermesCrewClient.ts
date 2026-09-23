@@ -13,6 +13,9 @@ import {
   CrewError,
   type Agent,
   type ApprovalRequest,
+  type AuditPage,
+  type AuditQuery,
+  type Grant,
   type CloudComputer,
   type CloudComputerSession,
   type Conversation,
@@ -21,6 +24,7 @@ import {
   type Message,
   type ModelProviderCatalog,
   type RespondApprovalInput,
+  type SetGrantInput,
   type Routine,
   type Section,
   type SendMessageInput,
@@ -196,7 +200,14 @@ export class HermesCrewClient implements CloudAgentsClient {
       `/v1/approvals/${encodeURIComponent(input.requestId)}/respond`,
       {
         method: "POST",
-        body: JSON.stringify({ decision: input.decision, note: input.note ?? "" }),
+        body: JSON.stringify({
+          decision: input.decision,
+          note: input.note ?? "",
+          // The hash of the card the operator actually read. The server
+          // refuses a decision made against a stale one rather than
+          // recording consent to something else.
+          contentHash: input.contentHash ?? "",
+        }),
         signal,
       },
     );
@@ -253,6 +264,40 @@ export class HermesCrewClient implements CloudAgentsClient {
       `/bots/${encodeURIComponent(agentId)}/routines/${encodeURIComponent(routineId)}`,
       { method: "DELETE", signal },
     );
+  }
+
+  listGrants(agentId: string, signal?: AbortSignal) {
+    return this.request<{ grants: Grant[] }>(
+      `/bots/${encodeURIComponent(agentId)}/grants`,
+      { signal },
+    ).then((r) => r.grants);
+  }
+
+  setGrant(input: SetGrantInput, signal?: AbortSignal) {
+    return this.request<Grant>(
+      `/bots/${encodeURIComponent(input.agentId)}/grants/${encodeURIComponent(input.tool)}`,
+      { method: "PUT", body: JSON.stringify({ mode: input.mode, note: input.note ?? "" }), signal },
+    );
+  }
+
+  clearGrant(agentId: string, tool: string, signal?: AbortSignal) {
+    return this.request<Grant>(
+      `/bots/${encodeURIComponent(agentId)}/grants/${encodeURIComponent(tool)}`,
+      { method: "DELETE", signal },
+    );
+  }
+
+  listAuditEvents(query: AuditQuery = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    if (query.agentId) params.set("bot_id", query.agentId);
+    // Comma-separated rather than repeated: "was anything stopped?" spans
+    // three event types, and a single-value filter would answer a third of
+    // the question while looking like it answered all of it.
+    if (query.eventTypes?.length) params.set("event_type", query.eventTypes.join(","));
+    if (query.beforeId) params.set("before_id", String(query.beforeId));
+    if (query.limit) params.set("limit", String(query.limit));
+    const suffix = params.toString();
+    return this.request<AuditPage>(`/audit${suffix ? `?${suffix}` : ""}`, { signal });
   }
 
   screenshotUrl(agentId: string, filename: string) {

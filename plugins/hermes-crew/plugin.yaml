@@ -3,6 +3,13 @@ version: 0.1.0
 description: "Always-on AI teammates, each a Hermes profile with its own computer. Adds the `crew` toolset (report grammar, draft-and-hold approvals, visible memory, routines, teammate handoffs, takeover login) and the /crew dashboard surface."
 author: NousResearch
 kind: backend
+hooks:
+  # The teammate guard. pre_tool_call is the host's fail-closed veto point and
+  # the only place draft-and-hold can be enforced rather than merely asked for;
+  # post_tool_call is the audit ledger's source and the reason a routine firing
+  # in the gateway leaves a visible trail. See crew/hooks.py.
+  - pre_tool_call
+  - post_tool_call
 provides_tools:
   - message_user
   - hold_for_approval

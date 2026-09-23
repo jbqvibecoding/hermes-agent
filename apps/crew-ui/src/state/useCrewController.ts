@@ -583,9 +583,13 @@ export function useCrewController(client: CloudAgentsClient, options: CrewContro
       }
     },
 
-    respondToApproval: async (requestId: string, decision: "allow" | "deny", note?: string) => {
+    respondToApproval: async (
+      requestId: string, decision: "allow" | "deny", note?: string, contentHash?: string,
+    ) => {
       const targetAgentId = selectedAgentId;
-      const next = await client.respondToApproval({ requestId, decision, note });
+      // The hash rides along so the server can refuse a decision made against
+      // a card that changed underneath the operator.
+      const next = await client.respondToApproval({ requestId, decision, note, contentHash });
       const snapshot = snapshots.current.get(targetAgentId);
       const nextApprovals = (snapshot?.approvals ?? []).map((item) => item.id === next.id ? next : item);
       if (snapshot) snapshots.current.set(targetAgentId, { ...snapshot, approvals: nextApprovals, cachedAt: Date.now() });

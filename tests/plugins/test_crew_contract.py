@@ -322,7 +322,7 @@ def crew(tmp_path, monkeypatch):
                     handlers[step[0]](step[1])
             return {"final_response": final}
 
-    monkeypatch.setattr(orchestrator, "_profile_scope", lambda bot_id: contextlib.nullcontext())
+    monkeypatch.setattr(orchestrator, "profile_scope", lambda bot_id: contextlib.nullcontext())
     monkeypatch.setattr(orchestrator, "has_computer", lambda bot_id: False)
     monkeypatch.setattr(
         orchestrator, "_build_agent", lambda bot, thread_id, **kw: ScriptedAgent(bot["id"])

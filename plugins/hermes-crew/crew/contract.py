@@ -37,8 +37,16 @@ from crew.db import iso
 #: Chip kinds that become a `ChipPart` rather than a plain text part.
 _CHIP_KINDS = frozenset(crew_db.MESSAGE_KINDS) - {"text"}
 
-#: Our approval states → Errand's.
-_APPROVAL_STATUS = {"pending": "pending", "approved": "allowed", "discarded": "denied"}
+#: Our approval states → Errand's. ``expired`` maps to ``denied`` because
+#: Errand's union has three members and nothing left the workspace — but the
+#: two are not the same thing, and the card says which in its description, so
+#: the teammate reports "nobody decided" rather than "you refused".
+_APPROVAL_STATUS = {
+    "pending": "pending",
+    "approved": "allowed",
+    "discarded": "denied",
+    "expired": "denied",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -194,19 +202,36 @@ def approval(row: dict) -> dict:
     This is the one place where we are filling in a contract Errand shipped a UI
     for and never implemented (`RuntaCloudAgentsClient.listApprovalRequests`
     returns `[]`). Its `DetailPanel` renders `scope[]` as a checklist of what the
-    action touches; we do not have a structured scope, and inventing one would
-    be worse than leaving it empty, so `detail` goes in `description` where the
-    panel shows it verbatim.
+    action touches.
+
+    `scope[]` shipped empty here, which was the honest thing to do while nothing
+    could fill it: the model volunteered a sentence and there were no real
+    arguments to show. Now `crew.hooks` holds the call itself, so the checklist
+    carries the recipients, the subject, the amount — the operator is deciding
+    about *this* send rather than about the idea of sending mail. That is the
+    whole difference between a consent record and a habit of clicking Approve.
+
+    `contentHash` and `ref` are ours rather than Errand's. The client sends the
+    hash back with its decision so a card rewritten between render and click is
+    refused (:func:`crew.approvals.resolve_approval`), and `ref` is the four
+    characters somebody types into the thread instead of opening the panel.
     """
+    scope = row.get("scope")
     return {
         "id": str(row["id"]),
+        "ref": row.get("ref") or "",
         "agentId": row["bot_id"],
         "conversationId": row["thread_id"],
         "title": row["action"],
         "description": row.get("detail") or "",
-        "scope": [],
+        "scope": list(scope) if isinstance(scope, list) else [],
+        "source": row.get("source") or row["bot_id"],
+        "tool": row.get("tool") or "",
+        "contentHash": row.get("content_hash") or "",
         "status": _APPROVAL_STATUS.get(row.get("status") or "pending", "pending"),
+        "expired": (row.get("status") or "") == "expired",
         "createdAt": iso(row.get("created_at")),
+        "expiresAt": iso(row["expires_at"]) if row.get("expires_at") else None,
         "resolvedAt": iso(row["resolved_at"]) if row.get("resolved_at") else None,
     }
 
