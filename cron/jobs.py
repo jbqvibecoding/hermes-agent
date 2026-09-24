@@ -954,6 +954,7 @@ def create_job(
     enabled_toolsets: Optional[List[str]] = None,
     workdir: Optional[str] = None,
     no_agent: bool = False,
+    deliver_prompt: bool = False,
     attach_to_session: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
@@ -1030,16 +1031,29 @@ def create_job(
     normalized_toolsets = normalized_toolsets or None
     normalized_workdir = _normalize_workdir(workdir)
     normalized_no_agent = bool(no_agent)
+    normalized_deliver_prompt = bool(deliver_prompt)
     normalized_attach = attach_to_session if isinstance(attach_to_session, bool) else None
 
-    # no_agent jobs are meaningless without a script — the script IS the job.
-    # Surface this as a clear ValueError at create time so bad configs never
-    # reach the scheduler.
-    if normalized_no_agent and not normalized_script:
+    # A no_agent job needs something to say: either a script whose stdout is
+    # the message, or `deliver_prompt` saying the prompt itself is. Without
+    # one of the two there is nothing for the job to run, and saying so here
+    # keeps a bad config from reaching the scheduler.
+    #
+    # The two are kept separate rather than inferring "no script means deliver
+    # the prompt": that inference would turn a mistyped or moved script path
+    # from a loud error into a job that quietly posts its prompt on schedule.
+    if normalized_no_agent and not normalized_script and not normalized_deliver_prompt:
         raise ValueError(
             "no_agent=True requires a script — with no agent and no script "
-            "there is nothing for the job to run."
+            "there is nothing for the job to run. Pass deliver_prompt=True "
+            "instead if the prompt itself is the message."
         )
+    if normalized_deliver_prompt:
+        if not normalized_no_agent:
+            raise ValueError(
+                "deliver_prompt=True only applies to no_agent jobs — an agent "
+                "job already decides what to say."
+            )
 
     # Normalize context_from: accept str or list of str, store as list or None
     if isinstance(context_from, str):
@@ -1050,6 +1064,14 @@ def create_job(
         context_from = None
 
     prompt_text = _coerce_job_text(prompt)
+
+    # Checked here rather than beside the other deliver_prompt validation
+    # because `prompt_text` is normalised above this line, and a whitespace-only
+    # prompt has to fail the same way an absent one does.
+    if normalized_deliver_prompt and not str(prompt_text or "").strip():
+        raise ValueError(
+            "deliver_prompt=True needs a prompt — that text is the message."
+        )
 
     # Reject cron jobs that schedule gateway-lifecycle commands. Prevents
     # agent-driven SIGTERM-respawn loops under launchd/systemd KeepAlive
@@ -1098,6 +1120,7 @@ def create_job(
         "base_url": normalized_base_url,
         "script": normalized_script,
         "no_agent": normalized_no_agent,
+        "deliver_prompt": normalized_deliver_prompt,
         "context_from": context_from,
         "schedule": parsed_schedule,
         "schedule_display": parsed_schedule.get("display", schedule),

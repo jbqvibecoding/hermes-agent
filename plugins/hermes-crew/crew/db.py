@@ -225,6 +225,28 @@ CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(status, lease_until, next_run_
 CREATE INDEX IF NOT EXISTS idx_tasks_bot ON tasks(bot_id, updated_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idem ON tasks(idem_key) WHERE idem_key IS NOT NULL;
 
+-- How a routine has been behaving, which the host's cron store cannot say.
+--
+-- `mark_job_run` writes `last_run_at` on success *and* on failure, so the
+-- host's field means "last attempt". The two are kept apart here for the
+-- reason rowboat keeps them apart: an attempt timestamp is what a backoff
+-- window is measured from, and a success timestamp is what tells you the
+-- routine is actually working. One column cannot be both, and conflating them
+-- makes a routine that has failed forty times look freshly successful.
+--
+-- `notified_at` exists so the operator is told once when a routine is
+-- suspended, not once per fire. A teammate that reports the same failure every
+-- ten minutes trains people to ignore it.
+CREATE TABLE IF NOT EXISTS routine_health (
+    job_id          TEXT PRIMARY KEY,
+    bot_id          TEXT NOT NULL DEFAULT '',
+    failures        INTEGER NOT NULL DEFAULT 0,   -- consecutive; reset by success
+    last_attempt_at INTEGER NOT NULL DEFAULT 0,   -- written before the run
+    last_run_at     INTEGER NOT NULL DEFAULT 0,   -- written only on success
+    notified_at     INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS sections (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL DEFAULT '',

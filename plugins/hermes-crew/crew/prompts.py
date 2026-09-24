@@ -181,7 +181,28 @@ def discarded_seed(action: str, note: str = "") -> str:
 
 
 def routine_seed(name: str, instructions: str) -> str:
-    return f'Your routine "{name}" just fired. Do this now: {instructions}'
+    """The turn a fired routine starts with.
+
+    The trigger block is rowboat's (``build-trigger-block.ts``), and its useful
+    part is the second half rather than the first. Telling a model it was woken
+    by a schedule is a label; telling it *which part of its own instructions
+    that means* is a routing decision it would otherwise make by guessing.
+    Instructions written for a teammate usually cover more than one occasion —
+    "check the deploy, and if someone asks, explain the rollback" — and a model
+    woken with no sense of why tends to answer all of them at once.
+
+    It also says nobody is watching. A routine that ends by asking a question
+    has produced nothing: the operator sees it hours later, out of context, and
+    the run it belonged to is long over.
+    """
+    return (
+        f'Your routine "{name}" just fired — a schedule woke you, not a person.\n\n'
+        f"Do this now: {instructions}\n\n"
+        f"Follow only the part of that which applies to a scheduled run. "
+        f"Nobody is waiting, so do not ask a question and stop — decide, do the "
+        f"work, and put the result in this thread. If something blocks you, say "
+        f"what it was and what you need."
+    )
 
 
 def handoff_seed(from_name: str, from_id: str, content: str) -> str:

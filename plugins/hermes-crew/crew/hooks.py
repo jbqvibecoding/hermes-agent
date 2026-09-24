@@ -471,7 +471,8 @@ _cron_runs_lock = threading.Lock()
 
 
 def on_cron_job_fired(
-    job_id: str = "", job_name: str = "", prompt: str = "", **_: Any
+    job_id: str = "", job_name: str = "", prompt: str = "",
+    deliver_prompt: bool = False, **_: Any
 ) -> None:
     """Open a leased task for a crew routine that is about to run."""
     try:
@@ -494,7 +495,10 @@ def on_cron_job_fired(
             kind="routine",
             title=name,
             thread_id=crew_db.ensure_dm_thread(conn, bot_id),
-            input={"routine": name, "job_id": job_id, "prompt": prompt},
+            input={
+                "routine": name, "job_id": job_id, "prompt": prompt,
+                "task_type": "text" if deliver_prompt else "agent",
+            },
             # Per fire, not per routine. A key of `routine:<job_id>` would match
             # the previous, already-succeeded task — enqueue dedupes on any row
             # with the key and the column is UNIQUE — so every fire after the
@@ -506,6 +510,11 @@ def on_cron_job_fired(
         claimed = crew_tasks.claim(conn, task)
         if claimed is None:
             return
+
+        # Before the run, not after: this is the attempt timestamp, and the
+        # thing it is good for is being there when the attempt does not come
+        # back.
+        crew_routines.record_attempt(conn, job_id=job_id, bot_id=bot_id)
 
         heartbeat = crew_tasks.Heartbeat(claimed["id"], claimed["lease_id"]).start()
         with _cron_runs_lock:
@@ -537,13 +546,92 @@ def on_cron_job_finished(
         task = run["task"]
         crew_tasks.clear_current(task["bot_id"])
         crew_tasks.unhold(task["id"])
+        conn = crew_db.connect()
         crew_tasks.release(
-            crew_db.connect(), task["id"], task["lease_id"],
+            conn, task["id"], task["lease_id"],
             status="succeeded" if success else "failed",
             error="" if success else (error or "the routine did not complete"),
         )
+        _settle_routine_health(conn, job_id, task, success=success, error=error)
     except Exception:
         log.warning("crew: could not settle the task for cron job %s", job_id, exc_info=True)
+
+
+def _settle_routine_health(
+    conn: sqlite3.Connection, job_id: str, task: dict, *, success: bool, error: str
+) -> None:
+    """Record how the routine went, and hold it off if it keeps going badly.
+
+    Separate from the settle above because the task row must land whatever
+    happens here: the health record is bookkeeping, and losing it is a smaller
+    problem than a task left reading `running` for a run that is over.
+    """
+    from crew import db as crew_db
+    from crew import routines as crew_routines
+
+    bot_id = str(task.get("bot_id") or "")
+    try:
+        outcome = crew_routines.record_outcome(
+            conn, job_id=job_id, bot_id=bot_id, success=success, error=error,
+        )
+        if success:
+            _deliver_text_routine(conn, task)
+            return
+
+        if outcome["suspend"]:
+            crew_routines.set_routine_enabled(bot_id, job_id, False)
+        elif outcome["defer_minutes"]:
+            crew_routines.defer_next_run(bot_id, job_id, outcome["defer_minutes"])
+
+        if outcome["announce"]:
+            crew_db.insert_message(
+                conn,
+                thread_id=str(task.get("thread_id") or crew_db.dm_thread_id(bot_id)),
+                sender=bot_id,
+                kind="text",
+                content=outcome["announce"],
+            )
+    except Exception:
+        # Swallowed because the task row above must stand whatever happens
+        # here — but logged loudly, because a debug line hid a NameError in
+        # this function until a test came looking for the message it was
+        # supposed to post.
+        log.warning("crew: could not record routine health for %s", job_id, exc_info=True)
+
+
+def _deliver_text_routine(conn: sqlite3.Connection, task: dict) -> None:
+    """Put a text routine's message in the thread.
+
+    An agent routine writes its own chips through the crew tools while it runs.
+    A text routine never runs a turn — that is the point of it — so nothing has
+    written anything, and the host's `deliver="local"` puts the text in the
+    cron output directory where no operator will ever look for it.
+
+    One message rather than the synthetic pair octop uses: a crew thread is not
+    a strict user/assistant transcript, and the routine that produced this is
+    already a row in the Work panel with its own name on it. Inventing an
+    operator turn that nobody typed, to explain a line that is already
+    attributed, would put a fabricated message in the record to avoid an
+    ambiguity that is not there.
+    """
+    from crew import db as crew_db
+
+    if str(task.get("kind")) != "routine":
+        return
+    payload = task.get("input") if isinstance(task.get("input"), dict) else {}
+    if str(payload.get("task_type") or "") != "text":
+        return
+    text = str(payload.get("prompt") or "").strip()
+    if not text:
+        return
+    crew_db.insert_message(
+        conn,
+        thread_id=str(task.get("thread_id") or crew_db.dm_thread_id(str(task.get("bot_id") or ""))),
+        sender=str(task.get("bot_id") or ""),
+        kind="text",
+        content=text,
+        turn_id=str(task.get("id") or ""),
+    )
 
 
 def _settle_released_approval(

@@ -578,3 +578,75 @@ def test_a_task_that_loses_its_lease_mid_run_is_requeued_not_failed(conn, monkey
     crew_worker.tick()
 
     assert crew_tasks.get(conn, task["id"])["status"] == "queued"
+
+
+def test_a_text_routine_puts_its_message_in_the_thread(hooks, conn):
+    """A text routine runs no turn — that is the point of it — so nothing calls
+    the crew tools and nothing writes to the thread. The host's
+    `deliver="local"` puts the text in the cron output directory, where no
+    operator will ever look for it. So the hook posts it.
+    """
+    hooks.on_cron_job_fired(
+        job_id="t1", job_name="crew:scout:Standup",
+        prompt="Stand-up in 15 minutes.", deliver_prompt=True,
+    )
+    hooks.on_cron_job_finished(job_id="t1", success=True)
+
+    contents = [m["content"] for m in crew_db.list_messages(conn, "dm:scout")]
+    assert "Stand-up in 15 minutes." in contents
+
+
+def test_an_agent_routine_does_not_get_its_prompt_posted(hooks, conn):
+    """The pair. An agent routine's prompt is a seed addressed to itself —
+    posting it would put the teammate's own instructions in the thread as if
+    they were its report."""
+    hooks.on_cron_job_fired(
+        job_id="t2", job_name="crew:scout:Digest", prompt="Your routine fired. Do the digest.",
+    )
+    hooks.on_cron_job_finished(job_id="t2", success=True)
+
+    contents = [m["content"] for m in crew_db.list_messages(conn, "dm:scout")]
+    assert not any("Do the digest." in c for c in contents)
+
+
+def test_a_failed_routine_gets_its_next_run_pushed_out(hooks, conn, monkeypatch):
+    """The wiring, not the policy — the ladder itself is tested where it lives.
+
+    What this pins is that a failure actually reaches the cron store, because
+    `_settle_routine_health` swallows its own errors: if the call were wrong,
+    every test would still pass and every routine would retry at full speed.
+    """
+    from crew import routines as crew_routines
+
+    deferred: list[tuple] = []
+    monkeypatch.setattr(
+        crew_routines, "defer_next_run",
+        lambda bot_id, job_id, minutes: deferred.append((bot_id, job_id, minutes)) or True,
+    )
+    hooks.on_cron_job_fired(job_id="t3", job_name="crew:scout:Digest", prompt="go")
+    hooks.on_cron_job_finished(job_id="t3", success=False, error="the API was down")
+
+    assert deferred == [("scout", "t3", 2)]
+
+
+def test_a_routine_that_keeps_failing_is_paused_rather_than_deferred(hooks, conn, monkeypatch):
+    """Past the threshold the answer stops being "try later" and becomes
+    "stop, and tell somebody" — once."""
+    from crew import routines as crew_routines
+
+    paused: list[tuple] = []
+    monkeypatch.setattr(crew_routines, "defer_next_run", lambda *a, **k: True)
+    monkeypatch.setattr(
+        crew_routines, "set_routine_enabled",
+        lambda bot_id, job_id, enabled: paused.append((job_id, enabled)) or True,
+    )
+    for n in range(crew_routines.MAX_CONSECUTIVE_FAILURES + 2):
+        hooks.on_cron_job_fired(job_id="t4", job_name="crew:scout:Digest", prompt="go")
+        hooks.on_cron_job_finished(job_id="t4", success=False, error="no such host")
+
+    assert paused and all(enabled is False for _job, enabled in paused)
+    notices = [
+        m["content"] for m in crew_db.list_messages(conn, "dm:scout")
+        if "paused one of my routines" in m["content"]
+    ]
+    assert len(notices) == 1, "told once, not once per fire"

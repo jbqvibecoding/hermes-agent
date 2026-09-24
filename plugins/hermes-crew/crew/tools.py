@@ -312,7 +312,16 @@ CREATE_ROUTINE_SCHEMA = {
                 "type": "boolean",
                 "description": (
                     "Whether the fired turn needs your shell, files and browser. Default true. "
-                    "Set false for a pure reminder — it fires faster and costs less."
+                    "Set false when the work is thinking and writing only."
+                ),
+            },
+            "task_type": {
+                "type": "string",
+                "enum": ["agent", "text"],
+                "description": (
+                    'Default "agent": the routine wakes you up and you do the work. '
+                    'Use "text" for a pure reminder — the instructions are posted word '
+                    "for word and you are never woken, so it costs nothing to run."
                 ),
             },
         },
@@ -335,6 +344,7 @@ def handle_create_routine(args: dict, **_kw: Any) -> str:
             schedule=str(args.get("cron") or ""),
             instructions=str(args.get("instructions") or ""),
             with_computer=bool(args.get("needs_computer", True)),
+            task_type=str(args.get("task_type") or "agent"),
         )
     except CrewRoutineError as exc:
         return json.dumps({"error": str(exc)}, ensure_ascii=False)

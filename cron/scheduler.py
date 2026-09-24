@@ -2522,6 +2522,35 @@ def run_job(
     #                               is no agent to wake
     if job.get("no_agent"):
         script_path = job.get("script")
+
+        # `deliver_prompt` is the other no_agent shape: there is nothing to
+        # run, the prompt IS the message, and it goes out verbatim. This is
+        # the plain reminder — "stand-up at 09:45" — which has no business
+        # spending a model call to be repeated back.
+        #
+        # It is a separate opt-in rather than a relaxation of the check below,
+        # and deliberately so. Treating "no_agent and no script" as "deliver
+        # the prompt" would turn a job whose script path was mistyped or moved
+        # from an immediate, loud error into a silent success that posts the
+        # prompt text every tick — a misconfiguration wearing the costume of a
+        # working job.
+        if job.get("deliver_prompt"):
+            now_iso = _hermes_now().strftime("%Y-%m-%d %H:%M:%S")
+            text = str(job.get("prompt") or "").strip()
+            if not text:
+                err = "deliver_prompt=True but this job has no prompt to deliver"
+                logger.error("Job '%s': %s", job_id, err)
+                return False, "", "", err
+            doc = (
+                f"# Cron Job: {job_name}\n\n"
+                f"**Job ID:** {job_id}\n"
+                f"**Run Time:** {now_iso}\n"
+                f"**Mode:** no_agent (prompt)\n\n"
+                f"---\n\n"
+                f"{text}\n"
+            )
+            return True, doc, text, None
+
         if not script_path:
             err = "no_agent=True but no script is set for this job"
             logger.error("Job '%s': %s", job_id, err)
@@ -3417,7 +3446,17 @@ def run_one_job(job: dict, *, adapters=None, loop=None, verbose: bool = False) -
         # `cron.jobs` resolves its store path once at import, so an observer in
         # another profile's process would read the wrong file (see
         # plugins/hermes-crew/crew/routines.py::_in_profile for the same trap).
-        _emit_job_lifecycle("cron_job_fired", job, prompt=str(job.get("prompt") or ""))
+        _emit_job_lifecycle(
+            "cron_job_fired", job,
+            prompt=str(job.get("prompt") or ""),
+            # What kind of run this is. A handler that takes over a job
+            # has to know whether there is a turn to resume or a message
+            # to post, and it cannot read the job back — cron.jobs
+            # resolves its paths at import time, so a handler in another
+            # profile reads the wrong store.
+            no_agent=bool(job.get("no_agent")),
+            deliver_prompt=bool(job.get("deliver_prompt")),
+        )
 
         # Run the job under the profile's secret scope. get_secret() fails
         # closed outside a scope once profile isolation is in play (multiple
