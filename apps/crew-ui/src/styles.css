@@ -7,3 +7,9 @@
 .proactive-row > span { display: flex; flex-direction: column; gap: 2px; }
 .proactive-row strong { font-size: 13px; font-weight: 600; }
 .proactive-row > span > span { font-size: 12px; color: var(--muted); line-height: 1.4; }
+
+/* Gardener chips: what it merged, and what it would not touch without asking. */
+.crew-memory-note { font-size: 13px; line-height: 1.45; }
+.crew-memory-entries { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.crew-memory-entries li { font-size: 12px; color: var(--text); }
+.crew-memory-why { margin-top: 6px; font-size: 12px; color: var(--muted); }

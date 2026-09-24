@@ -75,7 +75,12 @@ CREATE TABLE IF NOT EXISTS bots (
     -- and re-rolls every agent's time from scratch on restart — so a
     -- gateway that restarts often can starve everybody indefinitely. A
     -- stored timestamp survives the restart and keeps waiting.
-    next_speak_at INTEGER NOT NULL DEFAULT 0
+    next_speak_at INTEGER NOT NULL DEFAULT 0,
+    -- When the gardener last looked at this teammate's standing rules. 0 means
+    -- never, which is what every existing row reads as — so the first sweep
+    -- after an upgrade considers everybody once and then settles into the
+    -- cooldown.
+    gardened_at   INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS threads (
@@ -322,6 +327,7 @@ INSERT OR IGNORE INTO stream_cursor (id, seq) VALUES (1, 0);
 _MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("bots", "proactive", "ALTER TABLE bots ADD COLUMN proactive INTEGER NOT NULL DEFAULT 1"),
     ("bots", "next_speak_at", "ALTER TABLE bots ADD COLUMN next_speak_at INTEGER NOT NULL DEFAULT 0"),
+    ("bots", "gardened_at", "ALTER TABLE bots ADD COLUMN gardened_at INTEGER NOT NULL DEFAULT 0"),
     ("approvals", "ref", "ALTER TABLE approvals ADD COLUMN ref TEXT"),
     ("approvals", "scope", "ALTER TABLE approvals ADD COLUMN scope TEXT"),
     ("approvals", "tool", "ALTER TABLE approvals ADD COLUMN tool TEXT NOT NULL DEFAULT ''"),

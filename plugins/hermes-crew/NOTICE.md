@@ -122,6 +122,34 @@ one that no-ops `ensure_scheduled`/`start_all` so a multi-hour `asyncio.sleep`
 does not hang pytest in teardown — is not ported, because with the schedule in
 a column there is nothing that sleeps.
 
+## `crew/memory/` — an idea from octop and openworkbuddy, no code from either
+
+Nothing is vendored here. octop's memory engine is a closed-source wheel that
+is not in its repository, so only its *design* was readable, and the design it
+suggested turned out not to be the one to build.
+
+**Checking the premise changed the plan.** The design on the table was
+`raw_events → candidates → atoms`, on the assumption that a flat `MEMORY.md`
+grows forever and rots. Hermes memory is a **bounded** list: at the ceiling
+`MemoryStore.add` refuses the write and tells the model to consolidate by hand
+in the same turn, and after three failures it gives up with "The fact can be
+saved in a later turn" — a turn nothing guarantees. So the failure is not rot,
+it is a teammate that **silently stops learning**. A staged-candidates tier
+also already exists in core (`tools/write_approval.py`), off by default.
+Building tiers here would have made a third memory store beside those two,
+with two of them entering the system prompt.
+
+So this automates the housekeeping the host asks the model to do by hand,
+through `MemoryStore`'s own public API, and adds nothing to the storage model.
+
+**openworkbuddy** (PolyForm Noncommercial, incompatible with this repo's MIT)
+contributed one observation to `filters.py` and no code: an agent that worked
+around a watermark bug wrote "the server-side watermark problem has been
+fixed" into memory, pinning an inference as a fact that nothing would ever
+re-check. The subject-and-claim conjunction that refuses those is written from
+scratch, and exists in that shape because either half alone eats ordinary
+facts about the world.
+
 ## Not taken
 
 **openworkbuddy** is PolyForm Noncommercial 1.0.0, which its own FAQ says binds

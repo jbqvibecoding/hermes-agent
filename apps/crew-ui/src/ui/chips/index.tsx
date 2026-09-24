@@ -59,7 +59,43 @@ function ResolvedChip({ payload }: { payload: { action?: string; status?: string
   </Chip>;
 }
 
-function MemoryChip({ payload }: { payload: { rule?: string; diff?: string } }) {
+/**
+ * Three things arrive on this chip kind, and they are one kind on purpose: a
+ * standing rule changing is one sort of event however it changed.
+ *
+ *  - a rule the teammate was told to remember (`rule` + `diff`),
+ *  - the gardener reporting what it merged (`tidied`),
+ *  - the gardener asking about something it would not touch (`proposal`).
+ *
+ * The question carries the entries verbatim because nobody can answer "which
+ * of these stands" without reading both as written. And it is a question
+ * rather than a change: a rule deleted because a model thought it looked old
+ * is an undetectable edit — the rule is gone, the behaviour moves, and
+ * nothing says why.
+ */
+function MemoryChip({ payload }: {
+  payload: {
+    rule?: string; diff?: string;
+    tidied?: number; note?: string;
+    proposal?: boolean; kind?: string; entries?: string[]; why?: string;
+  };
+}) {
+  if (payload.proposal) {
+    return <Chip label={payload.kind === "conflicting" ? "Rules disagree" : "Rule may be stale"}>
+      <div className="crew-memory-note">{payload.note}</div>
+      <ul className="crew-memory-entries">
+        {(payload.entries || []).map((entry, index) => <li key={index}>{entry}</li>)}
+      </ul>
+      {payload.why && <div className="crew-memory-why">{payload.why}</div>}
+    </Chip>;
+  }
+
+  if (payload.tidied) {
+    return <Chip label="Memory tidied">
+      <div className="crew-memory-note">{payload.note}</div>
+    </Chip>;
+  }
+
   return <Chip label="Memory updated">
     <div className="crew-memory-rule">{payload.rule}</div>
     {payload.diff && <pre className="crew-memory-diff">{payload.diff}</pre>}

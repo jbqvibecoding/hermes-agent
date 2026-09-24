@@ -20,7 +20,7 @@ const {
   startTransition: bt,
   use: kt,
   useActionState: Nt,
-  useCallback: ye,
+  useCallback: ve,
   useContext: St,
   useDebugValue: Ct,
   useDeferredValue: Mt,
@@ -56,7 +56,7 @@ const {
   startTransition: bt,
   use: kt,
   useActionState: Nt,
-  useCallback: ye,
+  useCallback: ve,
   useContext: St,
   useDebugValue: Ct,
   useDeferredValue: Mt,
@@ -74,7 +74,7 @@ const {
   useTransition: Rt,
   version: Dt
 }, Symbol.toStringTag, { value: "Module" }));
-class ge extends Error {
+class ye extends Error {
   constructor(n, r, o = !1) {
     super(r), this.code = n, this.retryable = o, this.name = "CrewError";
   }
@@ -103,7 +103,7 @@ function Pt(t, n = {}) {
   }, [d]), q(() => {
     me.current = o;
   }, [o]);
-  const x = ye(async (b = !1) => {
+  const x = ve(async (b = !1) => {
     const C = await t.listAgents();
     for (const f of J.current)
       C.some((i) => i.id === f) || J.current.delete(f);
@@ -117,7 +117,7 @@ function Pt(t, n = {}) {
         lastMessagePreview: P ? M || _?.lastMessagePreview : i.lastMessagePreview ?? _?.lastMessagePreview
       };
     })), T((f) => f && U.some((i) => i.id === f) || b ? f : U[0]?.id || ""), U;
-  }, [t]), K = ye(async () => {
+  }, [t]), K = ve(async () => {
     const b = await t.listModelProviders();
     return ee(b.providers), b.providers;
   }, [t]);
@@ -336,7 +336,7 @@ function Pt(t, n = {}) {
         try {
           await t.deleteAgent(b);
         } catch (E) {
-          if (!(E instanceof ge && E.code === "not_found")) throw E;
+          if (!(E instanceof ye && E.code === "not_found")) throw E;
         }
         F.current.delete(b), V((E) => {
           const f = new Set(E);
@@ -378,10 +378,10 @@ function Pt(t, n = {}) {
         B.current.set(S.id, O);
         const Y = S.id.match(/^(.+):user(?:$|:)/)?.[1];
         Y && (B.current.set(`${Y}:user`, O), B.current.set(`${Y}:agent`, M?.id ?? y));
-        const z = F.current.get(C) ?? _, ie = { ...S, id: O }, fe = z.messages.map((be) => be.id === O ? ie : be).filter((be, ct, lt) => lt.findIndex((dt) => dt.id === be.id) === ct);
-        F.current.set(C, { ...z, messages: fe, cachedAt: Date.now() }), te.current === C && p(fe);
+        const z = F.current.get(C) ?? _, ie = { ...S, id: O }, ge = z.messages.map((be) => be.id === O ? ie : be).filter((be, ct, lt) => lt.findIndex((dt) => dt.id === be.id) === ct);
+        F.current.set(C, { ...z, messages: ge, cachedAt: Date.now() }), te.current === C && p(ge);
       } catch (S) {
-        const Y = F.current.get(C) ?? _, z = Y.messages.filter((fe) => fe.id !== y), ie = z.some((fe) => fe.id === O) ? z : [...z, f];
+        const Y = F.current.get(C) ?? _, z = Y.messages.filter((ge) => ge.id !== y), ie = z.some((ge) => ge.id === O) ? z : [...z, f];
         throw F.current.set(C, { ...Y, messages: ie, cachedAt: Date.now() }), te.current === C && p(ie), M || Q(S instanceof Error ? S.message : "Could not send that"), S;
       }
     },
@@ -776,7 +776,7 @@ function rt({ agent: t, size: n = 36 }) {
     t.avatar || t.name.trim().slice(0, 1).toUpperCase()
   );
 }
-const kn = Le(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-BW7TGaO-.js").then((t) => t.i)).Streamdown })), He = {
+const kn = Le(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-DDNW1vzn.js").then((t) => t.i)).Streamdown })), He = {
   working: "Working",
   idle: "Idle",
   waiting_for_approval: "Needs you",
@@ -901,30 +901,30 @@ function Sn({
     }) : /* @__PURE__ */ e.createElement("p", null, "Nothing matches that")), /* @__PURE__ */ e.createElement("footer", null, /* @__PURE__ */ e.createElement("span", null, "Crew"), /* @__PURE__ */ e.createElement("span", null, /* @__PURE__ */ e.createElement("kbd", null, "⌘"), /* @__PURE__ */ e.createElement("kbd", null, "K"), " to open")))
   );
 }
-function ve({ label: t, kind: n = "", children: r }) {
+function fe({ label: t, kind: n = "", children: r }) {
   return /* @__PURE__ */ e.createElement("div", { className: `crew-chip ${n}` }, t && /* @__PURE__ */ e.createElement("div", { className: "crew-chip-label" }, t), r);
 }
 function Cn({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ve, { kind: "report" }, (t.lines ?? []).map((n, r) => /* @__PURE__ */ e.createElement("div", { className: "crew-report-line", key: r }, /* @__PURE__ */ e.createElement("span", { className: "crew-report-check" }, /* @__PURE__ */ e.createElement(Ce, { size: 13 })), /* @__PURE__ */ e.createElement("span", { className: "crew-report-system" }, n.system), /* @__PURE__ */ e.createElement("span", { className: "crew-report-arrow" }, "→"), /* @__PURE__ */ e.createElement("span", null, n.result, n.count && /* @__PURE__ */ e.createElement("span", { className: "crew-report-count" }, " · ", n.count)))), t.closing && /* @__PURE__ */ e.createElement("div", { className: "crew-report-closing" }, t.closing));
+  return /* @__PURE__ */ e.createElement(fe, { kind: "report" }, (t.lines ?? []).map((n, r) => /* @__PURE__ */ e.createElement("div", { className: "crew-report-line", key: r }, /* @__PURE__ */ e.createElement("span", { className: "crew-report-check" }, /* @__PURE__ */ e.createElement(Ce, { size: 13 })), /* @__PURE__ */ e.createElement("span", { className: "crew-report-system" }, n.system), /* @__PURE__ */ e.createElement("span", { className: "crew-report-arrow" }, "→"), /* @__PURE__ */ e.createElement("span", null, n.result, n.count && /* @__PURE__ */ e.createElement("span", { className: "crew-report-count" }, " · ", n.count)))), t.closing && /* @__PURE__ */ e.createElement("div", { className: "crew-report-closing" }, t.closing));
 }
 function Mn({ payload: t, onDecide: n }) {
   const r = t.status === "approved" || t.status === "discarded";
   return /* @__PURE__ */ e.createElement("div", { className: `crew-chip approval ${r ? "resolved" : ""}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-chip-label" }, /* @__PURE__ */ e.createElement(Oe, { size: 13 }), " ", r ? "Decided" : "Needs you"), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), t.detail && /* @__PURE__ */ e.createElement("div", { className: "crew-approval-detail" }, t.detail), r ? /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded") : /* @__PURE__ */ e.createElement("div", { className: "crew-approval-buttons" }, /* @__PURE__ */ e.createElement("button", { className: "crew-btn danger", onClick: () => n(String(t.approval_id), "deny") }, "Discard"), /* @__PURE__ */ e.createElement("button", { className: "crew-btn primary", onClick: () => n(String(t.approval_id), "allow") }, "Approve")));
 }
 function Tn({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ve, { label: "You decided" }, /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded"));
+  return /* @__PURE__ */ e.createElement(fe, { label: "You decided" }, /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded"));
 }
 function _n({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ve, { label: "Memory updated" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-rule" }, t.rule), t.diff && /* @__PURE__ */ e.createElement("pre", { className: "crew-memory-diff" }, t.diff));
+  return t.proposal ? /* @__PURE__ */ e.createElement(fe, { label: t.kind === "conflicting" ? "Rules disagree" : "Rule may be stale" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-note" }, t.note), /* @__PURE__ */ e.createElement("ul", { className: "crew-memory-entries" }, (t.entries || []).map((n, r) => /* @__PURE__ */ e.createElement("li", { key: r }, n))), t.why && /* @__PURE__ */ e.createElement("div", { className: "crew-memory-why" }, t.why)) : t.tidied ? /* @__PURE__ */ e.createElement(fe, { label: "Memory tidied" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-note" }, t.note)) : /* @__PURE__ */ e.createElement(fe, { label: "Memory updated" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-rule" }, t.rule), t.diff && /* @__PURE__ */ e.createElement("pre", { className: "crew-memory-diff" }, t.diff));
 }
 function xn({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ve, { label: "Routine created" }, /* @__PURE__ */ e.createElement("div", { className: "crew-routine-name" }, /* @__PURE__ */ e.createElement(Je, { size: 13 }), " ", t.name), /* @__PURE__ */ e.createElement("div", { className: "crew-routine-when" }, t.human || t.cron));
+  return /* @__PURE__ */ e.createElement(fe, { label: "Routine created" }, /* @__PURE__ */ e.createElement("div", { className: "crew-routine-name" }, /* @__PURE__ */ e.createElement(Je, { size: 13 }), " ", t.name), /* @__PURE__ */ e.createElement("div", { className: "crew-routine-when" }, t.human || t.cron));
 }
 function An({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ve, { label: `Handed over by @${t.from_name || t.from || "a teammate"}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-botref-body" }, /* @__PURE__ */ e.createElement(Yt, { size: 13 }), " ", t.content));
+  return /* @__PURE__ */ e.createElement(fe, { label: `Handed over by @${t.from_name || t.from || "a teammate"}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-botref-body" }, /* @__PURE__ */ e.createElement(Yt, { size: 13 }), " ", t.content));
 }
 function In({ payload: t, onOpenScreen: n }) {
-  return /* @__PURE__ */ e.createElement(ve, { label: "Needs you at the keyboard" }, /* @__PURE__ */ e.createElement("div", { className: "crew-login-site" }, /* @__PURE__ */ e.createElement(sn, { size: 13 }), " Sign in to ", t.site || "a site"), t.why && /* @__PURE__ */ e.createElement("div", { className: "crew-login-why" }, t.why), /* @__PURE__ */ e.createElement("button", { className: "crew-btn", onClick: n }, "Take the wheel"));
+  return /* @__PURE__ */ e.createElement(fe, { label: "Needs you at the keyboard" }, /* @__PURE__ */ e.createElement("div", { className: "crew-login-site" }, /* @__PURE__ */ e.createElement(sn, { size: 13 }), " Sign in to ", t.site || "a site"), t.why && /* @__PURE__ */ e.createElement("div", { className: "crew-login-why" }, t.why), /* @__PURE__ */ e.createElement("button", { className: "crew-btn", onClick: n }, "Take the wheel"));
 }
 function On({ payload: t, screenshotUrl: n }) {
   const r = t.url ?? (t.bot_id && t.file ? n(t.bot_id, t.file) : void 0);
@@ -953,7 +953,7 @@ function Rn({ kind: t, payload: n, handlers: r }) {
       return null;
   }
 }
-const Dn = Le(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-BW7TGaO-.js").then((t) => t.i)).Streamdown })), Ln = {
+const Dn = Le(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-DDNW1vzn.js").then((t) => t.i)).Streamdown })), Ln = {
   browser: Zt,
   terminal: gn,
   file: Ee,
@@ -2295,7 +2295,7 @@ function gr({ client: t, notify: n }) {
     } catch {
     }
   }, [Q]);
-  const O = ye(() => {
+  const O = ve(() => {
     t.listSections().then(d).catch(() => d([]));
   }, [t]);
   q(O, [O, oe.length]), q(() => {
@@ -2325,7 +2325,7 @@ function gr({ client: t, notify: n }) {
       g = !1;
     };
   }, [t, x]);
-  const y = ye(() => {
+  const y = ve(() => {
     if (!x) {
       H([]);
       return;
@@ -2350,7 +2350,7 @@ function gr({ client: t, notify: n }) {
       g = !1;
     };
   }, [t, x, E]);
-  const f = ye((g, S) => {
+  const f = ve((g, S) => {
     if (!x) {
       h([]), X(null);
       return;
@@ -2544,7 +2544,7 @@ function gr({ client: t, notify: n }) {
 }
 const _e = 500, yr = 15e3;
 function vr(t, n) {
-  return t === 401 || t === 403 ? new ge("unauthorized", n) : t === 404 ? new ge("not_found", n) : t === 409 ? new ge("conflict", n) : new ge("unknown", n, t >= 500);
+  return t === 401 || t === 403 ? new ye("unauthorized", n) : t === 404 ? new ye("not_found", n) : t === 409 ? new ye("conflict", n) : new ye("unknown", n, t >= 500);
 }
 function wr(t) {
   const n = new URL(t, globalThis.location?.href ?? "http://127.0.0.1");
@@ -2585,7 +2585,7 @@ class Er {
         }
       });
     } catch (m) {
-      throw m instanceof DOMException && m.name === "AbortError" ? m : new ge("network", "Could not reach the crew backend.", !0);
+      throw m instanceof DOMException && m.name === "AbortError" ? m : new ye("network", "Could not reach the crew backend.", !0);
     }
     if (!o.ok) {
       const m = await o.json().then((w) => w?.detail).catch(() => {
@@ -2838,7 +2838,7 @@ export {
   wt as i,
   gt as j,
   yt as k,
-  ye as l,
+  ve as l,
   Et as m,
   Le as n,
   st as r,

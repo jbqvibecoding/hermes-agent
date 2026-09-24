@@ -67,6 +67,12 @@ it("renders the operator's own decision as a separate note in the thread", () =>
 
 it("renders a memory rule with its diff", () => {
   show("memory_updated", { rule: "Never email Finance before 10am", diff: "+ Never email Finance before 10am" });
+  show("memory_updated", { tidied: 2, note: "I merged 2 pair(s) that said the same thing." });
+  show("memory_updated", {
+    proposal: true, kind: "conflicting", why: "one says reply fast, one says wait",
+    entries: ["reply within the hour", "never reply before I have read it"],
+    note: "These two rules disagree — which one stands?",
+  });
   expect(screen.getByText("Memory updated")).toBeInTheDocument();
   expect(screen.getByText("+ Never email Finance before 10am")).toBeInTheDocument();
 });

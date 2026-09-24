@@ -155,6 +155,7 @@ def tick() -> int:
         taken += 1
         _run(conn, claimed)
     _speak(conn)
+    _garden(conn)
     return taken
 
 
@@ -183,6 +184,22 @@ def _speak(conn) -> None:
         crew_proactive.tick(conn)
     except Exception:
         log.debug("crew: the proactive sweep failed", exc_info=True)
+
+
+def _garden(conn) -> None:
+    """Tidy standing rules that are close to the store's ceiling.
+
+    Rides the same sweep for the same reason as the proactive pass, and its own
+    cooldown — seven days per teammate — means the query finds nobody on almost
+    every tick. Swallowed for the same reason too: memory housekeeping is never
+    urgent enough to cost somebody the recovery of work they are waiting on.
+    """
+    try:
+        from crew.memory import gardener as crew_gardener
+
+        crew_gardener.tick(conn)
+    except Exception:
+        log.debug("crew: the gardening sweep failed", exc_info=True)
 
 
 def _run(conn, task: dict) -> None:

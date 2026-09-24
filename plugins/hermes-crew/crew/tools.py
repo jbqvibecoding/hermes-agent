@@ -252,6 +252,18 @@ def handle_save_memory_rule(args: dict, **_kw: Any) -> str:
     if not rule:
         return json.dumps({"error": "Say the rule in one plain sentence."}, ensure_ascii=False)
 
+    # Refused here rather than in the host's scanner because it is a product
+    # judgement with a real false-positive cost, not a security rule: a claim
+    # about how a tool behaves *right now* cannot re-check itself, and memory
+    # has no mechanism that would. Credentials are already refused upstream by
+    # the strict threat scan every memory write goes through.
+    from crew.memory.filters import refuse
+
+    refusal = refuse(rule)
+    if refusal:
+        log.info("crew: refused a capability claim as a standing rule for %s", turn.bot_id)
+        return json.dumps({"error": refusal}, ensure_ascii=False)
+
     try:
         # ``load_on_disk_store`` resolves the memory directory through
         # ``get_memory_dir()`` at call time, so under the turn's HERMES_HOME

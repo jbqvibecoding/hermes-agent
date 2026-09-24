@@ -311,6 +311,28 @@ class MemoryStore:
         get_memory_dir().mkdir(parents=True, exist_ok=True)
         self._write_file(self._path_for(target), self._entries_for(target))
 
+    def entries(self, target: str = "memory") -> List[str]:
+        """A copy of the stored entries, for callers that want to read them.
+
+        Public because reading is a legitimate thing to want and the
+        alternatives are worse: parsing ``MEMORY.md`` again duplicates the
+        serializer, and reaching into ``_entries_for`` couples a caller to a
+        private accessor that is free to change. A copy, so nothing outside
+        can mutate the list behind the store's back and skip the char-budget
+        check that every real mutation goes through.
+        """
+        return list(self._entries_for(target))
+
+    def usage(self, target: str = "memory") -> tuple:
+        """``(chars_used, char_limit)`` — how close this store is to refusing.
+
+        Worth exposing because the limit is not advisory: at the ceiling
+        ``add`` rejects the write and tells the model to tidy up mid-turn, and
+        after a few failures it gives up entirely. Anything that wants to
+        intervene *before* that has to be able to see it coming.
+        """
+        return self._char_count(target), self._char_limit(target)
+
     def _entries_for(self, target: str) -> List[str]:
         if target == "user":
             return self.user_entries

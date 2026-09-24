@@ -132,6 +132,34 @@ _PATTERNS: List[Tuple[str, str, str]] = [
 
     # ── Hardcoded secrets ────────────────────────────────────────────
     (r'(?:api[_-]?key|token|secret|password)\s*[=:]\s*["\'][A-Za-z0-9+/=_-]{20,}', "hardcoded_secret", "strict"),
+
+    # ── Bare credentials ─────────────────────────────────────────────
+    # The pattern above needs a `key = "value"` shape. A credential arrives
+    # without one whenever a person says "remember my token is ghp_…" and the
+    # model writes that down verbatim — no assignment, no quotes, nothing for
+    # the rule above to anchor on. That is the single most likely way a live
+    # secret reaches a file which is (a) plain text on disk and (b) injected
+    # into every system prompt for the rest of the session.
+    #
+    # These anchor on the vendor's own prefix plus a length floor, so they
+    # cannot fire on prose: no English sentence contains `ghp_` followed by
+    # thirty base62 characters. Matching the issuer rather than the context is
+    # what makes them safe to apply to user-authored content.
+    (r'\bgh[pousr]_[A-Za-z0-9]{28,}', "bare_github_token", "strict"),
+    (r'\bgithub_pat_[A-Za-z0-9_]{40,}', "bare_github_pat", "strict"),
+    (r'\bsk-(?:proj-|ant-|or-)?[A-Za-z0-9_-]{24,}', "bare_api_key", "strict"),
+    (r'\bxox[baprs]-[A-Za-z0-9-]{10,}', "bare_slack_token", "strict"),
+    (r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b', "bare_aws_key_id", "strict"),
+    (r'\bAIza[A-Za-z0-9_-]{35}', "bare_google_key", "strict"),
+    (r'\bglpat-[A-Za-z0-9_-]{20,}', "bare_gitlab_token", "strict"),
+    (r'-----BEGIN(?:\s+[A-Z]+)*\s+PRIVATE KEY-----', "private_key_block", "strict"),
+    # `Bearer <token>` is the one shape that appears in legitimate technical
+    # prose ("send it with a Bearer token"), so it needs a real token after it
+    # rather than a word — hence the length floor and the charset.
+    (r'\bBearer\s+[A-Za-z0-9._~+/-]{24,}', "bare_bearer_token", "strict"),
+    # The same sentence in Chinese. "我的密码是 hunter2" is exactly as bad as
+    # the English, and the assignment-shaped rule above cannot see it at all.
+    (r'(?:密码|口令|密钥|令牌)\s*(?:是|为|:|：)\s*\S{6,}', "bare_secret_cn", "strict"),
 ]
 
 # Invisible / bidirectional unicode characters used in injection attacks.
