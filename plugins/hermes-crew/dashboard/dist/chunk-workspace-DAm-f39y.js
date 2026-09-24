@@ -7,13 +7,13 @@ const {
   Children: ut,
   Fragment: mt,
   Profiler: pt,
-  StrictMode: ft,
-  Suspense: xe,
-  cloneElement: ht,
+  StrictMode: ht,
+  Suspense: Oe,
+  cloneElement: ft,
   createContext: gt,
   createElement: Se,
   createRef: yt,
-  forwardRef: Oe,
+  forwardRef: Ie,
   isValidElement: vt,
   lazy: Re,
   memo: wt,
@@ -28,28 +28,28 @@ const {
   useId: Mt,
   useImperativeHandle: Tt,
   useInsertionEffect: _t,
-  useLayoutEffect: Ie,
-  useMemo: fe,
+  useLayoutEffect: De,
+  useMemo: he,
   useOptimistic: At,
   useReducer: xt,
   useRef: G,
   useState: N,
   useSyncExternalStore: Ot,
-  useTransition: Rt,
-  version: It
+  useTransition: It,
+  version: Rt
 } = e, Dt = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   Children: ut,
   Fragment: mt,
   Profiler: pt,
-  StrictMode: ft,
-  Suspense: xe,
-  cloneElement: ht,
+  StrictMode: ht,
+  Suspense: Oe,
+  cloneElement: ft,
   createContext: gt,
   createElement: Se,
   createRef: yt,
   default: e,
-  forwardRef: Oe,
+  forwardRef: Ie,
   isValidElement: vt,
   lazy: Re,
   memo: wt,
@@ -64,59 +64,59 @@ const {
   useId: Mt,
   useImperativeHandle: Tt,
   useInsertionEffect: _t,
-  useLayoutEffect: Ie,
-  useMemo: fe,
+  useLayoutEffect: De,
+  useMemo: he,
   useOptimistic: At,
   useReducer: xt,
   useRef: G,
   useState: N,
   useSyncExternalStore: Ot,
-  useTransition: Rt,
-  version: It
+  useTransition: It,
+  version: Rt
 }, Symbol.toStringTag, { value: "Module" }));
 class ge extends Error {
-  constructor(n, r, o = !1) {
-    super(r), this.code = n, this.retryable = o, this.name = "CrewError";
+  constructor(n, r, i = !1) {
+    super(r), this.code = n, this.retryable = i, this.name = "CrewError";
   }
   code;
   retryable;
 }
-function Ge(t) {
+function Ke(t) {
   return !t || t.role !== "agent" ? "" : t.parts.filter((n) => n.type === "text").map((n) => n.text).join("").trim();
 }
 function be(t) {
-  return Ge(
+  return Ke(
     [...t].reverse().find((n) => n.role === "agent" && !n.streaming)
   );
 }
-function $e(t) {
+function Pe(t) {
   return t.parts.filter((n) => n.type === "text").map((n) => n.text).join("");
 }
-const Pe = 6e4, Lt = 3e4, Ne = "optimistic-user:", we = "optimistic-agent:";
+const ze = 6e4, Lt = 3e4, Ne = "optimistic-user:", we = "optimistic-agent:";
 function $t(t, n = {}) {
-  const { enabled: r = !0, notify: o } = n, [m, w] = N([]), [u, M] = N(""), [l, s] = N(""), [k, c] = N([]), [a, p] = N([]), [g, d] = N([]), [_, x] = N([]), [O, H] = N(), [K, v] = N("connecting"), [P, X] = N([]), [Z, B] = N(r), [ce, Q] = N(), [ne, j] = N(() => /* @__PURE__ */ new Set()), [ee, le] = N(""), [me, pe] = N(0), $ = G(/* @__PURE__ */ new Map()), re = G(u), te = G(/* @__PURE__ */ new Set()), z = G(/* @__PURE__ */ new Map()), ae = G(o), se = fe(
+  const { enabled: r = !0, notify: i } = n, [m, w] = N([]), [u, M] = N(""), [l, s] = N(""), [k, c] = N([]), [a, p] = N([]), [g, d] = N([]), [_, x] = N([]), [O, H] = N(), [K, v] = N("connecting"), [P, X] = N([]), [Z, B] = N(r), [ce, Q] = N(), [ne, j] = N(() => /* @__PURE__ */ new Set()), [ee, le] = N(""), [me, pe] = N(0), $ = G(/* @__PURE__ */ new Map()), re = G(u), te = G(/* @__PURE__ */ new Set()), z = G(/* @__PURE__ */ new Map()), ae = G(i), se = he(
     () => m.find((b) => b.id === u),
     [m, u]
-  ), W = l || (u ? `dm:${u}` : ""), R = !!(u && !ne.has(u));
+  ), W = l || (u ? `dm:${u}` : ""), I = !!(u && !ne.has(u));
   q(() => {
     re.current = u;
   }, [u]), q(() => {
-    ae.current = o;
-  }, [o]);
-  const I = ye(async (b = !1) => {
+    ae.current = i;
+  }, [i]);
+  const R = ye(async (b = !1) => {
     const C = await t.listAgents();
-    for (const h of te.current)
-      C.some((E) => E.id === h) || te.current.delete(h);
-    const D = C.filter((h) => !te.current.has(h.id)), L = re.current, A = D.find((h) => h.id === L), i = $.current.get(L);
-    A?.lastMessagePreview && i && !i.messages.some((h) => h.streaming) && be(i.messages) !== A.lastMessagePreview && ($.current.set(L, { ...i, cachedAt: 0 }), pe((E) => E + 1));
-    const y = !!i?.messages.some((h) => h.streaming);
-    return w((h) => D.map((E) => {
-      const U = h.find((F) => F.id === E.id), f = be($.current.get(E.id)?.messages ?? []), S = !!f || E.id === L && y;
+    for (const f of te.current)
+      C.some((E) => E.id === f) || te.current.delete(f);
+    const D = C.filter((f) => !te.current.has(f.id)), L = re.current, A = D.find((f) => f.id === L), o = $.current.get(L);
+    A?.lastMessagePreview && o && !o.messages.some((f) => f.streaming) && be(o.messages) !== A.lastMessagePreview && ($.current.set(L, { ...o, cachedAt: 0 }), pe((E) => E + 1));
+    const y = !!o?.messages.some((f) => f.streaming);
+    return w((f) => D.map((E) => {
+      const U = f.find((F) => F.id === E.id), h = be($.current.get(E.id)?.messages ?? []), S = !!h || E.id === L && y;
       return {
         ...E,
-        lastMessagePreview: S ? f || U?.lastMessagePreview : E.lastMessagePreview ?? U?.lastMessagePreview
+        lastMessagePreview: S ? h || U?.lastMessagePreview : E.lastMessagePreview ?? U?.lastMessagePreview
       };
-    })), M((h) => h && D.some((E) => E.id === h) || b ? h : D[0]?.id || ""), D;
+    })), M((f) => f && D.some((E) => E.id === f) || b ? f : D[0]?.id || ""), D;
   }, [t]), Y = ye(async () => {
     const b = await t.listModelProviders();
     return X(b.providers), b.providers;
@@ -127,17 +127,17 @@ function $t(t, n = {}) {
       return;
     }
     let b = !0;
-    return B(!0), Promise.all([I(), Y()]).then(() => {
+    return B(!0), Promise.all([R(), Y()]).then(() => {
       b && (v("connected"), B(!1));
     }).catch((C) => {
       b && (v("error"), Q(C instanceof Error ? C.message : "Could not load the crew"), B(!1));
     }), () => {
       b = !1;
     };
-  }, [r, I, Y]), q(() => {
+  }, [r, R, Y]), q(() => {
     if (!r) return;
     const b = () => {
-      document.visibilityState === "hidden" || !navigator.onLine || I().catch(() => {
+      document.visibilityState === "hidden" || !navigator.onLine || R().catch(() => {
       });
     }, C = () => {
       document.visibilityState === "visible" && b();
@@ -145,16 +145,16 @@ function $t(t, n = {}) {
     return window.addEventListener("focus", b), window.addEventListener("online", b), document.addEventListener("visibilitychange", C), () => {
       window.clearInterval(D), window.removeEventListener("focus", b), window.removeEventListener("online", b), document.removeEventListener("visibilitychange", C);
     };
-  }, [r, I]), q(() => {
+  }, [r, R]), q(() => {
     s("");
   }, [u]), q(() => {
     if (!r) return;
     const b = $.current.get(u);
     if (b ? (p(b.messages), d(b.activities), x(b.approvals), H(b.computer), c(b.conversations)) : (p([]), d([]), x([]), H(void 0), c([])), le(""), !u) return;
     const C = b ? Date.now() - b.cachedAt : Number.POSITIVE_INFINITY;
-    if (b && C < Pe && !l) {
-      b.messages.some((i) => i.streaming) && le(u);
-      const A = window.setTimeout(() => pe((i) => i + 1), Pe - C);
+    if (b && C < ze && !l) {
+      b.messages.some((o) => o.streaming) && le(u);
+      const A = window.setTimeout(() => pe((o) => o + 1), ze - C);
       return () => window.clearTimeout(A);
     }
     const D = new AbortController();
@@ -163,26 +163,26 @@ function $t(t, n = {}) {
       t.listConversations(u, D.signal),
       t.listApprovalRequests(u, D.signal),
       t.getComputer(u, D.signal)
-    ]).then(async ([A, i, y]) => {
-      const h = l ? A.find((J) => J.id === l) ?? A[0] : A[0], E = h ? await t.getConversation(h.id, D.signal) : void 0;
+    ]).then(async ([A, o, y]) => {
+      const f = l ? A.find((J) => J.id === l) ?? A[0] : A[0], E = f ? await t.getConversation(f.id, D.signal) : void 0;
       if (!L || te.current.has(u)) return;
-      const U = $.current.get(u)?.messages ?? [], f = (E?.messages ?? []).map((J) => {
+      const U = $.current.get(u)?.messages ?? [], h = (E?.messages ?? []).map((J) => {
         const ue = z.current.get(J.id);
         return ue ? { ...J, id: ue } : J;
       }), S = U.filter(
         (J) => J.id.startsWith(Ne) || J.id.startsWith(we)
       ), F = [
-        ...f,
-        ...S.filter((J) => !f.some((ue) => ue.id === J.id))
+        ...h,
+        ...S.filter((J) => !h.some((ue) => ue.id === J.id))
       ], V = be(F), de = E?.activities ?? [];
       $.current.set(u, {
         messages: F,
         activities: de,
-        approvals: i,
+        approvals: o,
         conversations: A,
         computer: y,
         cachedAt: Date.now()
-      }), j((J) => new Set(J).add(u)), p(F), d(de), x(i), H(y), c(A), le(u), V && w((J) => J.map((ue) => ue.id === u ? { ...ue, lastMessagePreview: V } : ue));
+      }), j((J) => new Set(J).add(u)), p(F), d(de), x(o), H(y), c(A), le(u), V && w((J) => J.map((ue) => ue.id === u ? { ...ue, lastMessagePreview: V } : ue));
     }).catch((A) => {
       !L || te.current.has(u) || A instanceof DOMException && A.name === "AbortError" || ($.current.set(u, {
         messages: [],
@@ -190,7 +190,7 @@ function $t(t, n = {}) {
         approvals: [],
         conversations: [],
         cachedAt: Date.now()
-      }), j((i) => new Set(i).add(u)), p([]), Q(A instanceof Error ? A.message : "Could not load this teammate"));
+      }), j((o) => new Set(o).add(u)), p([]), Q(A instanceof Error ? A.message : "Could not load this teammate"));
     }), () => {
       L = !1, D.abort();
     };
@@ -215,7 +215,7 @@ function $t(t, n = {}) {
   }, [t, O?.status, r, u]), q(() => {
     if (!r || !W || ee !== u) return;
     let b = !0;
-    const C = u, D = (i) => {
+    const C = u, D = (o) => {
       const y = $.current.get(C);
       $.current.set(C, {
         messages: y?.messages ?? [],
@@ -224,73 +224,73 @@ function $t(t, n = {}) {
         conversations: y?.conversations ?? [],
         computer: y?.computer,
         cachedAt: Date.now(),
-        ...i
+        ...o
       });
-    }, L = (i) => p((y) => {
-      const h = i(y);
-      return D({ messages: h }), h;
-    }), A = t.subscribeToConversationEvents(W, (i) => {
+    }, L = (o) => p((y) => {
+      const f = o(y);
+      return D({ messages: f }), f;
+    }), A = t.subscribeToConversationEvents(W, (o) => {
       if (b) {
-        if (i.type === "message.created" && L((y) => {
-          let h = i.message;
-          const E = z.current.get(i.message.id);
-          if (E && (h = { ...i.message, id: E }), i.message.role === "user" && !E) {
-            const f = new Set(z.current.values()), S = y.find((F) => F.id.startsWith(Ne) && !f.has(F.id) && $e(F) === $e(i.message));
-            S && (z.current.set(i.message.id, S.id), h = { ...i.message, id: S.id });
+        if (o.type === "message.created" && L((y) => {
+          let f = o.message;
+          const E = z.current.get(o.message.id);
+          if (E && (f = { ...o.message, id: E }), o.message.role === "user" && !E) {
+            const h = new Set(z.current.values()), S = y.find((F) => F.id.startsWith(Ne) && !h.has(F.id) && Pe(F) === Pe(o.message));
+            S && (z.current.set(o.message.id, S.id), f = { ...o.message, id: S.id });
           }
-          if (i.message.role === "agent" && !E) {
-            const f = new Set(z.current.values()), S = y.find((F) => F.id.startsWith(we) && !f.has(F.id));
-            S && (z.current.set(i.message.id, S.id), h = { ...i.message, id: S.id });
+          if (o.message.role === "agent" && !E) {
+            const h = new Set(z.current.values()), S = y.find((F) => F.id.startsWith(we) && !h.has(F.id));
+            S && (z.current.set(o.message.id, S.id), f = { ...o.message, id: S.id });
           }
-          return y.find((f) => f.id === h.id) ? y.map((f) => f.id === h.id ? h : f) : [...y, h];
-        }), i.type === "message.delta" && L((y) => {
-          let h = z.current.get(i.messageId);
-          if (!h) {
-            const E = new Set(z.current.values()), U = y.find((f) => f.id.startsWith(we) && !E.has(f.id));
-            U && (h = U.id, z.current.set(i.messageId, h));
+          return y.find((h) => h.id === f.id) ? y.map((h) => h.id === f.id ? f : h) : [...y, f];
+        }), o.type === "message.delta" && L((y) => {
+          let f = z.current.get(o.messageId);
+          if (!f) {
+            const E = new Set(z.current.values()), U = y.find((h) => h.id.startsWith(we) && !E.has(h.id));
+            U && (f = U.id, z.current.set(o.messageId, f));
           }
-          return h ??= i.messageId, y.some((E) => E.id === h) ? y.map((E) => E.id === h ? {
+          return f ??= o.messageId, y.some((E) => E.id === f) ? y.map((E) => E.id === f ? {
             ...E,
-            parts: E.parts.map((U, f) => f === 0 && U.type === "text" ? { ...U, text: U.text + i.delta } : U)
+            parts: E.parts.map((U, h) => h === 0 && U.type === "text" ? { ...U, text: U.text + o.delta } : U)
           } : E) : [...y, {
-            id: h,
+            id: f,
             conversationId: W,
             role: "agent",
-            parts: [{ type: "text", text: i.delta }],
+            parts: [{ type: "text", text: o.delta }],
             createdAt: (/* @__PURE__ */ new Date()).toISOString(),
             streaming: !0
           }];
-        }), i.type === "message.completed") {
-          const y = z.current.get(i.messageId) ?? i.messageId;
-          i.notify === !1 ? L((h) => h.flatMap((E) => E.id !== y ? [E] : E.id.startsWith(we) ? [{
+        }), o.type === "message.completed") {
+          const y = z.current.get(o.messageId) ?? o.messageId;
+          o.notify === !1 ? L((f) => f.flatMap((E) => E.id !== y ? [E] : E.id.startsWith(we) ? [{
             ...E,
             parts: E.parts.map((U) => U.type === "text" ? { ...U, text: "" } : U),
             streaming: !0
-          }] : [])) : (L((h) => {
-            const E = h.filter((f) => f.id === y || f.role !== "agent" || !f.streaming).map((f) => f.id === y ? { ...f, streaming: !1 } : f), U = be(E);
-            return U && w((f) => f.map((S) => S.id === C ? { ...S, lastMessagePreview: U } : S)), E;
+          }] : [])) : (L((f) => {
+            const E = f.filter((h) => h.id === y || h.role !== "agent" || !h.streaming).map((h) => h.id === y ? { ...h, streaming: !1 } : h), U = be(E);
+            return U && w((h) => h.map((S) => S.id === C ? { ...S, lastMessagePreview: U } : S)), E;
           }), ae.current?.({
             title: `${se?.name ?? "Your teammate"} finished`,
             body: "There is something new to read."
           }));
         }
-        if (i.type === "message.dropped") {
-          const y = z.current.get(i.messageId) ?? i.messageId;
-          L((h) => h.filter((E) => E.id !== y));
+        if (o.type === "message.dropped") {
+          const y = z.current.get(o.messageId) ?? o.messageId;
+          L((f) => f.filter((E) => E.id !== y));
         }
-        i.type === "message.updated" && (L((y) => {
-          const h = z.current.get(i.message.id), E = h ? { ...i.message, id: h } : i.message, U = y.find((S) => S.id === E.id), f = i.message.role === "agent" && !i.message.streaming ? y.filter((S) => S.id === E.id || S.role !== "agent" || !S.streaming) : y;
-          return U ? f.map((S) => S.id === E.id ? E : S) : [...f, E];
-        }), i.message.role === "agent" && !i.message.streaming && w((y) => y.map((h) => h.id === C ? { ...h, lastMessagePreview: Ge(i.message) || void 0 } : h))), i.type === "approval.updated" && (x((y) => {
-          const h = y.some((E) => E.id === i.approval.id) ? y.map((E) => E.id === i.approval.id ? i.approval : E) : [i.approval, ...y];
-          return D({ approvals: h }), h;
-        }), i.approval.status === "pending" && ae.current?.({
+        o.type === "message.updated" && (L((y) => {
+          const f = z.current.get(o.message.id), E = f ? { ...o.message, id: f } : o.message, U = y.find((S) => S.id === E.id), h = o.message.role === "agent" && !o.message.streaming ? y.filter((S) => S.id === E.id || S.role !== "agent" || !S.streaming) : y;
+          return U ? h.map((S) => S.id === E.id ? E : S) : [...h, E];
+        }), o.message.role === "agent" && !o.message.streaming && w((y) => y.map((f) => f.id === C ? { ...f, lastMessagePreview: Ke(o.message) || void 0 } : f))), o.type === "approval.updated" && (x((y) => {
+          const f = y.some((E) => E.id === o.approval.id) ? y.map((E) => E.id === o.approval.id ? o.approval : E) : [o.approval, ...y];
+          return D({ approvals: f }), f;
+        }), o.approval.status === "pending" && ae.current?.({
           title: `${se?.name ?? "Your teammate"} needs you`,
-          body: i.approval.title
-        })), i.type === "activity.updated" && d((y) => {
-          const h = y.some((E) => E.id === i.activity.id) ? y.map((E) => E.id === i.activity.id ? i.activity : E) : [...y, i.activity];
-          return D({ activities: h }), h;
-        }), i.type === "agent.status" && w((y) => y.map((h) => h.id === i.agentId ? { ...h, status: i.status } : h)), i.type === "connection.changed" && v(i.state);
+          body: o.approval.title
+        })), o.type === "activity.updated" && d((y) => {
+          const f = y.some((E) => E.id === o.activity.id) ? y.map((E) => E.id === o.activity.id ? o.activity : E) : [...y, o.activity];
+          return D({ activities: f }), f;
+        }), o.type === "agent.status" && w((y) => y.map((f) => f.id === o.agentId ? { ...f, status: o.status } : f)), o.type === "connection.changed" && v(o.state);
       }
     });
     return () => {
@@ -311,27 +311,27 @@ function $t(t, n = {}) {
     computer: O,
     connection: K,
     loading: Z,
-    conversationLoading: R,
+    conversationLoading: I,
     error: ce,
-    refreshAgents: I,
+    refreshAgents: R,
     refreshModelProviders: Y,
     dismissError: () => Q(void 0),
     createAgent: async (b) => {
       const C = await t.createAgent(b);
-      return await I(!0), M(C.id), C;
+      return await R(!0), M(C.id), C;
     },
     updateAgent: async (b, C) => {
-      await t.updateAgent(b, C), await I(!0);
+      await t.updateAgent(b, C), await R(!0);
     },
     duplicateAgent: async (b) => {
       const C = await t.duplicateAgent(b);
-      await I(!0), M(C.id);
+      await R(!0), M(C.id);
     },
     deleteAgent: async (b) => {
       const C = m.find((y) => y.id === b), D = u;
       if (!C || te.current.has(b)) return;
-      const L = m.findIndex((y) => y.id === b), A = m.filter((y) => y.id !== b), i = D === b ? A[Math.min(Math.max(L, 0), Math.max(A.length - 1, 0))]?.id ?? "" : D;
-      te.current.add(b), w(A), M(i);
+      const L = m.findIndex((y) => y.id === b), A = m.filter((y) => y.id !== b), o = D === b ? A[Math.min(Math.max(L, 0), Math.max(A.length - 1, 0))]?.id ?? "" : D;
+      te.current.add(b), w(A), M(o);
       try {
         try {
           await t.deleteAgent(b);
@@ -339,27 +339,27 @@ function $t(t, n = {}) {
           if (!(y instanceof ge && y.code === "not_found")) throw y;
         }
         $.current.delete(b), j((y) => {
-          const h = new Set(y);
-          return h.delete(b), h;
-        }), await I();
+          const f = new Set(y);
+          return f.delete(b), f;
+        }), await R();
       } catch (y) {
-        throw te.current.delete(b), w((h) => {
-          if (h.some((U) => U.id === b)) return h;
-          const E = [...h];
+        throw te.current.delete(b), w((f) => {
+          if (f.some((U) => U.id === b)) return f;
+          const E = [...f];
           return E.splice(Math.min(L, E.length), 0, C), E;
-        }), M((h) => h || (D === b ? b : h)), Q(y instanceof Error ? y.message : "Could not remove this teammate"), y;
+        }), M((f) => f || (D === b ? b : f)), Q(y instanceof Error ? y.message : "Could not remove this teammate"), y;
       }
     },
     sendMessage: async (b) => {
       if (!W || !u) return;
-      const C = u, D = W, L = `${Date.now()}:${Math.random().toString(36).slice(2)}`, A = `${Ne}${L}`, i = `${we}${L}`, y = (/* @__PURE__ */ new Date()).toISOString(), h = {
+      const C = u, D = W, L = `${Date.now()}:${Math.random().toString(36).slice(2)}`, A = `${Ne}${L}`, o = `${we}${L}`, y = (/* @__PURE__ */ new Date()).toISOString(), f = {
         id: A,
         conversationId: D,
         role: "user",
         parts: [{ type: "text", text: b }],
         createdAt: y
       }, E = {
-        id: i,
+        id: o,
         conversationId: D,
         role: "agent",
         parts: [{ type: "text", text: "" }],
@@ -371,23 +371,23 @@ function $t(t, n = {}) {
         approvals: [],
         conversations: [],
         cachedAt: Date.now()
-      }, f = [...U.messages].reverse().find((V) => V.role === "agent" && V.streaming), F = [...f ? U.messages.map((V) => V.id === f.id ? { ...V, streaming: !1, interrupted: !0 } : V) : U.messages, h, E];
+      }, h = [...U.messages].reverse().find((V) => V.role === "agent" && V.streaming), F = [...h ? U.messages.map((V) => V.id === h.id ? { ...V, streaming: !1, interrupted: !0 } : V) : U.messages, f, E];
       re.current === C && d([]), $.current.set(C, { ...U, messages: F, activities: [], cachedAt: Date.now() }), re.current === C && (p(F), le(C));
       try {
         const V = await t.sendMessage({ conversationId: D, text: b });
         z.current.set(V.id, A);
         const de = V.id.match(/^(.+):user(?:$|:)/)?.[1];
-        de && (z.current.set(`${de}:user`, A), z.current.set(`${de}:agent`, f?.id ?? i));
-        const J = $.current.get(C) ?? U, ue = { ...V, id: A }, he = J.messages.map((Ee) => Ee.id === A ? ue : Ee).filter((Ee, it, ct) => ct.findIndex((lt) => lt.id === Ee.id) === it);
-        $.current.set(C, { ...J, messages: he, cachedAt: Date.now() }), re.current === C && p(he);
+        de && (z.current.set(`${de}:user`, A), z.current.set(`${de}:agent`, h?.id ?? o));
+        const J = $.current.get(C) ?? U, ue = { ...V, id: A }, fe = J.messages.map((Ee) => Ee.id === A ? ue : Ee).filter((Ee, it, ct) => ct.findIndex((lt) => lt.id === Ee.id) === it);
+        $.current.set(C, { ...J, messages: fe, cachedAt: Date.now() }), re.current === C && p(fe);
       } catch (V) {
-        const de = $.current.get(C) ?? U, J = de.messages.filter((he) => he.id !== i), ue = J.some((he) => he.id === A) ? J : [...J, h];
-        throw $.current.set(C, { ...de, messages: ue, cachedAt: Date.now() }), re.current === C && p(ue), f || Q(V instanceof Error ? V.message : "Could not send that"), V;
+        const de = $.current.get(C) ?? U, J = de.messages.filter((fe) => fe.id !== o), ue = J.some((fe) => fe.id === A) ? J : [...J, f];
+        throw $.current.set(C, { ...de, messages: ue, cachedAt: Date.now() }), re.current === C && p(ue), h || Q(V instanceof Error ? V.message : "Could not send that"), V;
       }
     },
     respondToApproval: async (b, C, D, L) => {
-      const A = u, i = await t.respondToApproval({ requestId: b, decision: C, note: D, contentHash: L }), y = $.current.get(A), h = (y?.approvals ?? []).map((E) => E.id === i.id ? i : E);
-      y && $.current.set(A, { ...y, approvals: h, cachedAt: Date.now() }), re.current === A && x(h);
+      const A = u, o = await t.respondToApproval({ requestId: b, decision: C, note: D, contentHash: L }), y = $.current.get(A), f = (y?.approvals ?? []).map((E) => E.id === o.id ? o : E);
+      y && $.current.set(A, { ...y, approvals: f, cachedAt: Date.now() }), re.current === A && x(f);
     },
     openComputer: async (b) => {
       if (!u) throw new Error("No teammate is selected");
@@ -400,14 +400,14 @@ function $t(t, n = {}) {
     reconnect: async () => {
       v("connecting");
       try {
-        await t.reconnect(), await I(), v("connected");
+        await t.reconnect(), await R(), v("connected");
       } catch (b) {
         v("error"), Q(b instanceof Error ? b.message : "Reconnect failed");
       }
     }
   };
 }
-const Pt = (t) => t.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase(), Ke = (...t) => t.filter((n, r, o) => !!n && n.trim() !== "" && o.indexOf(n) === r).join(" ").trim();
+const Pt = (t) => t.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase(), Ye = (...t) => t.filter((n, r, i) => !!n && n.trim() !== "" && i.indexOf(n) === r).join(" ").trim();
 var zt = {
   xmlns: "http://www.w3.org/2000/svg",
   width: 24,
@@ -419,12 +419,12 @@ var zt = {
   strokeLinecap: "round",
   strokeLinejoin: "round"
 };
-const Ut = Oe(
+const Ut = Ie(
   ({
     color: t = "currentColor",
     size: n = 24,
     strokeWidth: r = 2,
-    absoluteStrokeWidth: o,
+    absoluteStrokeWidth: i,
     className: m = "",
     children: w,
     iconNode: u,
@@ -437,8 +437,8 @@ const Ut = Oe(
       width: n,
       height: n,
       stroke: t,
-      strokeWidth: o ? Number(r) * 24 / Number(n) : r,
-      className: Ke("lucide", m),
+      strokeWidth: i ? Number(r) * 24 / Number(n) : r,
+      className: Ye("lucide", m),
       ...M
     },
     [
@@ -448,11 +448,11 @@ const Ut = Oe(
   )
 );
 const T = (t, n) => {
-  const r = Oe(
-    ({ className: o, ...m }, w) => Se(Ut, {
+  const r = Ie(
+    ({ className: i, ...m }, w) => Se(Ut, {
       ref: w,
       iconNode: n,
-      className: Ke(`lucide-${Pt(t)}`, o),
+      className: Ye(`lucide-${Pt(t)}`, i),
       ...m
     })
   );
@@ -479,7 +479,7 @@ const Ft = T("Bot", [
   ["path", { d: "M15 13v2", key: "1xurst" }],
   ["path", { d: "M9 13v2", key: "rq6x2g" }]
 ]);
-const De = T("Check", [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]]);
+const Le = T("Check", [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]]);
 const Vt = T("ChevronDown", [
   ["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]
 ]);
@@ -499,7 +499,7 @@ const Wt = T("CircleHelp", [
   ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", key: "1u773s" }],
   ["path", { d: "M12 17h.01", key: "p32p05" }]
 ]);
-const Ye = T("Clock", [
+const Xe = T("Clock", [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["polyline", { points: "12 6 12 12 16 14", key: "68esgv" }]
 ]);
@@ -562,11 +562,11 @@ const Ae = T("FileText", [
   ["path", { d: "M16 13H8", key: "t4e002" }],
   ["path", { d: "M16 17H8", key: "z1uh3a" }]
 ]);
-const Xe = T("File", [
+const Je = T("File", [
   ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
   ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }]
 ]);
-const ze = T("Hand", [
+const Ue = T("Hand", [
   ["path", { d: "M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2", key: "1fvzgz" }],
   ["path", { d: "M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2", key: "1kc0my" }],
   ["path", { d: "M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8", key: "10h0bg" }],
@@ -593,7 +593,7 @@ const nn = T("KeyRound", [
   ],
   ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
 ]);
-const Le = T("LoaderCircle", [
+const $e = T("LoaderCircle", [
   ["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]
 ]);
 const rn = T("Lock", [
@@ -612,7 +612,7 @@ const sn = T("Minimize2", [
   ["line", { x1: "14", x2: "21", y1: "10", y2: "3", key: "o5lafz" }],
   ["line", { x1: "3", x2: "10", y1: "21", y2: "14", key: "1atl0r" }]
 ]);
-const Je = T("Monitor", [
+const Ze = T("Monitor", [
   ["rect", { width: "20", height: "14", x: "2", y: "3", rx: "2", key: "48i651" }],
   ["line", { x1: "8", x2: "16", y1: "21", y2: "21", key: "1svkeh" }],
   ["line", { x1: "12", x2: "12", y1: "17", y2: "21", key: "vw1qmm" }]
@@ -627,7 +627,7 @@ const on = T("Pencil", [
   ],
   ["path", { d: "m15 5 4 4", key: "1mk7zo" }]
 ]);
-const Ze = T("Plus", [
+const Qe = T("Plus", [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "M12 5v14", key: "s699le" }]
 ]);
@@ -640,17 +640,17 @@ const ln = T("RotateCcw", [
   ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
   ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
 ]);
-const Qe = T("Search", [
+const et = T("Search", [
   ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }],
   ["path", { d: "m21 21-4.3-4.3", key: "1qie3q" }]
 ]);
-const Ue = T("Settings2", [
+const qe = T("Settings2", [
   ["path", { d: "M20 7h-9", key: "3s1dr2" }],
   ["path", { d: "M14 17H5", key: "gfn3mx" }],
   ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
   ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
 ]);
-const et = T("ShieldAlert", [
+const xe = T("ShieldAlert", [
   [
     "path",
     {
@@ -704,19 +704,19 @@ const pn = T("TriangleAlert", [
   ["path", { d: "M12 9v4", key: "juzpu7" }],
   ["path", { d: "M12 17h.01", key: "p32p05" }]
 ]);
-const fn = T("Users", [
+const hn = T("Users", [
   ["path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", key: "1yyitq" }],
   ["circle", { cx: "9", cy: "7", r: "4", key: "nufk8" }],
   ["path", { d: "M22 21v-2a4 4 0 0 0-3-3.87", key: "kshegd" }],
   ["path", { d: "M16 3.13a4 4 0 0 1 0 7.75", key: "1da9ce" }]
 ]);
-function hn(t) {
+function fn(t) {
   let n = 0;
   for (let r = 0; r < t.length; r += 1) n = (n * 31 + t.charCodeAt(r)) % 360;
   return n;
 }
 function nt({ agent: t, size: n = 36 }) {
-  const r = hn(t.id || t.name);
+  const r = fn(t.id || t.name);
   return /* @__PURE__ */ e.createElement(
     "span",
     {
@@ -734,7 +734,7 @@ function nt({ agent: t, size: n = 36 }) {
     t.avatar || t.name.trim().slice(0, 1).toUpperCase()
   );
 }
-const gn = Re(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-BSuaqT2c.js").then((t) => t.i)).Streamdown })), qe = {
+const gn = Re(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-CL0bGTqb.js").then((t) => t.i)).Streamdown })), He = {
   working: "Working",
   idle: "Idle",
   waiting_for_approval: "Needs you",
@@ -744,7 +744,7 @@ function yn({
   agents: t,
   sections: n,
   rooms: r,
-  selectedAgentId: o,
+  selectedAgentId: i,
   selectedThreadId: m,
   search: w,
   onSearch: u,
@@ -762,16 +762,16 @@ function yn({
   }, [a]);
   const g = (v, P) => {
     p(void 0), s(v, P);
-  }, d = w.trim().toLowerCase(), _ = (v) => !d || `${v.name} ${v.role}`.toLowerCase().includes(d), x = fe(() => new Map(t.map((v) => [v.id, v])), [t]), O = n.map((v) => ({
+  }, d = w.trim().toLowerCase(), _ = (v) => !d || `${v.name} ${v.role}`.toLowerCase().includes(d), x = he(() => new Map(t.map((v) => [v.id, v])), [t]), O = n.map((v) => ({
     section: v,
     members: v.bot_ids.map((P) => x.get(P)).filter((P) => !!P && _(P))
   })).filter((v) => v.members.length > 0), H = !d && O.length > 1, K = (v) => /* @__PURE__ */ e.createElement(
     "div",
     {
       key: v.id,
-      className: `agent-row ${o === v.id && !m.startsWith("group:") ? "selected" : ""} ${v.status === "working" ? "is-working" : ""}`
+      className: `agent-row ${i === v.id && !m.startsWith("group:") ? "selected" : ""} ${v.status === "working" ? "is-working" : ""}`
     },
-    /* @__PURE__ */ e.createElement("button", { className: "agent-select", onClick: () => M(v.id) }, /* @__PURE__ */ e.createElement(nt, { agent: v }), /* @__PURE__ */ e.createElement("span", { className: "agent-copy" }, /* @__PURE__ */ e.createElement("strong", null, /* @__PURE__ */ e.createElement("span", null, v.name), /* @__PURE__ */ e.createElement("span", { className: `agent-status ${v.status}`, title: qe[v.status], "aria-label": qe[v.status] })), v.lastMessagePreview && /* @__PURE__ */ e.createElement("span", { className: "agent-preview agent-preview-entering" }, /* @__PURE__ */ e.createElement(xe, { fallback: v.lastMessagePreview }, /* @__PURE__ */ e.createElement(gn, { className: "agent-preview-markdown", mode: "static", controls: !1, linkSafety: { enabled: !0 }, skipHtml: !0 }, v.lastMessagePreview))))),
+    /* @__PURE__ */ e.createElement("button", { className: "agent-select", onClick: () => M(v.id) }, /* @__PURE__ */ e.createElement(nt, { agent: v }), /* @__PURE__ */ e.createElement("span", { className: "agent-copy" }, /* @__PURE__ */ e.createElement("strong", null, /* @__PURE__ */ e.createElement("span", null, v.name), /* @__PURE__ */ e.createElement("span", { className: `agent-status ${v.status}`, title: He[v.status], "aria-label": He[v.status] })), v.lastMessagePreview && /* @__PURE__ */ e.createElement("span", { className: "agent-preview agent-preview-entering" }, /* @__PURE__ */ e.createElement(Oe, { fallback: v.lastMessagePreview }, /* @__PURE__ */ e.createElement(gn, { className: "agent-preview-markdown", mode: "static", controls: !1, linkSafety: { enabled: !0 }, skipHtml: !0 }, v.lastMessagePreview))))),
     /* @__PURE__ */ e.createElement(
       "button",
       {
@@ -784,7 +784,7 @@ function yn({
     ),
     a === v.id && /* @__PURE__ */ e.createElement("div", { className: "agent-menu", role: "menu", onPointerDown: (P) => P.stopPropagation() }, /* @__PURE__ */ e.createElement("button", { role: "menuitem", onClick: () => g(v, "edit") }, /* @__PURE__ */ e.createElement(on, { size: 13 }), " Edit"), /* @__PURE__ */ e.createElement("button", { role: "menuitem", onClick: () => g(v, "duplicate") }, /* @__PURE__ */ e.createElement(Gt, { size: 13 }), " Duplicate"), /* @__PURE__ */ e.createElement("div", null), /* @__PURE__ */ e.createElement("button", { role: "menuitem", className: "danger-text", onClick: () => g(v, "delete") }, /* @__PURE__ */ e.createElement(tt, { size: 13 }), " Remove from crew"))
   );
-  return /* @__PURE__ */ e.createElement("aside", { className: "agent-sidebar" }, /* @__PURE__ */ e.createElement("div", { className: "sidebar-titlebar" }, /* @__PURE__ */ e.createElement("span", { className: "sidebar-title" }, "Crew"), /* @__PURE__ */ e.createElement("button", { className: "brand-add", "aria-label": "Hire a teammate", onClick: k }, /* @__PURE__ */ e.createElement(Ze, { size: 18 }))), /* @__PURE__ */ e.createElement("label", { className: "search" }, /* @__PURE__ */ e.createElement(Qe, { size: 15 }), /* @__PURE__ */ e.createElement("input", { "aria-label": "Search the crew", placeholder: "Search your crew", value: w, onChange: (v) => u(v.target.value) })), /* @__PURE__ */ e.createElement("div", { className: "agent-list" }, t.length === 0 && /* @__PURE__ */ e.createElement("div", { className: "agent-list-empty" }, "No teammates yet"), t.length > 0 && O.length === 0 && /* @__PURE__ */ e.createElement("div", { className: "agent-list-empty" }, "No teammates found"), H ? O.map(({ section: v, members: P }) => /* @__PURE__ */ e.createElement("section", { className: "agent-section", key: v.id }, /* @__PURE__ */ e.createElement(
+  return /* @__PURE__ */ e.createElement("aside", { className: "agent-sidebar" }, /* @__PURE__ */ e.createElement("div", { className: "sidebar-titlebar" }, /* @__PURE__ */ e.createElement("span", { className: "sidebar-title" }, "Crew"), /* @__PURE__ */ e.createElement("button", { className: "brand-add", "aria-label": "Hire a teammate", onClick: k }, /* @__PURE__ */ e.createElement(Qe, { size: 18 }))), /* @__PURE__ */ e.createElement("label", { className: "search" }, /* @__PURE__ */ e.createElement(et, { size: 15 }), /* @__PURE__ */ e.createElement("input", { "aria-label": "Search the crew", placeholder: "Search your crew", value: w, onChange: (v) => u(v.target.value) })), /* @__PURE__ */ e.createElement("div", { className: "agent-list" }, t.length === 0 && /* @__PURE__ */ e.createElement("div", { className: "agent-list-empty" }, "No teammates yet"), t.length > 0 && O.length === 0 && /* @__PURE__ */ e.createElement("div", { className: "agent-list-empty" }, "No teammates found"), H ? O.map(({ section: v, members: P }) => /* @__PURE__ */ e.createElement("section", { className: "agent-section", key: v.id }, /* @__PURE__ */ e.createElement(
     "button",
     {
       className: `agent-section-header ${v.collapsed ? "is-collapsed" : ""}`,
@@ -800,7 +800,7 @@ function vn({
   open: t,
   agents: n,
   rooms: r,
-  onClose: o,
+  onClose: i,
   onSelectAgent: m,
   onSelectThread: w,
   onCreateAgent: u,
@@ -810,9 +810,9 @@ function vn({
   q(() => {
     t && (s(""), window.setTimeout(() => k.current?.focus(), 0));
   }, [t]);
-  const a = fe(() => [
-    { id: "create", label: "Hire a teammate", detail: "Add someone to the crew", icon: Ze, run: u },
-    { id: "computer", label: "Open their computer", detail: "The current teammate's screen", icon: Je, run: M },
+  const a = he(() => [
+    { id: "create", label: "Hire a teammate", detail: "Add someone to the crew", icon: Qe, run: u },
+    { id: "computer", label: "Open their computer", detail: "The current teammate's screen", icon: Ze, run: M },
     ...n.map((g) => ({
       id: `agent-${g.id}`,
       label: g.name,
@@ -824,13 +824,13 @@ function vn({
       id: `room-${g.id}`,
       label: g.title,
       detail: g.subtitle || "Room",
-      icon: fn,
+      icon: hn,
       run: () => w(g.id)
     }))
   ], [n, r, M, u, m, w]).filter((g) => `${g.label} ${g.detail}`.toLowerCase().includes(l.toLowerCase()));
   if (!t) return null;
   const p = (g) => {
-    g.run(), o();
+    g.run(), i();
   };
   return /* @__PURE__ */ e.createElement(
     "div",
@@ -838,10 +838,10 @@ function vn({
       className: "palette-backdrop",
       role: "presentation",
       onMouseDown: (g) => {
-        g.target === g.currentTarget && o();
+        g.target === g.currentTarget && i();
       }
     },
-    /* @__PURE__ */ e.createElement("section", { className: "command-palette", role: "dialog", "aria-modal": "true", "aria-label": "Command palette" }, /* @__PURE__ */ e.createElement("label", null, /* @__PURE__ */ e.createElement(Qe, { size: 17 }), /* @__PURE__ */ e.createElement(
+    /* @__PURE__ */ e.createElement("section", { className: "command-palette", role: "dialog", "aria-modal": "true", "aria-label": "Command palette" }, /* @__PURE__ */ e.createElement("label", null, /* @__PURE__ */ e.createElement(et, { size: 17 }), /* @__PURE__ */ e.createElement(
       "input",
       {
         ref: k,
@@ -850,7 +850,7 @@ function vn({
         value: l,
         onChange: (g) => s(g.target.value),
         onKeyDown: (g) => {
-          g.key === "Escape" && o(), g.key === "Enter" && a[0] && p(a[0]);
+          g.key === "Escape" && i(), g.key === "Enter" && a[0] && p(a[0]);
         }
       }
     ), /* @__PURE__ */ e.createElement("kbd", null, "esc")), /* @__PURE__ */ e.createElement("div", { className: "palette-results" }, a.length ? a.map((g, d) => {
@@ -863,11 +863,11 @@ function ve({ label: t, kind: n = "", children: r }) {
   return /* @__PURE__ */ e.createElement("div", { className: `crew-chip ${n}` }, t && /* @__PURE__ */ e.createElement("div", { className: "crew-chip-label" }, t), r);
 }
 function wn({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ve, { kind: "report" }, (t.lines ?? []).map((n, r) => /* @__PURE__ */ e.createElement("div", { className: "crew-report-line", key: r }, /* @__PURE__ */ e.createElement("span", { className: "crew-report-check" }, /* @__PURE__ */ e.createElement(De, { size: 13 })), /* @__PURE__ */ e.createElement("span", { className: "crew-report-system" }, n.system), /* @__PURE__ */ e.createElement("span", { className: "crew-report-arrow" }, "→"), /* @__PURE__ */ e.createElement("span", null, n.result, n.count && /* @__PURE__ */ e.createElement("span", { className: "crew-report-count" }, " · ", n.count)))), t.closing && /* @__PURE__ */ e.createElement("div", { className: "crew-report-closing" }, t.closing));
+  return /* @__PURE__ */ e.createElement(ve, { kind: "report" }, (t.lines ?? []).map((n, r) => /* @__PURE__ */ e.createElement("div", { className: "crew-report-line", key: r }, /* @__PURE__ */ e.createElement("span", { className: "crew-report-check" }, /* @__PURE__ */ e.createElement(Le, { size: 13 })), /* @__PURE__ */ e.createElement("span", { className: "crew-report-system" }, n.system), /* @__PURE__ */ e.createElement("span", { className: "crew-report-arrow" }, "→"), /* @__PURE__ */ e.createElement("span", null, n.result, n.count && /* @__PURE__ */ e.createElement("span", { className: "crew-report-count" }, " · ", n.count)))), t.closing && /* @__PURE__ */ e.createElement("div", { className: "crew-report-closing" }, t.closing));
 }
 function En({ payload: t, onDecide: n }) {
   const r = t.status === "approved" || t.status === "discarded";
-  return /* @__PURE__ */ e.createElement("div", { className: `crew-chip approval ${r ? "resolved" : ""}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-chip-label" }, /* @__PURE__ */ e.createElement(et, { size: 13 }), " ", r ? "Decided" : "Needs you"), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), t.detail && /* @__PURE__ */ e.createElement("div", { className: "crew-approval-detail" }, t.detail), r ? /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded") : /* @__PURE__ */ e.createElement("div", { className: "crew-approval-buttons" }, /* @__PURE__ */ e.createElement("button", { className: "crew-btn danger", onClick: () => n(String(t.approval_id), "deny") }, "Discard"), /* @__PURE__ */ e.createElement("button", { className: "crew-btn primary", onClick: () => n(String(t.approval_id), "allow") }, "Approve")));
+  return /* @__PURE__ */ e.createElement("div", { className: `crew-chip approval ${r ? "resolved" : ""}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-chip-label" }, /* @__PURE__ */ e.createElement(xe, { size: 13 }), " ", r ? "Decided" : "Needs you"), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), t.detail && /* @__PURE__ */ e.createElement("div", { className: "crew-approval-detail" }, t.detail), r ? /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded") : /* @__PURE__ */ e.createElement("div", { className: "crew-approval-buttons" }, /* @__PURE__ */ e.createElement("button", { className: "crew-btn danger", onClick: () => n(String(t.approval_id), "deny") }, "Discard"), /* @__PURE__ */ e.createElement("button", { className: "crew-btn primary", onClick: () => n(String(t.approval_id), "allow") }, "Approve")));
 }
 function bn({ payload: t }) {
   return /* @__PURE__ */ e.createElement(ve, { label: "You decided" }, /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded"));
@@ -876,7 +876,7 @@ function kn({ payload: t }) {
   return /* @__PURE__ */ e.createElement(ve, { label: "Memory updated" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-rule" }, t.rule), t.diff && /* @__PURE__ */ e.createElement("pre", { className: "crew-memory-diff" }, t.diff));
 }
 function Sn({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ve, { label: "Routine created" }, /* @__PURE__ */ e.createElement("div", { className: "crew-routine-name" }, /* @__PURE__ */ e.createElement(Ye, { size: 13 }), " ", t.name), /* @__PURE__ */ e.createElement("div", { className: "crew-routine-when" }, t.human || t.cron));
+  return /* @__PURE__ */ e.createElement(ve, { label: "Routine created" }, /* @__PURE__ */ e.createElement("div", { className: "crew-routine-name" }, /* @__PURE__ */ e.createElement(Xe, { size: 13 }), " ", t.name), /* @__PURE__ */ e.createElement("div", { className: "crew-routine-when" }, t.human || t.cron));
 }
 function Nn({ payload: t }) {
   return /* @__PURE__ */ e.createElement(ve, { label: `Handed over by @${t.from_name || t.from || "a teammate"}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-botref-body" }, /* @__PURE__ */ e.createElement(Kt, { size: 13 }), " ", t.content));
@@ -889,29 +889,29 @@ function Mn({ payload: t, screenshotUrl: n }) {
   return r ? /* @__PURE__ */ e.createElement("figure", { className: "crew-shot" }, /* @__PURE__ */ e.createElement("img", { src: r, alt: t.caption || "the teammate's screen", loading: "lazy" }), t.caption && /* @__PURE__ */ e.createElement("figcaption", null, t.caption)) : null;
 }
 function Tn({ kind: t, payload: n, handlers: r }) {
-  const o = n ?? {};
+  const i = n ?? {};
   switch (t) {
     case "report":
-      return /* @__PURE__ */ e.createElement(wn, { payload: o });
+      return /* @__PURE__ */ e.createElement(wn, { payload: i });
     case "approval_request":
-      return /* @__PURE__ */ e.createElement(En, { payload: o, onDecide: r.onDecide });
+      return /* @__PURE__ */ e.createElement(En, { payload: i, onDecide: r.onDecide });
     case "approval_resolved":
-      return /* @__PURE__ */ e.createElement(bn, { payload: o });
+      return /* @__PURE__ */ e.createElement(bn, { payload: i });
     case "memory_updated":
-      return /* @__PURE__ */ e.createElement(kn, { payload: o });
+      return /* @__PURE__ */ e.createElement(kn, { payload: i });
     case "routine_created":
-      return /* @__PURE__ */ e.createElement(Sn, { payload: o });
+      return /* @__PURE__ */ e.createElement(Sn, { payload: i });
     case "bot_ref":
-      return /* @__PURE__ */ e.createElement(Nn, { payload: o });
+      return /* @__PURE__ */ e.createElement(Nn, { payload: i });
     case "login_request":
-      return /* @__PURE__ */ e.createElement(Cn, { payload: o, onOpenScreen: r.onOpenScreen });
+      return /* @__PURE__ */ e.createElement(Cn, { payload: i, onOpenScreen: r.onOpenScreen });
     case "screenshot":
-      return /* @__PURE__ */ e.createElement(Mn, { payload: o, screenshotUrl: r.screenshotUrl });
+      return /* @__PURE__ */ e.createElement(Mn, { payload: i, screenshotUrl: r.screenshotUrl });
     default:
       return null;
   }
 }
-const _n = Re(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-BSuaqT2c.js").then((t) => t.i)).Streamdown })), An = {
+const _n = Re(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-CL0bGTqb.js").then((t) => t.i)).Streamdown })), An = {
   browser: Jt,
   terminal: mn,
   file: Ae,
@@ -925,10 +925,10 @@ const On = (t) => {
   const n = Math.max(0, Math.floor(t / 1e3)), r = Math.floor(n / 60);
   return r ? `${r}m ${n % 60}s` : `${n}s`;
 };
-function Rn() {
+function In() {
   return /* @__PURE__ */ e.createElement("svg", { "aria-hidden": "true", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ e.createElement("path", { d: "m5 12 7-7 7 7" }), /* @__PURE__ */ e.createElement("path", { d: "M12 19V5" }));
 }
-function In() {
+function Rn() {
   return /* @__PURE__ */ e.createElement("svg", { className: "stop-icon", "aria-hidden": "true", viewBox: "0 0 24 24" }, /* @__PURE__ */ e.createElement("rect", { x: "7.5", y: "7.5", width: "9", height: "9", rx: "1.5", fill: "currentColor" }));
 }
 function Dn(t) {
@@ -942,7 +942,7 @@ function Dn(t) {
     } catch {
     }
 }
-function Ln({ agent: t, label: n, activities: r, startedAt: o }) {
+function Ln({ agent: t, label: n, activities: r, startedAt: i }) {
   const [m, w] = N(0), [u, M] = N(!1);
   return q(() => {
     w(Date.now());
@@ -957,16 +957,16 @@ function Ln({ agent: t, label: n, activities: r, startedAt: o }) {
         l.preventDefault(), M((s) => !s);
       }
     },
-    /* @__PURE__ */ e.createElement("span", { className: "agent-working-progress" }, "Working for ", On(m - Date.parse(o))),
+    /* @__PURE__ */ e.createElement("span", { className: "agent-working-progress" }, "Working for ", On(m - Date.parse(i))),
     /* @__PURE__ */ e.createElement(Me, { className: "agent-working-chevron", size: 15 })
   ), r.length > 0 && /* @__PURE__ */ e.createElement("div", { className: "agent-working-tools" }, r.map((l) => {
     const s = An[l.kind] ?? _e;
     return /* @__PURE__ */ e.createElement("details", { className: `agent-tool-detail ${l.status}`, key: l.id }, /* @__PURE__ */ e.createElement("summary", null, /* @__PURE__ */ e.createElement(s, { size: 14 }), /* @__PURE__ */ e.createElement("span", null, l.title), /* @__PURE__ */ e.createElement(Me, { size: 13 })), /* @__PURE__ */ e.createElement("div", null, l.output ?? (l.status === "running" ? "Waiting for result…" : "No output")));
   })));
 }
-function $n({ message: t, agent: n, senderName: r, activities: o, chips: m, entering: w = !1 }) {
-  const u = xn(t), M = G(null), l = G(!!t.streaming), s = o.filter((g) => g.conversationId === t.conversationId), k = [...s].reverse().find((g) => g.status === "running") ?? s.at(-1), c = t.role === "agent" && !!t.streaming, a = u.trim() || k?.title || "Working", p = t.parts.filter((g) => g.type === "chip");
-  return Ie(() => {
+function $n({ message: t, agent: n, senderName: r, activities: i, chips: m, entering: w = !1 }) {
+  const u = xn(t), M = G(null), l = G(!!t.streaming), s = i.filter((g) => g.conversationId === t.conversationId), k = [...s].reverse().find((g) => g.status === "running") ?? s.at(-1), c = t.role === "agent" && !!t.streaming, a = u.trim() || k?.title || "Working", p = t.parts.filter((g) => g.type === "chip");
+  return De(() => {
     const g = M.current, d = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (g && t.role === "agent" && l.current && !t.streaming && !d) {
       const _ = g.querySelector(".message-body");
@@ -982,7 +982,7 @@ function $n({ message: t, agent: n, senderName: r, activities: o, chips: m, ente
       className: "message-body",
       onClick: t.role === "agent" ? Dn : void 0
     },
-    t.role === "agent" ? /* @__PURE__ */ e.createElement(xe, { fallback: /* @__PURE__ */ e.createElement("span", { className: "agent-markdown-fallback" }, u) }, /* @__PURE__ */ e.createElement(
+    t.role === "agent" ? /* @__PURE__ */ e.createElement(Oe, { fallback: /* @__PURE__ */ e.createElement("span", { className: "agent-markdown-fallback" }, u) }, /* @__PURE__ */ e.createElement(
       _n,
       {
         className: "agent-markdown",
@@ -1018,7 +1018,7 @@ function Pn({
   agent: t,
   thread: n,
   agentsById: r,
-  messages: o,
+  messages: i,
   activities: m,
   chips: w,
   loading: u = !1,
@@ -1027,36 +1027,36 @@ function Pn({
   onToggleDetails: s
 }) {
   const [k, c] = N(""), [a, p] = N(!1), [g, d] = N(!1), [_, x] = N(!1), [O, H] = N(!1), K = G(null), v = G(null), P = G(null), X = G(!1), Z = G(!0), B = G(!1), ce = G(0), Q = G(0), ne = G(void 0), j = G(void 0), ee = G(/* @__PURE__ */ new Set()), le = G(n?.id ?? ""), me = G(u), [pe, $] = N(() => /* @__PURE__ */ new Set()), re = n?.title || t?.name || "Crew", te = n?.kind === "group", z = n?.id ?? t?.id ?? "";
-  Ie(() => {
-    const R = le.current !== z || me.current;
-    if (le.current = z, me.current = u, u || R) {
-      ee.current = new Set(o.map((Y) => Y.id)), $(/* @__PURE__ */ new Set());
+  De(() => {
+    const I = le.current !== z || me.current;
+    if (le.current = z, me.current = u, u || I) {
+      ee.current = new Set(i.map((Y) => Y.id)), $(/* @__PURE__ */ new Set());
       return;
     }
-    const I = o.filter((Y) => !ee.current.has(Y.id)).map((Y) => Y.id);
-    for (const Y of I) ee.current.add(Y);
-    $(new Set(I));
-  }, [z, u, o]);
-  function ae(R) {
-    const I = K.current;
-    !I || typeof I.scrollTo != "function" || (Z.current = !0, B.current = !0, x(!1), ne.current && window.clearTimeout(ne.current), ce.current = Math.max(
+    const R = i.filter((Y) => !ee.current.has(Y.id)).map((Y) => Y.id);
+    for (const Y of R) ee.current.add(Y);
+    $(new Set(R));
+  }, [z, u, i]);
+  function ae(I) {
+    const R = K.current;
+    !R || typeof R.scrollTo != "function" || (Z.current = !0, B.current = !0, x(!1), ne.current && window.clearTimeout(ne.current), ce.current = Math.max(
       ce.current,
-      Date.now() + (R === "smooth" ? 650 : 150)
-    ), I.scrollTo({ top: I.scrollHeight, behavior: R }), ne.current = window.setTimeout(() => {
+      Date.now() + (I === "smooth" ? 650 : 150)
+    ), R.scrollTo({ top: R.scrollHeight, behavior: I }), ne.current = window.setTimeout(() => {
       ne.current = void 0, B.current = !1;
-    }, R === "smooth" ? 400 : 0));
+    }, I === "smooth" ? 400 : 0));
   }
   q(() => {
     Z.current = !0, B.current = !1, Q.current = 0, x(!1), requestAnimationFrame(() => ae("auto"));
   }, [z]), q(() => {
     Z.current && ae("smooth");
-  }, [o]), q(() => {
-    const R = K.current, I = v.current;
-    if (!R || !I || typeof ResizeObserver > "u") return;
+  }, [i]), q(() => {
+    const I = K.current, R = v.current;
+    if (!I || !R || typeof ResizeObserver > "u") return;
     const Y = new ResizeObserver(() => {
       Z.current && ae("auto");
     });
-    return Y.observe(I), () => Y.disconnect();
+    return Y.observe(R), () => Y.disconnect();
   }, [z, u]), q(() => () => {
     j.current && window.clearTimeout(j.current), ne.current && window.clearTimeout(ne.current);
   }, []), q(() => {
@@ -1067,45 +1067,45 @@ function Pn({
       j.current = void 0, H(!1);
     }, 700));
   }
-  async function W(R) {
-    R.preventDefault();
-    const I = k.trim();
-    if (!(!I || X.current)) {
+  async function W(I) {
+    I.preventDefault();
+    const R = k.trim();
+    if (!(!R || X.current)) {
       X.current = !0, c(""), p(!0);
       try {
-        await l(I);
+        await l(R);
       } finally {
         X.current = !1, p(!1);
       }
     }
   }
-  return /* @__PURE__ */ e.createElement("main", { className: "conversation" }, /* @__PURE__ */ e.createElement("header", { className: `conversation-header ${g ? "scrolled" : ""}` }, /* @__PURE__ */ e.createElement("h1", null, n?.emoji && /* @__PURE__ */ e.createElement("span", { className: "conversation-emoji" }, n.emoji), re), n?.subtitle && /* @__PURE__ */ e.createElement("p", { className: "conversation-subtitle" }, n.subtitle), /* @__PURE__ */ e.createElement("div", { className: "header-actions" }, !te && /* @__PURE__ */ e.createElement("button", { className: "computer-trigger", "aria-label": "Open this teammate's computer", onClick: s }, /* @__PURE__ */ e.createElement(Je, { size: 18 })))), /* @__PURE__ */ e.createElement("div", { className: "conversation-scroll-shell" }, u ? /* @__PURE__ */ e.createElement("div", { className: "conversation-skeleton", role: "status", "aria-label": "Loading this thread" }, /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-agent" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-line skeleton-line-wide" }), /* @__PURE__ */ e.createElement("span", { className: "skeleton-line" })), /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-user" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-bubble" })), /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-agent" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-line skeleton-line-short" }))) : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(
+  return /* @__PURE__ */ e.createElement("main", { className: "conversation" }, /* @__PURE__ */ e.createElement("header", { className: `conversation-header ${g ? "scrolled" : ""}` }, /* @__PURE__ */ e.createElement("h1", null, n?.emoji && /* @__PURE__ */ e.createElement("span", { className: "conversation-emoji" }, n.emoji), re), n?.subtitle && /* @__PURE__ */ e.createElement("p", { className: "conversation-subtitle" }, n.subtitle), /* @__PURE__ */ e.createElement("div", { className: "header-actions" }, !te && /* @__PURE__ */ e.createElement("button", { className: "computer-trigger", "aria-label": "Open this teammate's computer", onClick: s }, /* @__PURE__ */ e.createElement(Ze, { size: 18 })))), /* @__PURE__ */ e.createElement("div", { className: "conversation-scroll-shell" }, u ? /* @__PURE__ */ e.createElement("div", { className: "conversation-skeleton", role: "status", "aria-label": "Loading this thread" }, /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-agent" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-line skeleton-line-wide" }), /* @__PURE__ */ e.createElement("span", { className: "skeleton-line" })), /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-user" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-bubble" })), /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-agent" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-line skeleton-line-short" }))) : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(
     "div",
     {
       className: `message-scroll ${O ? "scrollbar-visible" : ""}`,
       ref: K,
-      onWheelCapture: (R) => {
-        R.deltaY < 0 && (B.current = !1);
+      onWheelCapture: (I) => {
+        I.deltaY < 0 && (B.current = !1);
       },
-      onScroll: (R) => {
-        const I = R.currentTarget, Y = I.scrollHeight - I.scrollTop - I.clientHeight, b = Y <= 24, C = I.scrollTop < Q.current - 1;
-        Q.current = I.scrollTop, d(I.scrollTop > 0), C && Y > 72 ? (B.current = !1, Z.current = !1, x(!0)) : !B.current && b ? (Z.current = !0, x(!1)) : !B.current && Y > 72 && (Z.current = !1, x(!0)), se();
+      onScroll: (I) => {
+        const R = I.currentTarget, Y = R.scrollHeight - R.scrollTop - R.clientHeight, b = Y <= 24, C = R.scrollTop < Q.current - 1;
+        Q.current = R.scrollTop, d(R.scrollTop > 0), C && Y > 72 ? (B.current = !1, Z.current = !1, x(!0)) : !B.current && b ? (Z.current = !0, x(!1)) : !B.current && Y > 72 && (Z.current = !1, x(!0)), se();
       },
-      onPointerMove: (R) => {
-        R.currentTarget.getBoundingClientRect().right - R.clientX <= 14 ? H(!0) : j.current || H(!1);
+      onPointerMove: (I) => {
+        I.currentTarget.getBoundingClientRect().right - I.clientX <= 14 ? H(!0) : j.current || H(!1);
       },
       onPointerLeave: () => H(!1)
     },
-    /* @__PURE__ */ e.createElement("div", { className: "message-content", ref: v }, o.length === 0 && t && /* @__PURE__ */ e.createElement("div", { className: "conversation-intro" }, /* @__PURE__ */ e.createElement(nt, { agent: t, size: 54 }), /* @__PURE__ */ e.createElement("h2", null, t.name), /* @__PURE__ */ e.createElement("p", null, t.role)), o.map((R) => /* @__PURE__ */ e.createElement(
+    /* @__PURE__ */ e.createElement("div", { className: "message-content", ref: v }, i.length === 0 && t && /* @__PURE__ */ e.createElement("div", { className: "conversation-intro" }, /* @__PURE__ */ e.createElement(nt, { agent: t, size: 54 }), /* @__PURE__ */ e.createElement("h2", null, t.name), /* @__PURE__ */ e.createElement("p", null, t.role)), i.map((I) => /* @__PURE__ */ e.createElement(
       $n,
       {
-        key: R.id,
-        message: R,
+        key: I.id,
+        message: I,
         agent: t,
-        senderName: te ? r.get(R.sender ?? "")?.name : void 0,
+        senderName: te ? r.get(I.sender ?? "")?.name : void 0,
         activities: m,
         chips: w,
-        entering: pe.has(R.id) || R.id.startsWith("optimistic-user:")
+        entering: pe.has(I.id) || I.id.startsWith("optimistic-user:")
       }
     )))
   ), _ && /* @__PURE__ */ e.createElement(
@@ -1124,9 +1124,9 @@ function Pn({
       "aria-label": `Message ${re}`,
       placeholder: te ? "Ask the room…" : `Message ${re}…`,
       value: k,
-      onChange: (R) => c(R.target.value),
-      onKeyDown: (R) => {
-        R.key === "Enter" && !R.shiftKey && !R.nativeEvent.isComposing && R.keyCode !== 229 && (R.preventDefault(), R.currentTarget.form?.requestSubmit());
+      onChange: (I) => c(I.target.value),
+      onKeyDown: (I) => {
+        I.key === "Enter" && !I.shiftKey && !I.nativeEvent.isComposing && I.keyCode !== 229 && (I.preventDefault(), I.currentTarget.form?.requestSubmit());
       }
     }
   ), /* @__PURE__ */ e.createElement("div", { className: "composer-bottom" }, /* @__PURE__ */ e.createElement(
@@ -1137,7 +1137,7 @@ function Pn({
       "aria-label": a ? "Sending" : "Send message",
       disabled: !k.trim() || a
     },
-    a ? /* @__PURE__ */ e.createElement(In, null) : /* @__PURE__ */ e.createElement(Rn, null)
+    a ? /* @__PURE__ */ e.createElement(Rn, null) : /* @__PURE__ */ e.createElement(In, null)
   ))));
 }
 const zn = [
@@ -1152,13 +1152,13 @@ const zn = [
 ], Un = {
   "tool.allowed": Te,
   "tool.refused": un,
-  "tool.held": ze,
+  "tool.held": Ue,
   "tool.failed": pn,
   "approval.decided": Te,
-  "approval.expired": Ye,
-  "grant.changed": Ue,
-  "crew.policy_loaded": Ue,
-  "crew.bot_declined": ze
+  "approval.expired": Xe,
+  "grant.changed": qe,
+  "crew.policy_loaded": qe,
+  "crew.bot_declined": Ue
 }, qn = {
   "tool.allowed": "ran",
   "tool.refused": "refused",
@@ -1174,8 +1174,8 @@ function Hn(t) {
   const n = new Date(t);
   return `${n.toLocaleDateString(void 0, { month: "short", day: "numeric" })} ${n.toLocaleTimeString(void 0, { hour: "2-digit", minute: "2-digit" })}`;
 }
-function jn({ events: t, loading: n, viewId: r, onChangeView: o, onLoadMore: m, hasMore: w }) {
-  const [u, M] = N(() => /* @__PURE__ */ new Set()), l = fe(() => t.slice().sort((s, k) => k.id - s.id), [t]);
+function jn({ events: t, loading: n, viewId: r, onChangeView: i, onLoadMore: m, hasMore: w }) {
+  const [u, M] = N(() => /* @__PURE__ */ new Set()), l = he(() => t.slice().sort((s, k) => k.id - s.id), [t]);
   return /* @__PURE__ */ e.createElement("section", { className: "audit-timeline" }, /* @__PURE__ */ e.createElement("div", { className: "audit-views", role: "tablist", "aria-label": "What to show" }, zn.map((s) => /* @__PURE__ */ e.createElement(
     "button",
     {
@@ -1184,7 +1184,7 @@ function jn({ events: t, loading: n, viewId: r, onChangeView: o, onLoadMore: m, 
       type: "button",
       "aria-selected": r === s.id,
       className: `audit-view ${r === s.id ? "is-current" : ""}`,
-      onClick: () => o(s.id, s.types)
+      onClick: () => i(s.id, s.types)
     },
     s.label
   ))), l.length === 0 && !n && /* @__PURE__ */ e.createElement("p", { className: "audit-empty" }, "Nothing recorded yet."), /* @__PURE__ */ e.createElement("ol", { className: "audit-rows" }, l.map((s) => {
@@ -1233,34 +1233,34 @@ const Fn = {
   text: Ae,
   code: Qt,
   archive: qt,
-  file: Xe
+  file: Je
 };
 function Vn(t) {
   if (t === 0) return "0 bytes";
   const n = ["bytes", "KB", "MB", "GB"];
-  let r = t, o = 0;
-  for (; r >= 1024 && o < n.length - 1; )
-    r /= 1024, o += 1;
-  return `${o === 0 ? r : r.toFixed(r < 10 ? 1 : 0)} ${n[o]}`;
+  let r = t, i = 0;
+  for (; r >= 1024 && i < n.length - 1; )
+    r /= 1024, i += 1;
+  return `${i === 0 ? r : r.toFixed(r < 10 ? 1 : 0)} ${n[i]}`;
 }
 function Bn(t) {
   const n = new Date(t);
   return Number.isNaN(n.getTime()) ? "" : (/* @__PURE__ */ new Date()).toDateString() === n.toDateString() ? n.toLocaleTimeString(void 0, { hour: "2-digit", minute: "2-digit" }) : n.toLocaleDateString(void 0, { month: "short", day: "numeric" });
 }
 function Wn({ agentName: t, artifacts: n, urlFor: r }) {
-  return n.length === 0 ? /* @__PURE__ */ e.createElement("p", { className: "files-empty" }, t, " has not produced any files yet.") : /* @__PURE__ */ e.createElement("ul", { className: "files-list" }, n.map((o) => {
-    const m = Fn[o.kind] ?? Xe, w = o.size === 0;
-    return /* @__PURE__ */ e.createElement("li", { className: `files-row ${w ? "is-empty" : ""}`, key: o.id }, /* @__PURE__ */ e.createElement(
+  return n.length === 0 ? /* @__PURE__ */ e.createElement("p", { className: "files-empty" }, t, " has not produced any files yet.") : /* @__PURE__ */ e.createElement("ul", { className: "files-list" }, n.map((i) => {
+    const m = Fn[i.kind] ?? Je, w = i.size === 0;
+    return /* @__PURE__ */ e.createElement("li", { className: `files-row ${w ? "is-empty" : ""}`, key: i.id }, /* @__PURE__ */ e.createElement(
       "a",
       {
-        href: r(o),
-        download: o.name,
+        href: r(i),
+        download: i.name,
         className: "files-link"
       },
       /* @__PURE__ */ e.createElement(m, { size: 15 }),
-      /* @__PURE__ */ e.createElement("span", { className: "files-name", title: o.path }, o.name),
-      /* @__PURE__ */ e.createElement("span", { className: "files-meta" }, Vn(o.size), w && /* @__PURE__ */ e.createElement("span", { className: "files-warning", title: "Nothing was written to this file" }, "didn't finish")),
-      /* @__PURE__ */ e.createElement("span", { className: "files-when" }, Bn(o.updatedAt)),
+      /* @__PURE__ */ e.createElement("span", { className: "files-name", title: i.path }, i.name),
+      /* @__PURE__ */ e.createElement("span", { className: "files-meta" }, Vn(i.size), w && /* @__PURE__ */ e.createElement("span", { className: "files-warning", title: "Nothing was written to this file" }, "didn't finish")),
+      /* @__PURE__ */ e.createElement("span", { className: "files-when" }, Bn(i.updatedAt)),
       /* @__PURE__ */ e.createElement(Xt, { size: 13, className: "files-download" })
     ));
   }));
@@ -1270,8 +1270,8 @@ const Gn = [
   { mode: "ask", label: "Ask me", icon: Wt },
   { mode: "allow", label: "Allow", icon: dn }
 ];
-function Kn({ agentName: t, grants: n, busy: r, onSetGrant: o, onClearGrant: m }) {
-  const [w, u] = N(""), [M, l] = N(!1), s = fe(() => {
+function Kn({ agentName: t, grants: n, busy: r, onSetGrant: i, onClearGrant: m }) {
+  const [w, u] = N(""), [M, l] = N(!1), s = he(() => {
     const c = w.trim().toLowerCase(), a = n.filter((g) => M && g.source !== "grant" ? !1 : c ? g.tool.toLowerCase().includes(c) || g.toolset.toLowerCase().includes(c) : !0), p = /* @__PURE__ */ new Map();
     for (const g of a) {
       const d = g.toolset || "other";
@@ -1312,7 +1312,7 @@ function Kn({ agentName: t, grants: n, busy: r, onSetGrant: o, onClearGrant: m }
         disabled: r || p.protected,
         title: p.protected ? "This teammate always keeps this one" : d,
         onClick: () => {
-          o(p.tool, g);
+          i(p.tool, g);
         }
       },
       /* @__PURE__ */ e.createElement(_, { size: 13 }),
@@ -1340,32 +1340,32 @@ function Yn(t) {
   if (Object.prototype.hasOwnProperty.call(t, "__esModule")) return t;
   var n = t.default;
   if (typeof n == "function") {
-    var r = function o() {
+    var r = function i() {
       var m = !1;
       try {
-        m = this instanceof o;
+        m = this instanceof i;
       } catch {
       }
       return m ? Reflect.construct(n, arguments, this.constructor) : n.apply(this, arguments);
     };
     r.prototype = n.prototype;
   } else r = {};
-  return Object.defineProperty(r, "__esModule", { value: !0 }), Object.keys(t).forEach(function(o) {
-    var m = Object.getOwnPropertyDescriptor(t, o);
-    Object.defineProperty(r, o, m.get ? m : {
+  return Object.defineProperty(r, "__esModule", { value: !0 }), Object.keys(t).forEach(function(i) {
+    var m = Object.getOwnPropertyDescriptor(t, i);
+    Object.defineProperty(r, i, m.get ? m : {
       enumerable: !0,
       get: function() {
-        return t[o];
+        return t[i];
       }
     });
   }), r;
 }
 var ke = { exports: {} }, oe = {};
 const rt = /* @__PURE__ */ Yn(Dt);
-var He;
+var je;
 function Xn() {
-  if (He) return oe;
-  He = 1;
+  if (je) return oe;
+  je = 1;
   var t = rt;
   function n(l) {
     var s = "https://react.dev/errors/" + l;
@@ -1378,7 +1378,7 @@ function Xn() {
   }
   function r() {
   }
-  var o = {
+  var i = {
     d: {
       f: r,
       r: function() {
@@ -1411,26 +1411,26 @@ function Xn() {
     if (typeof s == "string")
       return s === "use-credentials" ? s : "";
   }
-  return oe.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = o, oe.createPortal = function(l, s) {
+  return oe.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = i, oe.createPortal = function(l, s) {
     var k = 2 < arguments.length && arguments[2] !== void 0 ? arguments[2] : null;
     if (!s || s.nodeType !== 1 && s.nodeType !== 9 && s.nodeType !== 11)
       throw Error(n(299));
     return w(l, s, null, k);
   }, oe.flushSync = function(l) {
-    var s = u.T, k = o.p;
+    var s = u.T, k = i.p;
     try {
-      if (u.T = null, o.p = 2, l) return l();
+      if (u.T = null, i.p = 2, l) return l();
     } finally {
-      u.T = s, o.p = k, o.d.f();
+      u.T = s, i.p = k, i.d.f();
     }
   }, oe.preconnect = function(l, s) {
-    typeof l == "string" && (s ? (s = s.crossOrigin, s = typeof s == "string" ? s === "use-credentials" ? s : "" : void 0) : s = null, o.d.C(l, s));
+    typeof l == "string" && (s ? (s = s.crossOrigin, s = typeof s == "string" ? s === "use-credentials" ? s : "" : void 0) : s = null, i.d.C(l, s));
   }, oe.prefetchDNS = function(l) {
-    typeof l == "string" && o.d.D(l);
+    typeof l == "string" && i.d.D(l);
   }, oe.preinit = function(l, s) {
     if (typeof l == "string" && s && typeof s.as == "string") {
       var k = s.as, c = M(k, s.crossOrigin), a = typeof s.integrity == "string" ? s.integrity : void 0, p = typeof s.fetchPriority == "string" ? s.fetchPriority : void 0;
-      k === "style" ? o.d.S(
+      k === "style" ? i.d.S(
         l,
         typeof s.precedence == "string" ? s.precedence : void 0,
         {
@@ -1438,7 +1438,7 @@ function Xn() {
           integrity: a,
           fetchPriority: p
         }
-      ) : k === "script" && o.d.X(l, {
+      ) : k === "script" && i.d.X(l, {
         crossOrigin: c,
         integrity: a,
         fetchPriority: p,
@@ -1453,17 +1453,17 @@ function Xn() {
             s.as,
             s.crossOrigin
           );
-          o.d.M(l, {
+          i.d.M(l, {
             crossOrigin: k,
             integrity: typeof s.integrity == "string" ? s.integrity : void 0,
             nonce: typeof s.nonce == "string" ? s.nonce : void 0
           });
         }
-      } else s == null && o.d.M(l);
+      } else s == null && i.d.M(l);
   }, oe.preload = function(l, s) {
     if (typeof l == "string" && typeof s == "object" && s !== null && typeof s.as == "string") {
       var k = s.as, c = M(k, s.crossOrigin);
-      o.d.L(l, k, {
+      i.d.L(l, k, {
         crossOrigin: c,
         integrity: typeof s.integrity == "string" ? s.integrity : void 0,
         nonce: typeof s.nonce == "string" ? s.nonce : void 0,
@@ -1479,14 +1479,14 @@ function Xn() {
     if (typeof l == "string")
       if (s) {
         var k = M(s.as, s.crossOrigin);
-        o.d.m(l, {
+        i.d.m(l, {
           as: typeof s.as == "string" && s.as !== "script" ? s.as : void 0,
           crossOrigin: k,
           integrity: typeof s.integrity == "string" ? s.integrity : void 0
         });
-      } else o.d.m(l);
+      } else i.d.m(l);
   }, oe.requestFormReset = function(l) {
-    o.d.r(l);
+    i.d.r(l);
   }, oe.unstable_batchedUpdates = function(l, s) {
     return l(s);
   }, oe.useFormState = function(l, s, k) {
@@ -1496,9 +1496,9 @@ function Xn() {
   }, oe.version = "19.2.7", oe;
 }
 var ie = {};
-var je;
+var Fe;
 function Jn() {
-  return je || (je = 1, process.env.NODE_ENV !== "production" && (function() {
+  return Fe || (Fe = 1, process.env.NODE_ENV !== "production" && (function() {
     function t() {
     }
     function n(c) {
@@ -1523,7 +1523,7 @@ function Jn() {
         implementation: p
       };
     }
-    function o(c, a) {
+    function i(c, a) {
       if (c === "font") return "";
       if (typeof a == "string")
         return a === "use-credentials" ? a : "";
@@ -1620,7 +1620,7 @@ See https://react.dev/link/invalid-hook-call for tips about how to debug and fix
         "ReactDOM.preinit(): Expected the `href` argument (first) to be a non-empty string but encountered %s instead.",
         m(c)
       ), typeof c == "string" && a && typeof a.as == "string") {
-        var p = a.as, g = o(p, a.crossOrigin), d = typeof a.integrity == "string" ? a.integrity : void 0, _ = typeof a.fetchPriority == "string" ? a.fetchPriority : void 0;
+        var p = a.as, g = i(p, a.crossOrigin), d = typeof a.integrity == "string" ? a.integrity : void 0, _ = typeof a.fetchPriority == "string" ? a.fetchPriority : void 0;
         p === "style" ? l.d.S(
           c,
           typeof a.precedence == "string" ? a.precedence : void 0,
@@ -1645,7 +1645,7 @@ See https://react.dev/link/invalid-hook-call for tips about how to debug and fix
         'ReactDOM.preinitModule(): Currently the only supported "as" type for this function is "script" but received "%s" instead. This warning was generated for `href` "%s". In the future other module types will be supported, aligning with the import-attributes proposal. Learn more here: (https://github.com/tc39/proposal-import-attributes)',
         p,
         c
-      )), typeof c == "string" && (typeof a == "object" && a !== null ? (a.as == null || a.as === "script") && (p = o(
+      )), typeof c == "string" && (typeof a == "object" && a !== null ? (a.as == null || a.as === "script") && (p = i(
         a.as,
         a.crossOrigin
       ), l.d.M(c, {
@@ -1660,7 +1660,7 @@ See https://react.dev/link/invalid-hook-call for tips about how to debug and fix
         p
       ), typeof c == "string" && typeof a == "object" && a !== null && typeof a.as == "string") {
         p = a.as;
-        var g = o(
+        var g = i(
           p,
           a.crossOrigin
         );
@@ -1681,7 +1681,7 @@ See https://react.dev/link/invalid-hook-call for tips about how to debug and fix
       typeof c == "string" && c || (p += " The `href` argument encountered was " + m(c) + "."), a !== void 0 && typeof a != "object" ? p += " The `options` argument encountered was " + m(a) + "." : a && "as" in a && typeof a.as != "string" && (p += " The `as` option encountered was " + m(a.as) + "."), p && console.error(
         'ReactDOM.preloadModule(): Expected two arguments, a non-empty `href` string and, optionally, an `options` object with an `as` property valid for a `<link rel="modulepreload" as="..." />` tag.%s',
         p
-      ), typeof c == "string" && (a ? (p = o(
+      ), typeof c == "string" && (a ? (p = i(
         a.as,
         a.crossOrigin
       ), l.d.m(c, {
@@ -1700,10 +1700,10 @@ See https://react.dev/link/invalid-hook-call for tips about how to debug and fix
     }, ie.version = "19.2.7", typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ < "u" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop == "function" && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
   })()), ie;
 }
-var Fe;
+var Ve;
 function Zn() {
-  if (Fe) return ke.exports;
-  Fe = 1;
+  if (Ve) return ke.exports;
+  Ve = 1;
   function t() {
     if (!(typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ > "u" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE != "function")) {
       if (process.env.NODE_ENV !== "production")
@@ -1723,7 +1723,7 @@ function Qn(t) {
   try {
     const n = t.getContext("2d", { willReadFrequently: !0 });
     if (!n) return !1;
-    const r = [0, Math.floor(t.width / 2), t.width - 1], o = [0, Math.floor(t.height / 2), t.height - 1], m = r.flatMap((w) => o.map((u) => n.getImageData(w, u, 1, 1).data));
+    const r = [0, Math.floor(t.width / 2), t.width - 1], i = [0, Math.floor(t.height / 2), t.height - 1], m = r.flatMap((w) => i.map((u) => n.getImageData(w, u, 1, 1).data));
     if (m.every((w) => w[3] === 0)) return !1;
     for (let w = 0; w < 3; w += 1) {
       const u = m.map((M) => M[w]);
@@ -1738,7 +1738,7 @@ function st({
   session: t,
   viewOnly: n,
   compact: r = !1,
-  onReconnect: o,
+  onReconnect: i,
   onDisconnect: m
 }) {
   const w = G(null), u = G(m), [M, l] = N("connecting"), [s, k] = N();
@@ -1778,22 +1778,22 @@ function st({
     }).catch(() => X("Could not load the screen client.")), () => {
       c = !0, v(), K(), O?.removeEventListener("connect", B), O?.removeEventListener("disconnect", ce), O?.removeEventListener("securityfailure", Q), O?.removeEventListener("credentialsrequired", ne), O?.disconnect();
     };
-  }, [r, t, n]), /* @__PURE__ */ e.createElement("div", { className: `vnc-viewport ${r ? "is-compact" : ""}` }, /* @__PURE__ */ e.createElement("div", { ref: w, className: "vnc-target" }), M !== "connected" && /* @__PURE__ */ e.createElement("div", { className: "vnc-status", role: "status" }, M === "connecting" ? /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(Le, { size: r ? 14 : 18, className: "spin" }), !r && "Connecting…") : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("span", null, r ? "Screen unavailable" : s), o && /* @__PURE__ */ e.createElement("button", { className: "secondary-button", onClick: o }, "Reconnect"))));
+  }, [r, t, n]), /* @__PURE__ */ e.createElement("div", { className: `vnc-viewport ${r ? "is-compact" : ""}` }, /* @__PURE__ */ e.createElement("div", { ref: w, className: "vnc-target" }), M !== "connected" && /* @__PURE__ */ e.createElement("div", { className: "vnc-status", role: "status" }, M === "connecting" ? /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement($e, { size: r ? 14 : 18, className: "spin" }), !r && "Connecting…") : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("span", null, r ? "Screen unavailable" : s), i && /* @__PURE__ */ e.createElement("button", { className: "secondary-button", onClick: i }, "Reconnect"))));
 }
 function er({
   session: t,
   failure: n,
   title: r,
-  onClose: o,
+  onClose: i,
   onReconnect: m
 }) {
-  return at.createPortal(/* @__PURE__ */ e.createElement("div", { className: "vnc-desktop", role: "dialog", "aria-label": r }, /* @__PURE__ */ e.createElement("div", { className: "vnc-titlebar", "aria-hidden": "true" }), /* @__PURE__ */ e.createElement("button", { className: "vnc-close", "aria-label": "Close this screen", onClick: o }, /* @__PURE__ */ e.createElement(sn, { size: 18 })), t ? /* @__PURE__ */ e.createElement(st, { session: t, viewOnly: !1, onReconnect: m }) : /* @__PURE__ */ e.createElement("div", { className: "vnc-viewport" }, /* @__PURE__ */ e.createElement("div", { className: "vnc-status", role: "status" }, n ? /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("span", null, n), /* @__PURE__ */ e.createElement("button", { className: "secondary-button", onClick: m }, "Reconnect")) : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(Le, { size: 18, className: "spin" }), " Connecting…")))), document.body);
+  return at.createPortal(/* @__PURE__ */ e.createElement("div", { className: "vnc-desktop", role: "dialog", "aria-label": r }, /* @__PURE__ */ e.createElement("div", { className: "vnc-titlebar", "aria-hidden": "true" }), /* @__PURE__ */ e.createElement("button", { className: "vnc-close", "aria-label": "Close this screen", onClick: i }, /* @__PURE__ */ e.createElement(sn, { size: 18 })), t ? /* @__PURE__ */ e.createElement(st, { session: t, viewOnly: !1, onReconnect: m }) : /* @__PURE__ */ e.createElement("div", { className: "vnc-viewport" }, /* @__PURE__ */ e.createElement("div", { className: "vnc-status", role: "status" }, n ? /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("span", null, n), /* @__PURE__ */ e.createElement("button", { className: "secondary-button", onClick: m }, "Reconnect")) : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement($e, { size: 18, className: "spin" }), " Connecting…")))), document.body);
 }
 function tr({
   open: t,
   width: n,
   onResize: r,
-  agentName: o,
+  agentName: i,
   computer: m,
   approvals: w,
   routines: u,
@@ -1814,35 +1814,35 @@ function tr({
   onLoadMoreAudit: v,
   onClose: P
 }) {
-  const [X, Z] = N(""), [B, ce] = N(""), [Q, ne] = N(!1), [j, ee] = N(() => /* @__PURE__ */ new Map()), [le, me] = N(""), [pe, $] = N(() => /* @__PURE__ */ new Set()), [re, te] = N(), [z, ae] = N(!1), [se, W] = N(), R = w.filter((i) => i.status === "pending"), I = j.get(m?.id ?? ""), Y = pe.has(m?.id ?? ""), b = G(_);
+  const [X, Z] = N(""), [B, ce] = N(""), [Q, ne] = N(!1), [j, ee] = N(() => /* @__PURE__ */ new Map()), [le, me] = N(""), [pe, $] = N(() => /* @__PURE__ */ new Set()), [re, te] = N(), [z, ae] = N(!1), [se, W] = N(), I = w.filter((o) => o.status === "pending"), R = j.get(m?.id ?? ""), Y = pe.has(m?.id ?? ""), b = G(_);
   q(() => {
     b.current = _;
   }, [_]), q(() => {
-    const i = m?.id;
-    if (!t || z || m?.status !== "online" || !i || I || Y) return;
+    const o = m?.id;
+    if (!t || z || m?.status !== "online" || !o || R || Y) return;
     let y = !0;
-    return me(i), b.current("open").then((h) => {
-      y && (ee((E) => new Map(E).set(i, h)), me(""));
+    return me(o), b.current("open").then((f) => {
+      y && (ee((E) => new Map(E).set(o, f)), me(""));
     }).catch(() => {
-      y && ($((h) => new Set(h).add(i)), me(""));
+      y && ($((f) => new Set(f).add(o)), me(""));
     }), () => {
       y = !1;
     };
-  }, [m?.id, m?.status, z, t, Y, I]);
-  async function C(i) {
+  }, [m?.id, m?.status, z, t, Y, R]);
+  async function C(o) {
     ae(!0), te(void 0), W(void 0), ne(!0);
     const y = m?.id;
-    y && pe.has(y) && ($((h) => {
-      const E = new Set(h);
+    y && pe.has(y) && ($((f) => {
+      const E = new Set(f);
       return E.delete(y), E;
-    }), ee((h) => {
-      const E = new Map(h);
+    }), ee((f) => {
+      const E = new Map(f);
       return E.delete(y), E;
     }));
     try {
-      te(await _(i));
-    } catch (h) {
-      W(h instanceof Error ? h.message : "Could not reach that computer.");
+      te(await _(o));
+    } catch (f) {
+      W(f instanceof Error ? f.message : "Could not reach that computer.");
     } finally {
       ne(!1);
     }
@@ -1852,13 +1852,13 @@ function tr({
   }
   const L = () => window.innerWidth <= 1030 ? Math.min(730, window.innerWidth - 40) : Math.min(730, window.innerWidth - (window.innerWidth <= 1180 ? 672 : 732));
   q(() => {
-    const i = () => {
+    const o = () => {
       const y = Math.max(280, L());
       n > y && r(y);
     };
-    return i(), window.addEventListener("resize", i), () => window.removeEventListener("resize", i);
+    return o(), window.addEventListener("resize", o), () => window.removeEventListener("resize", o);
   }, [r, n]);
-  const A = (i) => r(Math.max(280, Math.min(L(), window.innerWidth - i)));
+  const A = (o) => r(Math.max(280, Math.min(L(), window.innerWidth - o)));
   return /* @__PURE__ */ e.createElement("aside", { className: `detail-panel ${t ? "is-open" : "is-closing"}`, style: { width: n } }, /* @__PURE__ */ e.createElement(
     "div",
     {
@@ -1870,17 +1870,17 @@ function tr({
       "aria-valuemax": Math.max(280, L()),
       "aria-valuenow": n,
       tabIndex: 0,
-      onKeyDown: (i) => {
-        i.key === "ArrowLeft" ? (i.preventDefault(), r(Math.min(L(), n + 16))) : i.key === "ArrowRight" && (i.preventDefault(), r(Math.max(280, n - 16)));
+      onKeyDown: (o) => {
+        o.key === "ArrowLeft" ? (o.preventDefault(), r(Math.min(L(), n + 16))) : o.key === "ArrowRight" && (o.preventDefault(), r(Math.max(280, n - 16)));
       },
-      onPointerDown: (i) => {
-        i.currentTarget.setPointerCapture(i.pointerId), A(i.clientX);
+      onPointerDown: (o) => {
+        o.currentTarget.setPointerCapture(o.pointerId), A(o.clientX);
       },
-      onPointerMove: (i) => {
-        i.currentTarget.hasPointerCapture(i.pointerId) && A(i.clientX);
+      onPointerMove: (o) => {
+        o.currentTarget.hasPointerCapture(o.pointerId) && A(o.clientX);
       }
     }
-  ), /* @__PURE__ */ e.createElement("header", null, /* @__PURE__ */ e.createElement("button", { className: "icon-button", "aria-label": "Close the details panel", onClick: P }, /* @__PURE__ */ e.createElement(Bt, { size: 18 }))), R.map((i) => /* @__PURE__ */ e.createElement("section", { className: "approval-card", key: i.id }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow warning" }, /* @__PURE__ */ e.createElement(et, { size: 14 }), " Waiting for you", i.source && i.source !== i.agentId && /* @__PURE__ */ e.createElement("span", { className: "approval-source" }, i.source), i.ref && /* @__PURE__ */ e.createElement("code", { className: "approval-ref", title: "Reply with this in the thread to decide without opening the panel" }, i.ref)), /* @__PURE__ */ e.createElement("h3", null, i.title), i.description && /* @__PURE__ */ e.createElement("p", null, i.description), i.scope.length > 0 && /* @__PURE__ */ e.createElement("div", { className: "scope" }, /* @__PURE__ */ e.createElement("span", null, "This allows:"), i.scope.map((y) => /* @__PURE__ */ e.createElement("div", { key: y }, /* @__PURE__ */ e.createElement(De, { size: 13 }), y))), /* @__PURE__ */ e.createElement(
+  ), /* @__PURE__ */ e.createElement("header", null, /* @__PURE__ */ e.createElement("button", { className: "icon-button", "aria-label": "Close the details panel", onClick: P }, /* @__PURE__ */ e.createElement(Bt, { size: 18 }))), w.filter((o) => o.outcome === "outcome_unknown").map((o) => /* @__PURE__ */ e.createElement("section", { className: "approval-card is-uncertain", key: `unknown-${o.id}` }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow warning" }, /* @__PURE__ */ e.createElement(xe, { size: 14 }), " Outcome unknown"), /* @__PURE__ */ e.createElement("h3", null, o.title), /* @__PURE__ */ e.createElement("p", null, "You allowed this and the process stopped before anything recorded whether it went through. It may have. Check before allowing it again."))), I.map((o) => /* @__PURE__ */ e.createElement("section", { className: "approval-card", key: o.id }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow warning" }, /* @__PURE__ */ e.createElement(xe, { size: 14 }), " Waiting for you", o.source && o.source !== o.agentId && /* @__PURE__ */ e.createElement("span", { className: "approval-source" }, o.source), o.ref && /* @__PURE__ */ e.createElement("code", { className: "approval-ref", title: "Reply with this in the thread to decide without opening the panel" }, o.ref)), /* @__PURE__ */ e.createElement("h3", null, o.title), o.description && /* @__PURE__ */ e.createElement("p", null, o.description), o.scope.length > 0 && /* @__PURE__ */ e.createElement("div", { className: "scope" }, /* @__PURE__ */ e.createElement("span", null, "This allows:"), o.scope.map((y) => /* @__PURE__ */ e.createElement("div", { key: y }, /* @__PURE__ */ e.createElement(Le, { size: 13 }), y))), /* @__PURE__ */ e.createElement(
     "textarea",
     {
       "aria-label": "Note for this decision",
@@ -1889,24 +1889,24 @@ function tr({
       onChange: (y) => Z(y.target.value)
     }
   ), /* @__PURE__ */ e.createElement("div", { className: "approval-actions" }, /* @__PURE__ */ e.createElement("button", { className: "secondary-button danger-text", onClick: () => {
-    d(i.id, "deny", X, i.contentHash);
+    d(o.id, "deny", X, o.contentHash);
   } }, "Discard"), /* @__PURE__ */ e.createElement("button", { className: "primary-button", onClick: () => {
-    d(i.id, "allow", X, i.contentHash);
+    d(o.id, "allow", X, o.contentHash);
   } }, "Approve")))), /* @__PURE__ */ e.createElement("section", { className: "screen-section" }, /* @__PURE__ */ e.createElement(
     "button",
     {
       className: "screen-trigger",
       disabled: Q || m?.status !== "online",
-      "aria-label": `Open ${o}'s screen`,
+      "aria-label": `Open ${i}'s screen`,
       onClick: () => {
         C("open");
       }
     },
-    /* @__PURE__ */ e.createElement("span", { className: "computer-preview" }, [...j].map(([i, y]) => /* @__PURE__ */ e.createElement(
+    /* @__PURE__ */ e.createElement("span", { className: "computer-preview" }, [...j].map(([o, y]) => /* @__PURE__ */ e.createElement(
       "span",
       {
-        className: `computer-preview-stream ${i === m?.id ? "is-active" : ""}`,
-        key: i
+        className: `computer-preview-stream ${o === m?.id ? "is-active" : ""}`,
+        key: o
       },
       /* @__PURE__ */ e.createElement(
         st,
@@ -1914,11 +1914,11 @@ function tr({
           session: y,
           viewOnly: !0,
           compact: !0,
-          onDisconnect: () => $((h) => new Set(h).add(i))
+          onDisconnect: () => $((f) => new Set(f).add(o))
         }
       )
-    )), !j.has(m?.id ?? "") && (le === m?.id ? /* @__PURE__ */ e.createElement("span", { className: "computer-preview-loading", role: "status", "aria-label": `Loading ${o}'s screen` }, /* @__PURE__ */ e.createElement(Le, { size: 18, className: "spin" })) : pe.has(m?.id ?? "") ? /* @__PURE__ */ e.createElement("span", { className: "computer-preview-loading", role: "status" }, "Screen unavailable") : /* @__PURE__ */ e.createElement("span", { className: "computer-screen-off", "aria-hidden": "true" })), /* @__PURE__ */ e.createElement("span", { className: "screen-hover-action" }, /* @__PURE__ */ e.createElement(an, { size: 14 }), " Open"))
-  ), /* @__PURE__ */ e.createElement("div", { className: "screen-caption" }, /* @__PURE__ */ e.createElement("span", null, o, "'s screen"), /* @__PURE__ */ e.createElement("span", { className: `screen-state ${m?.status ?? "offline"}` }, m?.status === "online" ? "Running" : m?.status === "starting" ? "Starting…" : "Off")), m && m.status !== "online" && /* @__PURE__ */ e.createElement(
+    )), !j.has(m?.id ?? "") && (le === m?.id ? /* @__PURE__ */ e.createElement("span", { className: "computer-preview-loading", role: "status", "aria-label": `Loading ${i}'s screen` }, /* @__PURE__ */ e.createElement($e, { size: 18, className: "spin" })) : pe.has(m?.id ?? "") ? /* @__PURE__ */ e.createElement("span", { className: "computer-preview-loading", role: "status" }, "Screen unavailable") : /* @__PURE__ */ e.createElement("span", { className: "computer-screen-off", "aria-hidden": "true" })), /* @__PURE__ */ e.createElement("span", { className: "screen-hover-action" }, /* @__PURE__ */ e.createElement(an, { size: 14 }), " Open"))
+  ), /* @__PURE__ */ e.createElement("div", { className: "screen-caption" }, /* @__PURE__ */ e.createElement("span", null, i, "'s screen"), /* @__PURE__ */ e.createElement("span", { className: `screen-state ${m?.status ?? "offline"}` }, m?.status === "online" ? "Running" : m?.status === "starting" ? "Starting…" : "Off")), m && m.status !== "online" && /* @__PURE__ */ e.createElement(
     "button",
     {
       className: "secondary-button",
@@ -1928,13 +1928,13 @@ function tr({
       }
     },
     "Start this computer"
-  ), m?.error && /* @__PURE__ */ e.createElement("p", { className: "screen-error" }, m.error)), u.length > 0 && /* @__PURE__ */ e.createElement("section", { className: "routines-section" }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow" }, "Routines"), u.map((i) => /* @__PURE__ */ e.createElement("div", { className: "routine-row", key: i.id }, /* @__PURE__ */ e.createElement("div", null, /* @__PURE__ */ e.createElement("strong", null, i.name), /* @__PURE__ */ e.createElement("span", null, i.schedule)), /* @__PURE__ */ e.createElement(
+  ), m?.error && /* @__PURE__ */ e.createElement("p", { className: "screen-error" }, m.error)), u.length > 0 && /* @__PURE__ */ e.createElement("section", { className: "routines-section" }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow" }, "Routines"), u.map((o) => /* @__PURE__ */ e.createElement("div", { className: "routine-row", key: o.id }, /* @__PURE__ */ e.createElement("div", null, /* @__PURE__ */ e.createElement("strong", null, o.name), /* @__PURE__ */ e.createElement("span", null, o.schedule)), /* @__PURE__ */ e.createElement(
     "button",
     {
       className: "icon-button",
-      "aria-label": `Cancel the routine ${i.name}`,
+      "aria-label": `Cancel the routine ${o.name}`,
       onClick: () => {
-        x(i.id);
+        x(o.id);
       }
     },
     /* @__PURE__ */ e.createElement(tt, { size: 14 })
@@ -1945,7 +1945,7 @@ function tr({
       role: "tab",
       "aria-selected": B === "files",
       className: B === "files" ? "is-current" : "",
-      onClick: () => ce((i) => i === "files" ? "" : "files")
+      onClick: () => ce((o) => o === "files" ? "" : "files")
     },
     "Files",
     p.length > 0 && /* @__PURE__ */ e.createElement("span", { className: "drawer-count" }, p.length)
@@ -1956,7 +1956,7 @@ function tr({
       role: "tab",
       "aria-selected": B === "permissions",
       className: B === "permissions" ? "is-current" : "",
-      onClick: () => ce((i) => i === "permissions" ? "" : "permissions")
+      onClick: () => ce((o) => o === "permissions" ? "" : "permissions")
     },
     "Permissions"
   ), /* @__PURE__ */ e.createElement(
@@ -1966,20 +1966,20 @@ function tr({
       role: "tab",
       "aria-selected": B === "audit",
       className: B === "audit" ? "is-current" : "",
-      onClick: () => ce((i) => i === "audit" ? "" : "audit")
+      onClick: () => ce((o) => o === "audit" ? "" : "audit")
     },
     "History"
   )), B === "files" && /* @__PURE__ */ e.createElement(
     Wn,
     {
-      agentName: o,
+      agentName: i,
       artifacts: p,
       urlFor: g
     }
   ), B === "permissions" && /* @__PURE__ */ e.createElement(
     Kn,
     {
-      agentName: o,
+      agentName: i,
       grants: M,
       busy: l,
       onSetGrant: O,
@@ -2000,7 +2000,7 @@ function tr({
     {
       session: re,
       failure: se,
-      title: `${o}'s computer`,
+      title: `${i}'s computer`,
       onClose: D,
       onReconnect: () => {
         C("takeover");
@@ -2012,7 +2012,7 @@ function nr({
   value: t,
   options: n,
   ariaLabel: r,
-  placeholder: o = "Select",
+  placeholder: i = "Select",
   onChange: m,
   onOpen: w
 }) {
@@ -2062,7 +2062,7 @@ function nr({
         (d.key === "ArrowDown" || d.key === "ArrowUp") && (d.preventDefault(), p(d.key === "ArrowDown" ? 1 : -1), u || w?.(), M(!0));
       }
     },
-    /* @__PURE__ */ e.createElement("span", null, a?.label ?? o),
+    /* @__PURE__ */ e.createElement("span", null, a?.label ?? i),
     /* @__PURE__ */ e.createElement("span", { className: "crew-select-chevron" }, /* @__PURE__ */ e.createElement(Vt, { size: 15 }))
   ), u && l && at.createPortal(
     /* @__PURE__ */ e.createElement(
@@ -2089,18 +2089,18 @@ function nr({
         },
         (d.action || d.icon) && /* @__PURE__ */ e.createElement("span", { className: "crew-select-check", "aria-hidden": "true" }, d.icon),
         /* @__PURE__ */ e.createElement("span", { className: "crew-select-label", title: d.label }, d.label),
-        !d.action && /* @__PURE__ */ e.createElement("span", { className: "crew-select-check", "aria-hidden": "true" }, d.value === t && /* @__PURE__ */ e.createElement(De, { size: 14 }))
+        !d.action && /* @__PURE__ */ e.createElement("span", { className: "crew-select-check", "aria-hidden": "true" }, d.value === t && /* @__PURE__ */ e.createElement(Le, { size: 14 }))
       ))
     ),
     document.body
   ));
 }
 const rr = ["🤖", "🔎", "📥", "📈", "🎖️", "🧭", "🛠️", "📚", "🧪", "✍️", "🗂️", "🛰️"];
-function Ve({
+function Be({
   editing: t,
   providers: n,
   busy: r,
-  error: o,
+  error: i,
   onSubmit: m,
   onClose: w
 }) {
@@ -2183,7 +2183,7 @@ function Ve({
           onChange: p
         }
       )),
-      o && /* @__PURE__ */ e.createElement("p", { className: "crew-dialog-error" }, o),
+      i && /* @__PURE__ */ e.createElement("p", { className: "crew-dialog-error" }, i),
       /* @__PURE__ */ e.createElement("div", { className: "crew-dialog-actions" }, /* @__PURE__ */ e.createElement("button", { type: "button", className: "secondary-button", onClick: w }, "Cancel"), /* @__PURE__ */ e.createElement("button", { className: "primary-button", disabled: !g }, r ? "Working…" : t ? "Save" : "Hire"))
     )
   );
@@ -2198,10 +2198,10 @@ function ar() {
   }
 }
 function sr({ client: t, notify: n }) {
-  const r = $t(t, { notify: n }), [o, m] = N(""), [w, u] = N([]), [M, l] = N([]), [s, k] = N([]), [c, a] = N(!1), [p, g] = N([]), [d, _] = N(!1), [x, O] = N({ id: "all", types: [] }), [H, K] = N(null), [v, P] = N([]), [X, Z] = N(!1), [B, ce] = N(ar), [Q, ne] = N(!1), [j, ee] = N(), [le, me] = N(!1), [pe, $] = N(), [re, te] = N(0), { agents: z, conversations: ae, selectedAgent: se, selectedAgentId: W, selectedThreadId: R } = r, I = fe(() => ae.filter((f) => f.kind === "group"), [ae]), Y = fe(() => new Map(z.map((f) => [f.id, f])), [z]), b = fe(
-    () => ae.find((f) => f.id === R),
-    [ae, R]
-  ), C = r.approvals.filter((f) => f.status === "pending").length;
+  const r = $t(t, { notify: n }), [i, m] = N(""), [w, u] = N([]), [M, l] = N([]), [s, k] = N([]), [c, a] = N(!1), [p, g] = N([]), [d, _] = N(!1), [x, O] = N({ id: "all", types: [] }), [H, K] = N(null), [v, P] = N([]), [X, Z] = N(!1), [B, ce] = N(ar), [Q, ne] = N(!1), [j, ee] = N(), [le, me] = N(!1), [pe, $] = N(), [re, te] = N(0), { agents: z, conversations: ae, selectedAgent: se, selectedAgentId: W, selectedThreadId: I } = r, R = he(() => ae.filter((h) => h.kind === "group"), [ae]), Y = he(() => new Map(z.map((h) => [h.id, h])), [z]), b = he(
+    () => ae.find((h) => h.id === I),
+    [ae, I]
+  ), C = r.approvals.filter((h) => h.status === "pending").length;
   q(() => {
     try {
       window.localStorage?.setItem(ot, String(B));
@@ -2216,26 +2216,26 @@ function sr({ client: t, notify: n }) {
       l([]);
       return;
     }
-    let f = !0;
+    let h = !0;
     return t.listRoutines(W).then((S) => {
-      f && l(S);
+      h && l(S);
     }).catch(() => {
-      f && l([]);
+      h && l([]);
     }), () => {
-      f = !1;
+      h = !1;
     };
   }, [t, W]), q(() => {
     if (!W) {
       k([]);
       return;
     }
-    let f = !0;
+    let h = !0;
     return t.listGrants(W).then((S) => {
-      f && k(S);
+      h && k(S);
     }).catch(() => {
-      f && k([]);
+      h && k([]);
     }), () => {
-      f = !1;
+      h = !1;
     };
   }, [t, W]);
   const L = ye(() => {
@@ -2250,14 +2250,14 @@ function sr({ client: t, notify: n }) {
   q(() => {
     A !== "working" && L();
   }, [A, L]);
-  const i = ye((f, S) => {
+  const o = ye((h, S) => {
     if (!W) {
       g([]), K(null);
       return;
     }
     _(!0), t.listAuditEvents({
       agentId: W,
-      eventTypes: f,
+      eventTypes: h,
       beforeId: S,
       limit: 50
     }).then((F) => {
@@ -2267,47 +2267,47 @@ function sr({ client: t, notify: n }) {
     }).finally(() => _(!1));
   }, [t, W]);
   q(() => {
-    i(x.types);
-  }, [i, x]), q(() => {
+    o(x.types);
+  }, [o, x]), q(() => {
     C > 0 && Z(!0);
   }, [C]), q(() => {
-    const f = (S) => {
+    const h = (S) => {
       (S.metaKey || S.ctrlKey) && S.key.toLowerCase() === "k" && (S.preventDefault(), ne((F) => !F));
     };
-    return window.addEventListener("keydown", f), () => window.removeEventListener("keydown", f);
+    return window.addEventListener("keydown", h), () => window.removeEventListener("keydown", h);
   }, []);
-  const y = (f, S) => {
-    const F = w.map((V) => V.id === f ? { ...V, collapsed: S } : V);
+  const y = (h, S) => {
+    const F = w.map((V) => V.id === h ? { ...V, collapsed: S } : V);
     u(F), t.saveSections(F).then(u).catch(D);
-  }, h = (f, S) => {
+  }, f = (h, S) => {
     if (S === "edit") {
-      $(void 0), ee({ editing: f });
+      $(void 0), ee({ editing: h });
       return;
     }
     if (S === "duplicate") {
-      r.duplicateAgent(f.id).catch(() => {
+      r.duplicateAgent(h.id).catch(() => {
       });
       return;
     }
-    window.confirm(`Remove ${f.name} from the crew? Their profile, memory and skills stay on disk.`) && r.deleteAgent(f.id).catch(() => {
+    window.confirm(`Remove ${h.name} from the crew? Their profile, memory and skills stay on disk.`) && r.deleteAgent(h.id).catch(() => {
     });
-  }, E = async (f) => {
+  }, E = async (h) => {
     me(!0), $(void 0);
     try {
-      j?.editing ? await r.updateAgent(j.editing.id, { role: f.role, emoji: f.emoji }) : await r.createAgent({
-        name: f.name,
-        role: f.role,
-        emoji: f.emoji,
-        modelProviderId: f.modelProviderId || void 0
+      j?.editing ? await r.updateAgent(j.editing.id, { role: h.role, emoji: h.emoji }) : await r.createAgent({
+        name: h.name,
+        role: h.role,
+        emoji: h.emoji,
+        modelProviderId: h.modelProviderId || void 0
       }), ee(void 0), D();
     } catch (S) {
       $(S instanceof Error ? S.message : "That did not work.");
     } finally {
       me(!1);
     }
-  }, U = fe(() => ({
-    onDecide: (f, S) => {
-      r.respondToApproval(f, S).catch(() => {
+  }, U = he(() => ({
+    onDecide: (h, S) => {
+      r.respondToApproval(h, S).catch(() => {
       });
     },
     // A login request is the one chip that is an instruction to the operator,
@@ -2316,25 +2316,25 @@ function sr({ client: t, notify: n }) {
       Z(!0), r.openComputer("takeover").catch(() => {
       });
     },
-    screenshotUrl: (f, S) => t.screenshotUrl(f, S)
+    screenshotUrl: (h, S) => t.screenshotUrl(h, S)
   }), [t, r]);
   return r.loading ? /* @__PURE__ */ e.createElement("div", { className: "crew-workspace is-loading", role: "status" }, "Loading your crew…") : z.length ? /* @__PURE__ */ e.createElement("div", { className: "crew-workspace" }, /* @__PURE__ */ e.createElement(
     yn,
     {
       agents: z,
       sections: w,
-      rooms: I,
+      rooms: R,
       selectedAgentId: W,
-      selectedThreadId: R,
-      search: o,
+      selectedThreadId: I,
+      search: i,
       onSearch: m,
-      onSelectAgent: (f) => {
-        r.setSelectedAgentId(f), te((S) => S + 1);
+      onSelectAgent: (h) => {
+        r.setSelectedAgentId(h), te((S) => S + 1);
       },
-      onSelectThread: (f) => {
-        r.setSelectedThreadId(f), te((S) => S + 1);
+      onSelectThread: (h) => {
+        r.setSelectedThreadId(h), te((S) => S + 1);
       },
-      onAction: h,
+      onAction: f,
       onCreate: () => {
         $(void 0), ee({});
       },
@@ -2351,9 +2351,9 @@ function sr({ client: t, notify: n }) {
       chips: U,
       loading: r.conversationLoading,
       focusRequest: re,
-      onSend: (f) => r.sendMessage(f).catch(() => {
+      onSend: (h) => r.sendMessage(h).catch(() => {
       }),
-      onToggleDetails: () => Z((f) => !f)
+      onToggleDetails: () => Z((h) => !h)
     }
   ), X && se && /* @__PURE__ */ e.createElement(
     tr,
@@ -2372,33 +2372,33 @@ function sr({ client: t, notify: n }) {
       auditView: x.id,
       auditHasMore: H !== null,
       artifacts: v,
-      artifactUrl: (f) => t.artifactUrl(f),
-      onApproval: (f, S, F, V) => r.respondToApproval(f, S, F, V),
-      onComputerAction: (f) => r.openComputer(f),
-      onDeleteRoutine: async (f) => {
-        await t.deleteRoutine(se.id, f), l((S) => S.filter((F) => F.id !== f));
+      artifactUrl: (h) => t.artifactUrl(h),
+      onApproval: (h, S, F, V) => r.respondToApproval(h, S, F, V),
+      onComputerAction: (h) => r.openComputer(h),
+      onDeleteRoutine: async (h) => {
+        await t.deleteRoutine(se.id, h), l((S) => S.filter((F) => F.id !== h));
       },
-      onSetGrant: async (f, S) => {
+      onSetGrant: async (h, S) => {
         a(!0);
         try {
-          const F = await t.setGrant({ agentId: se.id, tool: f, mode: S });
-          k((V) => V.map((de) => de.tool === f ? { ...de, ...F } : de));
+          const F = await t.setGrant({ agentId: se.id, tool: h, mode: S });
+          k((V) => V.map((de) => de.tool === h ? { ...de, ...F } : de));
         } finally {
           a(!1);
         }
       },
-      onClearGrant: async (f) => {
+      onClearGrant: async (h) => {
         a(!0);
         try {
-          const S = await t.clearGrant(se.id, f);
-          k((F) => F.map((V) => V.tool === f ? { ...V, ...S } : V));
+          const S = await t.clearGrant(se.id, h);
+          k((F) => F.map((V) => V.tool === h ? { ...V, ...S } : V));
         } finally {
           a(!1);
         }
       },
-      onChangeAuditView: (f, S) => O({ id: f, types: S }),
+      onChangeAuditView: (h, S) => O({ id: h, types: S }),
       onLoadMoreAudit: () => {
-        H !== null && i(x.types, H);
+        H !== null && o(x.types, H);
       },
       onClose: () => Z(!1)
     }
@@ -2407,7 +2407,7 @@ function sr({ client: t, notify: n }) {
     {
       open: Q,
       agents: z,
-      rooms: I,
+      rooms: R,
       onClose: () => ne(!1),
       onSelectAgent: r.setSelectedAgentId,
       onSelectThread: r.setSelectedThreadId,
@@ -2417,7 +2417,7 @@ function sr({ client: t, notify: n }) {
       onComputer: () => Z(!0)
     }
   ), j && /* @__PURE__ */ e.createElement(
-    Ve,
+    Be,
     {
       editing: j.editing,
       providers: r.modelProviders,
@@ -2429,7 +2429,7 @@ function sr({ client: t, notify: n }) {
   ), r.error && /* @__PURE__ */ e.createElement("div", { className: "crew-toast", role: "alert" }, /* @__PURE__ */ e.createElement("span", null, r.error), /* @__PURE__ */ e.createElement("button", { className: "icon-button", "aria-label": "Dismiss", onClick: r.dismissError }, "×"))) : /* @__PURE__ */ e.createElement("div", { className: "crew-workspace is-empty" }, /* @__PURE__ */ e.createElement("div", { className: "crew-empty-card" }, /* @__PURE__ */ e.createElement("h2", null, "No teammates yet"), /* @__PURE__ */ e.createElement("p", null, "A teammate is a Hermes profile with a thread, a memory and a computer of its own. Give one a name and a one-line job to start."), /* @__PURE__ */ e.createElement("button", { className: "primary-button", onClick: () => {
     $(void 0), ee({});
   } }, "Hire your first teammate")), j && /* @__PURE__ */ e.createElement(
-    Ve,
+    Be,
     {
       providers: r.modelProviders,
       busy: le,
@@ -2468,12 +2468,12 @@ class lr {
   constructor(n) {
     this.baseUrl = n.baseUrl.replace(/\/+$/, "");
     const r = n.eventsUrl ?? cr(this.baseUrl);
-    this.resolveEventsUrl = typeof r == "function" ? r : async () => r, this.fetchImpl = n.fetchImpl ?? ((o, m) => fetch(o, m)), this.headers = n.headers ?? (() => ({}));
+    this.resolveEventsUrl = typeof r == "function" ? r : async () => r, this.fetchImpl = n.fetchImpl ?? ((i, m) => fetch(i, m)), this.headers = n.headers ?? (() => ({}));
   }
   async request(n, r = {}) {
-    let o;
+    let i;
     try {
-      o = await this.fetchImpl(`${this.baseUrl}${n}`, {
+      i = await this.fetchImpl(`${this.baseUrl}${n}`, {
         ...r,
         headers: {
           ...r.body ? { "Content-Type": "application/json" } : {},
@@ -2484,13 +2484,13 @@ class lr {
     } catch (m) {
       throw m instanceof DOMException && m.name === "AbortError" ? m : new ge("network", "Could not reach the crew backend.", !0);
     }
-    if (!o.ok) {
-      const m = await o.json().then((w) => w?.detail).catch(() => {
+    if (!i.ok) {
+      const m = await i.json().then((w) => w?.detail).catch(() => {
       });
-      throw ir(o.status, m ?? `Crew request failed (${o.status})`);
+      throw ir(i.status, m ?? `Crew request failed (${i.status})`);
     }
-    if (o.status !== 204)
-      return await o.json();
+    if (i.status !== 204)
+      return await i.json();
   }
   listModelProviders(n) {
     return this.request("/v1/model-providers", { signal: n });
@@ -2508,11 +2508,11 @@ class lr {
       signal: r
     });
   }
-  updateAgent(n, r, o) {
+  updateAgent(n, r, i) {
     return this.request(`/v1/agents/${encodeURIComponent(n)}`, {
       method: "PATCH",
       body: JSON.stringify(r),
-      signal: o
+      signal: i
     });
   }
   async deleteAgent(n, r) {
@@ -2528,8 +2528,8 @@ class lr {
     });
   }
   listConversations(n, r) {
-    const o = n ? `?agentId=${encodeURIComponent(n)}` : "";
-    return this.request(`/v1/conversations${o}`, { signal: r });
+    const i = n ? `?agentId=${encodeURIComponent(n)}` : "";
+    return this.request(`/v1/conversations${i}`, { signal: r });
   }
   getConversation(n, r) {
     return this.request(
@@ -2544,8 +2544,8 @@ class lr {
     );
   }
   listApprovalRequests(n, r) {
-    const o = n ? `?agentId=${encodeURIComponent(n)}` : "";
-    return this.request(`/v1/approvals${o}`, { signal: r });
+    const i = n ? `?agentId=${encodeURIComponent(n)}` : "";
+    return this.request(`/v1/approvals${i}`, { signal: r });
   }
   respondToApproval(n, r) {
     return this.request(
@@ -2592,25 +2592,25 @@ class lr {
       method: "PUT",
       body: JSON.stringify(n),
       signal: r
-    }).then((o) => o.sections);
+    }).then((i) => i.sections);
   }
   listRoutines(n, r) {
     return this.request(
       `/bots/${encodeURIComponent(n)}/routines`,
       { signal: r }
-    ).then((o) => o.routines);
+    ).then((i) => i.routines);
   }
-  async deleteRoutine(n, r, o) {
+  async deleteRoutine(n, r, i) {
     await this.request(
       `/bots/${encodeURIComponent(n)}/routines/${encodeURIComponent(r)}`,
-      { method: "DELETE", signal: o }
+      { method: "DELETE", signal: i }
     );
   }
   listGrants(n, r) {
     return this.request(
       `/bots/${encodeURIComponent(n)}/grants`,
       { signal: r }
-    ).then((o) => o.grants);
+    ).then((i) => i.grants);
   }
   setGrant(n, r) {
     return this.request(
@@ -2618,23 +2618,23 @@ class lr {
       { method: "PUT", body: JSON.stringify({ mode: n.mode, note: n.note ?? "" }), signal: r }
     );
   }
-  clearGrant(n, r, o) {
+  clearGrant(n, r, i) {
     return this.request(
       `/bots/${encodeURIComponent(n)}/grants/${encodeURIComponent(r)}`,
-      { method: "DELETE", signal: o }
+      { method: "DELETE", signal: i }
     );
   }
   listAuditEvents(n = {}, r) {
-    const o = new URLSearchParams();
-    n.agentId && o.set("bot_id", n.agentId), n.eventTypes?.length && o.set("event_type", n.eventTypes.join(",")), n.beforeId && o.set("before_id", String(n.beforeId)), n.limit && o.set("limit", String(n.limit));
-    const m = o.toString();
+    const i = new URLSearchParams();
+    n.agentId && i.set("bot_id", n.agentId), n.eventTypes?.length && i.set("event_type", n.eventTypes.join(",")), n.beforeId && i.set("before_id", String(n.beforeId)), n.limit && i.set("limit", String(n.limit));
+    const m = i.toString();
     return this.request(`/audit${m ? `?${m}` : ""}`, { signal: r });
   }
   listArtifacts(n, r) {
     return this.request(
       `/bots/${encodeURIComponent(n)}/files`,
       { signal: r }
-    ).then((o) => o.files);
+    ).then((i) => i.files);
   }
   artifactUrl(n) {
     const r = n.downloadPath.split("/").map(encodeURIComponent).join("/");
@@ -2644,12 +2644,12 @@ class lr {
     return `${this.baseUrl}/screenshots/${encodeURIComponent(n)}/${encodeURIComponent(r)}`;
   }
   subscribeToConversationEvents(n, r) {
-    const o = (m) => {
+    const i = (m) => {
       "threadId" in m && m.threadId && m.threadId !== n || r(m);
     };
-    return this.listeners.add(o), this.closed = !1, this.openSocket(), {
+    return this.listeners.add(i), this.closed = !1, this.openSocket(), {
       unsubscribe: () => {
-        this.listeners.delete(o), this.listeners.size || (this.closed = !0, this.closeSocket());
+        this.listeners.delete(i), this.listeners.size || (this.closed = !0, this.closeSocket());
       }
     };
   }
@@ -2674,9 +2674,9 @@ class lr {
     }
     this.socket = r, r.onopen = () => {
       this.reconnectDelay = Ce, this.emit({ type: "connection.changed", state: "connected" });
-    }, r.onmessage = (o) => {
+    }, r.onmessage = (i) => {
       try {
-        this.emit(JSON.parse(String(o.data)));
+        this.emit(JSON.parse(String(i.data)));
       } catch {
       }
     }, r.onclose = () => {
@@ -2694,15 +2694,15 @@ class lr {
     this.socket = void 0, n && (n.onclose = null, n.onerror = null, n.close());
   }
 }
-const Be = "/api/plugins/hermes-crew", We = window.__HERMES_PLUGIN_SDK__, dr = new lr({
-  baseUrl: Be,
+const We = "/api/plugins/hermes-crew", Ge = window.__HERMES_PLUGIN_SDK__, dr = new lr({
+  baseUrl: We,
   // The SDK's authed fetch, not the global one. Its own contract says plugins
   // must not hand-read the session token, and this is what keeps loopback,
   // gated-OAuth and server-internal modes all working from one bundle.
-  fetchImpl: (t, n) => We.authedFetch(t, n),
+  fetchImpl: (t, n) => Ge.authedFetch(t, n),
   // A resolver, not a string: in gated mode `buildWsUrl` mints a single-use
   // ticket, so the URL has to be rebuilt for every connect and reconnect.
-  eventsUrl: () => We.buildWsUrl(`${Be}/v1/events`)
+  eventsUrl: () => Ge.buildWsUrl(`${We}/v1/events`)
 });
 function ur(t) {
   try {
@@ -2717,17 +2717,17 @@ function pr() {
 export {
   pr as C,
   e as R,
-  xe as S,
+  Oe as S,
   N as a,
   q as b,
   Mt as c,
-  fe as d,
+  he as d,
   G as e,
-  Ie as f,
+  De as f,
   mr as g,
   Se as h,
   vt as i,
-  ht as j,
+  ft as j,
   gt as k,
   ye as l,
   wt as m,

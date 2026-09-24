@@ -52,7 +52,31 @@ DEFAULT_TTL_MS = 30 * 60 * 1000
 
 #: Terminal states. ``expired`` is distinct from ``discarded`` because nobody
 #: decided — the teammate should say so rather than report a refusal.
-STATUSES = ("pending", "approved", "discarded", "expired")
+#: The life of a held action. Four of these describe a decision, four describe
+#: what became of it, and keeping them apart is the point.
+#:
+#: ``executing`` and ``outcome_unknown`` exist because "we let it through" and
+#: "it happened" are different claims, and the gap between them is where a
+#: process dies. ``failed`` asserts *nothing happened, retrying is safe*;
+#: ``outcome_unknown`` asserts *we cannot know — do not retry, go and look*.
+#: Collapsing the two is comfortable right up to the moment it matters, which
+#: is a duplicate payment or a second copy of an email to a customer.
+#:
+#: Ported from OpenMuse's action union, which carries the same distinction for
+#: the same reason.
+STATUSES = (
+    "pending",          # waiting for the operator
+    "approved",         # they said yes; nothing has run yet
+    "executing",        # released, the tool is running right now
+    "succeeded",        # it ran and worked
+    "failed",           # it ran and did not work — nothing happened, safe to retry
+    "outcome_unknown",  # we released it and never saw the end. A person must check.
+    "discarded",        # they said no
+    "expired",          # nobody said anything in time
+)
+
+#: Once a hold reaches one of these, the decision is spent.
+SETTLED = ("succeeded", "failed", "outcome_unknown", "discarded", "expired")
 
 
 def content_hash(action: str, detail: str, scope: Any = None) -> str:
@@ -163,7 +187,7 @@ def claim_release(conn: sqlite3.Connection, idem_key: str) -> Optional[dict]:
     ts = now_ms()
     cur = conn.execute(
         """
-        UPDATE approvals SET consumed_at = ?
+        UPDATE approvals SET consumed_at = ?, status = 'executing'
          WHERE idem_key = ? AND status = 'approved' AND consumed_at IS NULL
         """,
         (ts, idem_key),
@@ -175,6 +199,59 @@ def claim_release(conn: sqlite3.Connection, idem_key: str) -> Optional[dict]:
         "SELECT * FROM approvals WHERE idem_key = ? AND consumed_at = ? ORDER BY id DESC LIMIT 1",
         (idem_key, ts),
     ).fetchone())
+
+
+def settle_execution(
+    conn: sqlite3.Connection, approval_id: int, *, success: bool, error: str = ""
+) -> Optional[dict]:
+    """Record what became of a released action. Closes the ``executing`` window.
+
+    Only moves a row that is still ``executing``, so a late or duplicated
+    settle cannot overwrite an outcome somebody has already recorded — most
+    importantly it cannot turn an ``outcome_unknown`` that a restart wrote back
+    into a tidy ``succeeded``.
+    """
+    cur = conn.execute(
+        """
+        UPDATE approvals SET status = ?, note = ?, resolved_at = ?
+         WHERE id = ? AND status = 'executing'
+        """,
+        ("succeeded" if success else "failed", error, now_ms(), approval_id),
+    )
+    conn.commit()
+    return get_approval(conn, approval_id) if cur.rowcount else None
+
+
+def recover_executing(conn: sqlite3.Connection) -> int:
+    """Turn every in-flight release into ``outcome_unknown``. Returns how many.
+
+    Run once when the plugin loads. A row still reading ``executing`` means a
+    process was told to go ahead, did so, and never came back — the tool call
+    was dispatched and nobody saw the answer.
+
+    This is safe to run at startup in a way the *task* engine's recovery
+    deliberately is not, and the difference is worth stating: a task can be
+    picked up by a peer, so no startup statement can tell a crashed run from a
+    healthy one. A released approval has no peer. It was spent in one process on
+    one tool call, and if that row is still ``executing`` when the plugin next
+    loads, the answer to "did it happen?" is genuinely nobody knows.
+
+    Ported from OpenMuse's ``recoverInterruptedActions``, which is one
+    statement at boot for exactly this.
+    """
+    note = (
+        "The process stopped while this was running. It may or may not have "
+        "gone through — check before allowing it again."
+    )
+    cur = conn.execute(
+        """
+        UPDATE approvals SET status = 'outcome_unknown', resolved_at = ?, note = ?
+         WHERE status = 'executing'
+        """,
+        (now_ms(), note),
+    )
+    conn.commit()
+    return cur.rowcount
 
 
 def recent_refusal(
@@ -196,6 +273,32 @@ def recent_refusal(
         """
         SELECT * FROM approvals
          WHERE idem_key = ? AND status IN ('discarded', 'expired') AND resolved_at >= ?
+         ORDER BY id DESC LIMIT 1
+        """,
+        (idem_key, now_ms() - max(0, within_ms)),
+    ).fetchone())
+
+
+def uncertain_outcome(
+    conn: sqlite3.Connection, idem_key: str, within_ms: int = DEFAULT_TTL_MS
+) -> Optional[dict]:
+    """A recent release of this exact call whose outcome nobody knows.
+
+    The teammate must not simply try again. It was allowed once, it went out —
+    or it may have — and a second attempt is how one payment becomes two. The
+    honest move is to stop and say a person needs to check.
+
+    Bounded by the same window as :func:`recent_refusal`, because "we don't
+    know what happened this morning" should not silence the same request next
+    month. The row and its audit line outlive the window; what expires is only
+    the automatic refusal.
+    """
+    if not idem_key:
+        return None
+    return _parse(conn.execute(
+        """
+        SELECT * FROM approvals
+         WHERE idem_key = ? AND status = 'outcome_unknown' AND resolved_at >= ?
          ORDER BY id DESC LIMIT 1
         """,
         (idem_key, now_ms() - max(0, within_ms)),

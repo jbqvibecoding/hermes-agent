@@ -126,6 +126,20 @@ export interface ApprovalRequest {
   expiresAt?: string | null;
   /** Nobody decided in time. Distinct from a refusal, and the teammate says so. */
   expired?: boolean;
+
+  /**
+   * What became of it, unflattened. `status` above is Errand's three-value
+   * union, and everything from `executing` onward collapses into `allowed`
+   * there — so it cannot tell "it went out" from "we let it out and the
+   * process died before anyone saw the end". That difference is the one a
+   * person has to act on, so it rides alongside.
+   *
+   * `outcome_unknown` is not a failure. `failed` claims nothing happened and
+   * retrying is safe; this claims nobody knows, and somebody must go and look.
+   */
+  outcome?:
+    | "pending" | "approved" | "executing" | "succeeded"
+    | "failed" | "outcome_unknown" | "discarded" | "expired";
 }
 
 /**

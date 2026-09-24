@@ -480,3 +480,118 @@ def test_a_short_ref_is_minted_so_a_decision_can_come_from_the_thread(conn):
     )
     assert len(approval["ref"]) == 4
     assert crew_approvals.get_by_ref(conn, approval["ref"])["id"] == approval["id"]
+
+
+# ---------------------------------------------------------------------------
+# What became of a released action (F2)
+#
+# "We let it through" and "it happened" are different claims, and the gap
+# between them is where a process dies. Before this, `claim_release` wrote
+# `consumed_at` and the tool then ran unguarded — so a crash mid-send left a
+# row reading "approved, consumed", which is byte-for-byte what success looks
+# like. The teammate's next turn would reasonably conclude the mail went out.
+# ---------------------------------------------------------------------------
+
+
+def _approved_send(conn, offline_marker=None):
+    """Hold a send, approve it, and hand back the idempotency key."""
+    crew_hooks.on_pre_tool_call(**_send())
+    [approval] = crew_approvals.list_approvals(conn, "scout")
+    crew_approvals.resolve_approval(conn, int(approval["id"]), "approve")
+    return approval
+
+
+def test_releasing_a_call_marks_it_in_flight_not_finished(conn, offline):
+    """The window has to be visible while it is open, or a crash inside it
+    leaves nothing to find."""
+    _approved_send(conn)
+    assert crew_hooks.on_pre_tool_call(**_send(tool_call_id="call_go")) is None
+
+    [approval] = crew_approvals.list_approvals(conn, "scout")
+    assert approval["status"] == "executing"
+
+
+def test_a_call_that_comes_back_settles_the_approval(conn, offline):
+    _approved_send(conn)
+    crew_hooks.on_pre_tool_call(**_send(tool_call_id="call_go"))
+    crew_hooks.on_post_tool_call(
+        **_send(tool_call_id="call_go"), result={"ok": True}, status="ok",
+    )
+    [approval] = crew_approvals.list_approvals(conn, "scout")
+    assert approval["status"] == "succeeded"
+
+
+def test_a_call_that_comes_back_failed_says_so(conn, offline):
+    _approved_send(conn)
+    crew_hooks.on_pre_tool_call(**_send(tool_call_id="call_go"))
+    crew_hooks.on_post_tool_call(
+        **_send(tool_call_id="call_go"), result={"error": "smtp refused"}, status="error",
+    )
+    [approval] = crew_approvals.list_approvals(conn, "scout")
+    assert approval["status"] == "failed"
+
+
+def test_a_release_the_process_never_finished_becomes_outcome_unknown(conn, offline):
+    """The whole point. `failed` would claim nothing happened and retrying is
+    safe. Nobody knows that."""
+    _approved_send(conn)
+    crew_hooks.on_pre_tool_call(**_send(tool_call_id="call_go"))
+    # …and the process dies here. No post hook, no settle.
+
+    assert crew_approvals.recover_executing(conn) == 1
+    [approval] = crew_approvals.list_approvals(conn, "scout")
+    assert approval["status"] == "outcome_unknown"
+    assert "may or may not have gone through" in approval["note"]
+
+
+def test_recovery_leaves_settled_approvals_alone(conn, offline):
+    _approved_send(conn)
+    crew_hooks.on_pre_tool_call(**_send(tool_call_id="call_go"))
+    crew_hooks.on_post_tool_call(
+        **_send(tool_call_id="call_go"), result={"ok": True}, status="ok",
+    )
+    assert crew_approvals.recover_executing(conn) == 0
+    assert crew_approvals.list_approvals(conn, "scout")[0]["status"] == "succeeded"
+
+
+def test_a_late_settle_cannot_tidy_away_an_unknown_outcome(conn, offline):
+    """A straggler reporting success must not overwrite what a restart already
+    recorded — that would erase the one signal telling somebody to go and
+    check."""
+    _approved_send(conn)
+    crew_hooks.on_pre_tool_call(**_send(tool_call_id="call_go"))
+    [approval] = crew_approvals.list_approvals(conn, "scout")
+    crew_approvals.recover_executing(conn)
+
+    assert crew_approvals.settle_execution(conn, int(approval["id"]), success=True) is None
+    assert crew_approvals.get_approval(conn, int(approval["id"]))["status"] == "outcome_unknown"
+
+
+def test_retrying_a_call_whose_outcome_is_unknown_is_refused(conn, offline):
+    """It was allowed once and may already have gone out. A second attempt is
+    how one payment becomes two."""
+    _approved_send(conn)
+    crew_hooks.on_pre_tool_call(**_send(tool_call_id="call_go"))
+    crew_approvals.recover_executing(conn)
+
+    directive = crew_hooks.on_pre_tool_call(**_send(tool_call_id="call_again"))
+    assert directive is not None
+    assert "somebody needs to check" in directive["message"]
+    # No second card: the operator is not asked to re-approve something that
+    # may already have happened.
+    assert len(crew_approvals.list_approvals(conn, "scout")) == 1
+
+
+def test_the_panel_can_tell_sent_from_lost_sight_of(conn, offline):
+    """Errand's union flattens both to `allowed`, so the honest distinction has
+    to ride alongside it."""
+    from crew import contract as crew_contract
+
+    _approved_send(conn)
+    crew_hooks.on_pre_tool_call(**_send(tool_call_id="call_go"))
+    crew_approvals.recover_executing(conn)
+
+    [approval] = crew_approvals.list_approvals(conn, "scout")
+    shaped = crew_contract.approval(approval)
+    assert shaped["status"] == "allowed"
+    assert shaped["outcome"] == "outcome_unknown"

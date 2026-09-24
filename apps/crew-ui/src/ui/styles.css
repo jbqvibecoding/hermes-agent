@@ -669,6 +669,10 @@
   resize: vertical;
 }
 .approval-actions { display: flex; justify-content: flex-end; gap: 0.4rem; margin-top: 0.6rem; }
+/* Not red: nothing is known to have gone wrong. Amber says "unresolved", which
+   is the honest reading — and the same colour the waiting-for-you card uses,
+   because both are things still owed to a person. */
+.approval-card.is-uncertain { border-style: dashed; }
 .approval-source {
   margin-left: auto;
   color: var(--crew-dim);

@@ -57,6 +57,8 @@ def register(ctx) -> None:
 
     _record_policy()
 
+    _recover_interrupted_releases()
+
     log.debug("crew: registered %d tools and 4 hooks", len(CREW_TOOLS))
 
 
@@ -74,6 +76,32 @@ def _start_task_worker() -> None:
         crew_worker.ensure_worker()
     except Exception:
         log.debug("crew: task worker not started", exc_info=True)
+
+
+def _recover_interrupted_releases() -> None:
+    """Turn every approval still reading ``executing`` into ``outcome_unknown``.
+
+    A row in that state means a process was told to go ahead with a held
+    action, went ahead, and never came back to say how it went. The tool call
+    was dispatched; whether it landed is genuinely unknown.
+
+    Safe to do at startup precisely because a released approval has no peer —
+    it was spent in one process on one tool call. The task engine's recovery
+    deliberately works the other way (`crew/tasks.py`): a task *can* be running
+    healthily in a peer, so no boot-time statement may touch it.
+    """
+    try:
+        from crew import approvals as crew_approvals
+        from crew import db as crew_db
+
+        recovered = crew_approvals.recover_executing(crew_db.connect())
+        if recovered:
+            log.warning(
+                "crew: %d approved action(s) were interrupted mid-flight; "
+                "they are marked outcome_unknown and need checking", recovered,
+            )
+    except Exception:
+        log.debug("crew: could not recover interrupted releases", exc_info=True)
 
 
 def _register_skills(ctx) -> None:

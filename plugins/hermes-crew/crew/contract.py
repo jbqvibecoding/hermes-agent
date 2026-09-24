@@ -44,6 +44,13 @@ _CHIP_KINDS = frozenset(crew_db.MESSAGE_KINDS) - {"text"}
 _APPROVAL_STATUS = {
     "pending": "pending",
     "approved": "allowed",
+    # Everything from `executing` onward was allowed — the operator said yes.
+    # What happened next is ours to carry, in `outcome` below, because Errand's
+    # union has no way to say "allowed, and then nobody saw the end".
+    "executing": "allowed",
+    "succeeded": "allowed",
+    "failed": "allowed",
+    "outcome_unknown": "allowed",
     "discarded": "denied",
     "expired": "denied",
 }
@@ -229,6 +236,10 @@ def approval(row: dict) -> dict:
         "tool": row.get("tool") or "",
         "contentHash": row.get("content_hash") or "",
         "status": _APPROVAL_STATUS.get(row.get("status") or "pending", "pending"),
+        # Our own status, unflattened. The panel needs to tell "it went out" from
+        # "we let it out and lost sight of it", and Errand's three-value union
+        # cannot: both map to `allowed`.
+        "outcome": row.get("status") or "pending",
         "expired": (row.get("status") or "") == "expired",
         "createdAt": iso(row.get("created_at")),
         "expiresAt": iso(row["expires_at"]) if row.get("expires_at") else None,

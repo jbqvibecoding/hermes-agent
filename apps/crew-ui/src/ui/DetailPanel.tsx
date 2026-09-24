@@ -155,6 +155,19 @@ export function DetailPanel({
     />
     <header><button className="icon-button" aria-label="Close the details panel" onClick={onClose}><ChevronsRight size={18} /></button></header>
 
+    {/* Decided, but nobody saw how it ended. It stays on screen because the
+        only way this resolves is a person going to look — hiding it with the
+        rest of the settled cards would bury the one thing still owed. */}
+    {approvals.filter((a) => a.outcome === "outcome_unknown").map((approval) =>
+      <section className="approval-card is-uncertain" key={`unknown-${approval.id}`}>
+        <div className="eyebrow warning"><ShieldAlert size={14} /> Outcome unknown</div>
+        <h3>{approval.title}</h3>
+        <p>
+          You allowed this and the process stopped before anything recorded
+          whether it went through. It may have. Check before allowing it again.
+        </p>
+      </section>)}
+
     {pending.map((approval) => <section className="approval-card" key={approval.id}>
       <div className="eyebrow warning">
         <ShieldAlert size={14} /> Waiting for you

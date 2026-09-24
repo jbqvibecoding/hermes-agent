@@ -48,6 +48,14 @@ log = logging.getLogger(__name__)
 #: Only ever prefixed by ``crew/computer.py::task_id_for``.
 _TASK_PREFIX = "crew-"
 
+#: Released approvals whose tool call is still in flight, by tool-call id.
+#: In-process because that is exactly its scope: the window it tracks opens
+#: when this process lets a call through and closes when the call returns here.
+#: A process that dies in between leaves the row reading `executing`, which is
+#: the whole signal — see `crew.approvals.recover_executing`.
+_executing: dict[str, int] = {}
+_executing_lock = threading.Lock()
+
 #: What a held call tells the model. It has three jobs: stop it retrying, stop
 #: it claiming the thing happened, and tell it what actually did happen so it
 #: can say so in its own words.
@@ -218,9 +226,23 @@ def on_pre_tool_call(
                 actor=crew_audit.ACTOR_OPERATOR, thread_id=thread_id, turn_id=turn,
                 tool_call_id=tool_call_id, tool=tool_name, args=args, subject=subject,
                 detail=f"released by approval {released.get('ref') or released['id']}",
-                status="approved",
+                status="executing",
             )
+            # The approval is now `executing`. Nothing else knows that the call
+            # is in flight, so remember which row to settle when it comes back.
+            with _executing_lock:
+                _executing[tool_call_id] = int(released["id"])
             return None
+
+        # Released once already, and nobody ever saw how it ended. Trying again
+        # is how one payment becomes two.
+        uncertain = crew_approvals.uncertain_outcome(conn, key)
+        if uncertain is not None:
+            return refuse(
+                "this was already allowed once and the process stopped before "
+                "anyone saw whether it went through. Do not try again — say that "
+                "somebody needs to check whether it already happened"
+            )
 
         # Already answered "no", recently, to this exact call. Re-asking would
         # put the same question in front of the operator twice.
@@ -411,6 +433,7 @@ def on_post_tool_call(
         conn = crew_db.connect()
         thread_id, turn = _where(conn, bot_id, turn_id)
         failed = status == "error" or crew_activity.looks_failed(result)
+        _settle_released_approval(conn, tool_call_id, failed=failed)
         crew_audit.record(
             conn,
             event_type="tool.failed" if failed else "tool.allowed",
@@ -515,6 +538,34 @@ def on_cron_job_finished(
         )
     except Exception:
         log.warning("crew: could not settle the task for cron job %s", job_id, exc_info=True)
+
+
+def _settle_released_approval(
+    conn: sqlite3.Connection, tool_call_id: str, *, failed: bool
+) -> None:
+    """Close the `executing` window opened when this call was let through.
+
+    Only settles a row this process opened. Anything else still reading
+    `executing` belongs to a run that has not come back, and the next plugin
+    load is what turns those into `outcome_unknown`.
+    """
+    if not tool_call_id:
+        return
+    with _executing_lock:
+        approval_id = _executing.pop(tool_call_id, None)
+    if approval_id is None:
+        return
+    try:
+        from crew import approvals as crew_approvals
+
+        crew_approvals.settle_execution(
+            conn, approval_id, success=not failed,
+            error="the tool reported a failure" if failed else "",
+        )
+    except Exception:
+        # Leaving it `executing` is the safe failure: the next load reads it as
+        # an outcome nobody knows, which is exactly what it is.
+        log.debug("crew: could not settle approval %s", approval_id, exc_info=True)
 
 
 def _record_completed_activity(
