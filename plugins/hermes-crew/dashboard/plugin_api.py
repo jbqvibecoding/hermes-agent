@@ -597,6 +597,31 @@ def delete_routine(bot_id: str, job_id: str):
     return {"ok": True}
 
 
+class RoutineEnabledBody(BaseModel):
+    enabled: bool
+
+
+@router.patch("/bots/{bot_id}/routines/{job_id}")
+def set_routine_enabled(bot_id: str, job_id: str, body: RoutineEnabledBody):
+    """Pause or resume a routine.
+
+    `set_routine_enabled` has existed since the first crew commit and has never
+    had a route — nor a caller anywhere else — so "always-on" has meant "on,
+    with no off switch". A teammate whose morning digest has started firing at
+    a bad time could only be silenced by deleting the routine and rebuilding
+    it from memory.
+    """
+    try:
+        changed = routines.set_routine_enabled(bot_id, job_id, body.enabled)
+    except ValueError as exc:
+        # Resuming a one-shot whose time has passed. A real answer, not a
+        # failure to look — the host raises it and we pass it through.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not changed:
+        raise HTTPException(status_code=404, detail="No such routine.")
+    return {"ok": True, "enabled": body.enabled}
+
+
 @router.get("/screenshots/{bot_id}/{filename}")
 def get_screenshot(bot_id: str, filename: str):
     """Serve a screenshot a teammate posted as evidence.

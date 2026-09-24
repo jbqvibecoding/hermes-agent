@@ -27,6 +27,7 @@ own out of a profile's cron list without a second store to keep in sync.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Optional
 
 from crew import roster
@@ -35,6 +36,16 @@ from crew.schedule import describe_schedule, is_valid_schedule
 log = logging.getLogger(__name__)
 
 _NAME_PREFIX = "crew:"
+
+#: Serialises every crew read/write of the cron store in this process.
+#:
+#: Needed because :func:`_in_profile` rebinds module-level state in
+#: ``cron.jobs`` (see its docstring). Two teammates creating routines
+#: concurrently would otherwise interleave rebinds and write into each other's
+#: files. Cron's own ``_jobs_lock()`` guards the file across processes; this
+#: guards the rebind inside ours. These calls are short and rare, so
+#: serialising them costs nothing.
+_cron_lock = threading.RLock()
 
 
 class CrewRoutineError(ValueError):
@@ -57,23 +68,69 @@ def parse_job_name(raw: str) -> Optional[tuple[str, str]]:
 
 
 def _in_profile(bot_id: str):
-    """Scope cron reads/writes to one teammate's profile."""
+    """Scope cron reads/writes to one teammate's profile.
+
+    The ``HERMES_HOME`` override alone is not enough, and that is the whole
+    reason this function is more than three lines.
+
+    ``cron/jobs.py`` resolves its paths **once, at import time**::
+
+        HERMES_DIR = get_hermes_home().resolve()
+        CRON_DIR   = HERMES_DIR / "cron"
+        JOBS_FILE  = CRON_DIR / "jobs.json"
+
+    So the override only takes effect for whichever profile happens to import
+    ``cron.jobs`` first in a given process — and in the dashboard, that is
+    whichever teammate was touched first, or the default profile if anything
+    else imported it during startup. Every later teammate's routines were
+    being written into the first one's ``jobs.json``. Its own comment names
+    per-profile isolation as the security boundary (#4707), which is exactly
+    what the frozen constants defeat once a second profile is in play.
+
+    ``cron/scheduler.py`` solves this properly with call-time
+    ``_get_hermes_home()`` / ``_get_lock_paths()``. The real fix belongs there
+    too; until it lands, we rebind the four path constants for the duration of
+    the call, under :data:`_cron_lock`, and restore them in ``finally``.
+    ``OUTPUT_DIR`` is in the set because ``remove_job`` deletes a directory
+    under it — getting that one wrong deletes another teammate's job output.
+    """
     import contextlib
 
     @contextlib.contextmanager
     def _scope():
         from hermes_constants import reset_hermes_home_override, set_hermes_home_override
 
-        token = set_hermes_home_override(str(roster.profile_dir(bot_id)))
-        try:
-            yield
-        finally:
-            reset_hermes_home_override(token)
+        home = roster.profile_dir(bot_id)
+        with _cron_lock:
+            token = set_hermes_home_override(str(home))
+            try:
+                from cron import jobs as cron_jobs
+
+                cron_dir = home / "cron"
+                saved = {
+                    "HERMES_DIR": cron_jobs.HERMES_DIR,
+                    "CRON_DIR": cron_jobs.CRON_DIR,
+                    "JOBS_FILE": cron_jobs.JOBS_FILE,
+                    "OUTPUT_DIR": cron_jobs.OUTPUT_DIR,
+                }
+                cron_jobs.HERMES_DIR = home.resolve()
+                cron_jobs.CRON_DIR = cron_dir
+                cron_jobs.JOBS_FILE = cron_dir / "jobs.json"
+                cron_jobs.OUTPUT_DIR = cron_dir / "output"
+                try:
+                    yield
+                finally:
+                    for name, value in saved.items():
+                        setattr(cron_jobs, name, value)
+            finally:
+                reset_hermes_home_override(token)
 
     return _scope()
 
 
-def create_routine(*, bot_id: str, name: str, schedule: str, instructions: str) -> dict:
+def create_routine(
+    *, bot_id: str, name: str, schedule: str, instructions: str, with_computer: bool = True
+) -> dict:
     """Register a recurring turn for this teammate.
 
     Raises :class:`CrewRoutineError` with a message the model can act on — an
@@ -105,10 +162,7 @@ def create_routine(*, bot_id: str, name: str, schedule: str, instructions: str) 
                 schedule=clean_schedule,
                 name=job_name(bot_id, clean_name),
                 deliver="local",
-                # The turn needs the crew tools to file its report as a chip.
-                # Pinning them here rather than inheriting the profile's full
-                # set also keeps a routine's token cost down.
-                enabled_toolsets=_routine_toolsets(bot_id),
+                enabled_toolsets=_routine_toolsets(bot_id, with_computer=with_computer),
             )
         except Exception as exc:  # noqa: BLE001
             raise CrewRoutineError(f"Could not schedule that: {exc}") from exc
@@ -122,13 +176,31 @@ def create_routine(*, bot_id: str, name: str, schedule: str, instructions: str) 
     }
 
 
-def _routine_toolsets(bot_id: str) -> list[str]:
-    from hermes_cli.config import load_config_readonly
+def _routine_toolsets(bot_id: str, *, with_computer: bool) -> list[str]:
+    """The toolsets a fired routine gets.
 
-    configured = [t for t in (load_config_readonly().get("toolsets") or []) if isinstance(t, str)]
-    if "crew" not in configured:
-        configured.append("crew")
-    return configured
+    Delegates to the orchestrator rather than keeping a second copy. The copy
+    that used to live here had drifted: it returned ``configured + crew`` and
+    never added ``terminal``/``files``/``browser``, so a routine could not run
+    a script or open a page. "Generate the weekly deck every Friday" — the
+    thing Phase E just made possible — silently could not work on a schedule,
+    which is the one place it matters most.
+
+    ``with_computer=False`` is for the reminder-shaped routines, where loading
+    three more tool schemas every fire buys nothing.
+    """
+    from crew import orchestrator
+
+    if not with_computer:
+        from hermes_cli.config import load_config_readonly
+
+        configured = [
+            t for t in (load_config_readonly().get("toolsets") or []) if isinstance(t, str)
+        ]
+        if "crew" not in configured:
+            configured.append("crew")
+        return configured
+    return orchestrator.toolsets_for(bot_id, has_computer=orchestrator.has_computer(bot_id))
 
 
 def list_routines(bot_id: str) -> list[dict]:
@@ -142,7 +214,12 @@ def list_routines(bot_id: str) -> list[dict]:
         try:
             from cron.jobs import list_jobs
 
-            jobs = list_jobs()
+            # `include_disabled=True` or the `enabled` field below is a
+            # constant. The host filters disabled jobs out by default, so a
+            # paused routine simply vanished from the panel — which reads as
+            # "it was deleted" rather than "it is paused", and leaves no way to
+            # resume it.
+            jobs = list_jobs(include_disabled=True)
         except Exception:
             log.debug("crew: could not list routines for %s", bot_id, exc_info=True)
             return []
@@ -150,7 +227,19 @@ def list_routines(bot_id: str) -> list[dict]:
     routines = []
     for job in jobs or []:
         parsed = parse_job_name(str(job.get("name") or ""))
-        if not parsed or parsed[0] != bot_id:
+        if not parsed:
+            continue
+        if parsed[0] != bot_id:
+            # Another teammate's routine sitting in this profile's store. That
+            # is the residue of the frozen-path bug `_in_profile` now fixes —
+            # it cannot happen to newly created routines, but an install that
+            # ran the old code has these, and they still fire here. Invisible
+            # to both panels, so say so once rather than let it stay a mystery.
+            log.warning(
+                "crew: %s's cron store holds a routine owned by %s (%r) — "
+                "left by the pre-fix profile bug; remove it with `hermes cron`",
+                bot_id, parsed[0], job.get("name"),
+            )
             continue
         schedule = job.get("schedule") or {}
         expr = (
@@ -174,26 +263,35 @@ def list_routines(bot_id: str) -> list[dict]:
 
 
 def delete_routine(bot_id: str, job_id: str) -> bool:
-    with _in_profile(bot_id):
-        try:
-            from cron.jobs import delete_job
+    """Cancel a routine. ``False`` means there was no such job.
 
-            return bool(delete_job(job_id))
-        except Exception:
-            log.debug("crew: could not delete routine %s for %s", job_id, bot_id, exc_info=True)
-            return False
+    No ``try/except`` around the call. The previous version wrapped this in a
+    bare ``except Exception: return False`` and imported ``delete_job``, which
+    does not exist — the host's function is ``remove_job``. The ``ImportError``
+    was caught and reported as "no such routine", so the dashboard's delete
+    button returned 404 every time and looked like a missing job rather than a
+    broken call. A swallowed exception turns a crash into a lie.
+    """
+    with _in_profile(bot_id):
+        from cron.jobs import remove_job
+
+        return bool(remove_job(job_id))
 
 
 def set_routine_enabled(bot_id: str, job_id: str, enabled: bool) -> bool:
-    with _in_profile(bot_id):
-        try:
-            from cron.jobs import update_job
+    """Pause or resume a routine. ``False`` means there was no such job.
 
-            update_job(job_id, enabled=enabled)
-            return True
-        except Exception:
-            log.debug("crew: could not toggle routine %s for %s", job_id, bot_id, exc_info=True)
-            return False
+    ``pause_job``/``resume_job`` rather than ``update_job``: they also set
+    ``state``, ``paused_at`` and recompute ``next_run_at``, which a bare
+    ``enabled`` flip does not. Resuming a job whose one-shot time has passed
+    raises in the host, and that is allowed to propagate — it is a real answer,
+    not a failure to look.
+    """
+    with _in_profile(bot_id):
+        from cron.jobs import pause_job, resume_job
+
+        job = resume_job(job_id) if enabled else pause_job(job_id, "paused from the crew panel")
+        return job is not None
 
 
 def routine_thread_hint(job: dict[str, Any]) -> Optional[str]:

@@ -308,6 +308,13 @@ CREATE_ROUTINE_SCHEMA = {
                 "type": "string",
                 "description": "What to do each time it fires, written to yourself.",
             },
+            "needs_computer": {
+                "type": "boolean",
+                "description": (
+                    "Whether the fired turn needs your shell, files and browser. Default true. "
+                    "Set false for a pure reminder — it fires faster and costs less."
+                ),
+            },
         },
         "required": ["name", "cron", "instructions"],
     },
@@ -327,6 +334,7 @@ def handle_create_routine(args: dict, **_kw: Any) -> str:
             name=str(args.get("name") or ""),
             schedule=str(args.get("cron") or ""),
             instructions=str(args.get("instructions") or ""),
+            with_computer=bool(args.get("needs_computer", True)),
         )
     except CrewRoutineError as exc:
         return json.dumps({"error": str(exc)}, ensure_ascii=False)
