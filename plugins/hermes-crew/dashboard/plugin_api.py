@@ -230,6 +230,7 @@ class UpdateAgentBody(BaseModel):
     goal: Optional[str] = None
     emoji: Optional[str] = None
     sectionId: Optional[str] = None
+    proactive: Optional[bool] = None
 
 
 @router.patch("/v1/agents/{agent_id}")
@@ -243,6 +244,7 @@ def v1_update_agent(agent_id: str, body: UpdateAgentBody):
         role=body.role if body.role is not None else body.goal,
         emoji=body.emoji,
         section_id=body.sectionId,
+        proactive=body.proactive,
     )
     working = agent_id in orchestrator.working_bot_ids()
     return contract.agent(roster.teammate_view(conn, bot, working=working))  # type: ignore[arg-type]

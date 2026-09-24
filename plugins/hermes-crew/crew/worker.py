@@ -154,7 +154,35 @@ def tick() -> int:
             continue                      # somebody else got there first
         taken += 1
         _run(conn, claimed)
+    _speak(conn)
     return taken
+
+
+def _speak(conn) -> None:
+    """Let any teammate that is due say something unprompted.
+
+    This rides the sweep rather than running a loop of its own, and the reason
+    is the same one that put the sweep in the gateway: the three gates above
+    exist to stop a background thread writing into the wrong database, and a
+    second thread would need all three copied, plus its own shutdown. One more
+    indexed query every few seconds is cheaper than a second copy of that.
+
+    It also fixes something in the design it is ported from. octop holds each
+    agent's next time in an ``asyncio.Task`` that sleeps for hours, and a
+    restart re-rolls every one of them — so a gateway that restarts often can
+    starve a teammate forever, and the symptom is silence, which nobody
+    reports. Ours is a column: the wait survives the restart.
+
+    Swallowed like any other sweep failure. Nobody is owed an unprompted
+    message, and a teammate that could not think of one must not take down the
+    recovery of work somebody *is* waiting on.
+    """
+    try:
+        from crew.proactive import service as crew_proactive
+
+        crew_proactive.tick(conn)
+    except Exception:
+        log.debug("crew: the proactive sweep failed", exc_info=True)
 
 
 def _run(conn, task: dict) -> None:

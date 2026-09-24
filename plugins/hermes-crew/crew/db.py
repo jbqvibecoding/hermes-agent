@@ -64,7 +64,18 @@ CREATE TABLE IF NOT EXISTS bots (
     emoji       TEXT NOT NULL DEFAULT '🤖',
     section_id  TEXT NOT NULL DEFAULT '',
     position    INTEGER NOT NULL DEFAULT 0,
-    created_at  INTEGER NOT NULL
+    created_at  INTEGER NOT NULL,
+    -- Whether this teammate may speak without being spoken to. Default on:
+    -- a teammate that only ever answers is a command line with a face.
+    -- The column exists so "this one is too chatty" is one switch rather
+    -- than turning the whole idea off for everybody.
+    proactive   INTEGER NOT NULL DEFAULT 1,
+    -- When it is next allowed to. **In the database, not in a sleeping
+    -- task.** octop keeps this in an asyncio.Task that awaits for hours,
+    -- and re-rolls every agent's time from scratch on restart — so a
+    -- gateway that restarts often can starve everybody indefinitely. A
+    -- stored timestamp survives the restart and keeps waiting.
+    next_speak_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS threads (
@@ -247,6 +258,18 @@ CREATE TABLE IF NOT EXISTS routine_health (
     last_error      TEXT NOT NULL DEFAULT ''
 );
 
+-- What a teammate has already raised unprompted, so it does not raise the
+-- same thing twice. `subject` is a stable key for the thing itself
+-- (`approval:12`, `routine:<job>`, `task:<id>`) rather than for the message,
+-- because the message is a rendering and the standstill is the fact.
+CREATE TABLE IF NOT EXISTS proactive_pushes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id      TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_proactive_bot ON proactive_pushes(bot_id, created_at);
+
 CREATE TABLE IF NOT EXISTS sections (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL DEFAULT '',
@@ -297,6 +320,8 @@ INSERT OR IGNORE INTO stream_cursor (id, seq) VALUES (1, 0);
 # on `ref`/`idem_key` need no migration: _SCHEMA's `CREATE INDEX IF NOT EXISTS`
 # runs on every connect and lands once the columns exist.
 _MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    ("bots", "proactive", "ALTER TABLE bots ADD COLUMN proactive INTEGER NOT NULL DEFAULT 1"),
+    ("bots", "next_speak_at", "ALTER TABLE bots ADD COLUMN next_speak_at INTEGER NOT NULL DEFAULT 0"),
     ("approvals", "ref", "ALTER TABLE approvals ADD COLUMN ref TEXT"),
     ("approvals", "scope", "ALTER TABLE approvals ADD COLUMN scope TEXT"),
     ("approvals", "tool", "ALTER TABLE approvals ADD COLUMN tool TEXT NOT NULL DEFAULT ''"),
@@ -489,6 +514,7 @@ def update_bot(
     role: Optional[str] = None,
     emoji: Optional[str] = None,
     section_id: Optional[str] = None,
+    proactive: Optional[bool] = None,
 ) -> Optional[dict]:
     """Change a teammate's display fields. ``None`` means "leave this alone".
 
@@ -496,7 +522,13 @@ def update_bot(
     its ``SOUL.md`` and its id is its profile name, and neither can be renamed
     from a text field without moving a directory out from under a running turn.
     """
-    updates = {"name": name, "role": role, "emoji": emoji, "section_id": section_id}
+    updates = {
+        "name": name, "role": role, "emoji": emoji, "section_id": section_id,
+        # A bool, so `is not None` below is doing real work: `False` is a
+        # meaningful value here ("stop talking to me") and a truthiness filter
+        # would drop exactly the setting somebody cared enough to change.
+        "proactive": None if proactive is None else int(bool(proactive)),
+    }
     changes = {key: value for key, value in updates.items() if value is not None}
     if changes:
         assignments = ", ".join(f"{key} = ?" for key in changes)

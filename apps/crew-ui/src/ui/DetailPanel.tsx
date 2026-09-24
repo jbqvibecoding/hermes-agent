@@ -30,6 +30,7 @@ import { VncDesktop, VncSurface } from "./VncDesktop";
 export function DetailPanel({
   open, width, onResize, agentName, computer, approvals, routines,
   grants, grantsBusy, audit, auditLoading, auditView, auditHasMore, artifacts, artifactUrl, tasks,
+  proactive, onSetProactive,
   onApproval, onComputerAction, onDeleteRoutine, onSetGrant, onClearGrant,
   onChangeAuditView, onLoadMoreAudit, onClose,
 }: {
@@ -49,6 +50,8 @@ export function DetailPanel({
   artifacts: Artifact[];
   artifactUrl(artifact: Artifact): string;
   tasks: Task[];
+  proactive: boolean;
+  onSetProactive(on: boolean): Promise<void>;
   onApproval(id: string, decision: "allow" | "deny", note?: string, contentHash?: string): Promise<void>;
   onComputerAction(action: "open" | "takeover"): Promise<CloudComputerSession>;
   onDeleteRoutine(routineId: string): Promise<void>;
@@ -246,6 +249,23 @@ export function DetailPanel({
         onClick={() => void launchComputer("takeover")}
       >Start this computer</button>}
       {computer?.error && <p className="screen-error">{computer.error}</p>}
+    </section>
+
+    {/* Next to routines on purpose: both answer "what does this teammate do
+        when I am not here". One is work it was told to repeat, the other is
+        whether it may say something nobody asked for. */}
+    <section className="proactive-section">
+      <label className="proactive-row">
+        <input
+          type="checkbox"
+          checked={proactive}
+          onChange={(event) => void onSetProactive(event.target.checked)}
+        />
+        <span>
+          <strong>Speak up unprompted</strong>
+          <span>Bring up work that is stuck, a few times a day, in this thread.</span>
+        </span>
+      </label>
     </section>
 
     {routines.length > 0 && <section className="routines-section">

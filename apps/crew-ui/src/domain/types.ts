@@ -34,6 +34,13 @@ export interface Agent {
   computerId: string;
   sectionId?: string;
   lastMessagePreview?: string;
+  /**
+   * Whether this teammate may start a conversation rather than only answer
+   * one. On by default: a teammate that only ever replies is a command line
+   * with a face. The switch exists because "this one is too chatty" should
+   * cost one click, not the whole idea.
+   */
+  proactive?: boolean;
 }
 
 /** The nine chip kinds `crew/db.py::MESSAGE_KINDS` knows how to store. */
@@ -281,7 +288,10 @@ export interface CreateAgentInput {
   groupId?: string;
   withComputer?: boolean;
 }
-export interface UpdateAgentInput { name?: string; role?: string; goal?: string; emoji?: string; sectionId?: string }
+export interface UpdateAgentInput {
+  name?: string; role?: string; goal?: string; emoji?: string; sectionId?: string;
+  proactive?: boolean;
+}
 export interface SendMessageInput { conversationId: string; text: string; signal?: AbortSignal }
 export interface RespondApprovalInput {
   requestId: string;

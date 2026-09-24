@@ -83,6 +83,7 @@ def agent(view: dict) -> dict:
         "unreadCount": 0,
         "computerId": crew_computer.task_id_for(view["id"]),
         "sectionId": view.get("section_id") or "",
+        "proactive": bool(view.get("proactive", True)),
         "lastMessagePreview": preview_text(last) if last else None,
     }
 

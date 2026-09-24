@@ -195,6 +195,7 @@ def teammate_view(conn: sqlite3.Connection, bot: dict, *, working: bool = False)
         "created_at": bot["created_at"],
         "status": teammate_status(conn, bot["id"], working=working),
         "exists": profile_dir(bot["id"]).is_dir(),
+        "proactive": bool(bot.get("proactive", 1)),
         "last_message": crew_db.last_message(conn, thread_id),
     }
 

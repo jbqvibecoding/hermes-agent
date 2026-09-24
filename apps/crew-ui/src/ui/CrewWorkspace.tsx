@@ -286,6 +286,10 @@ export function CrewWorkspace({ client, notify }: {
       artifacts={artifacts}
       artifactUrl={(artifact) => client.artifactUrl(artifact)}
       tasks={tasks}
+      // Absent means on — that is the server default, and a roster row from
+      // an older build that predates the column should not read as "off".
+      proactive={selectedAgent.proactive !== false}
+      onSetProactive={(on) => crew.updateAgent(selectedAgent.id, { proactive: on })}
       onApproval={(id, decision, note, contentHash) => crew.respondToApproval(id, decision, note, contentHash)}
       onComputerAction={(action) => crew.openComputer(action)}
       onDeleteRoutine={async (routineId) => {

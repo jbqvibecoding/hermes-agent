@@ -89,6 +89,39 @@ redaction means the secret was already placed in the payload and caught in
 transit. A teammate's tool calls carry tokens and passwords, and a table the
 dashboard can read is the wrong place for them to be at all.
 
+## `crew/proactive/` — from octop `src/octop/infra/proactive/` (MIT)
+
+`scheduler.py` ports `compute_next_trigger` almost verbatim; it was already a
+pure function upstream, with no `self` and no I/O. `picker.py` keeps the
+scoring structure — `intensity x weight x recency`, dedup, a top-K cut, and
+widening the window rather than falling silent. `service.py` keeps the
+procedure and its step order.
+
+**The scoring axes are not octop's, and the substitution is the point.** Its
+weights are emotional — 1.5 for sad, angry or anxious, 1.2 for tired — because
+it is a companion product scoring episodes from a memory store. Copying that
+table into a work tool would have meant first building a sentiment classifier
+over work threads: inventing an input to fit an algorithm. What a teammate
+actually owes somebody an unprompted word about is unfinished business, and
+crew.db already records all of it — an approval released and never seen
+through, one that expired undecided, a routine suspended after repeated
+failure. So `intensity` becomes how long a thing has been stuck, and dedup by
+person becomes dedup by subject.
+
+**Two departures that are improvements rather than adaptations.** octop holds
+each agent's next time in an `asyncio.Task` that sleeps for hours, and a
+restart re-rolls every one of them — a gateway that restarts often can starve a
+teammate indefinitely, with silence as the only symptom. Ours is a column read
+by a loop that already runs, so the wait survives the restart. And its
+`is_in_active_hours` reads `start <= t < end`, which makes a window that wraps
+past midnight silently empty; ours reads a wrapping window as wrapping.
+
+Its `_MIN_SLEEP_SECONDS` anti-spin guard is kept, as a floor on how soon
+anything may be scheduled. The autouse fixture its own test suite needs — the
+one that no-ops `ensure_scheduled`/`start_all` so a multi-hour `asyncio.sleep`
+does not hang pytest in teardown — is not ported, because with the schedule in
+a column there is nothing that sleeps.
+
 ## Not taken
 
 **openworkbuddy** is PolyForm Noncommercial 1.0.0, which its own FAQ says binds
