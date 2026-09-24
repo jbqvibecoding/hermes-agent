@@ -614,10 +614,7 @@ def start_turn(
                     agent, bot, context, result, started_at=started_at,
                 )
 
-        final = ((result or {}).get("final_response") or "").strip()
-        if not final and (result or {}).get("error"):
-            final = f"⚠️ {bot['name']} hit an error: {result['error']}"
-        _settle_reply(conn, reply, final)
+        _settle_reply(conn, reply, _judged_reply(conn, bot, context, reply, result))
         if computer_live:
             _record_artifacts(conn, context, started_at)
         return result or {}
@@ -738,6 +735,82 @@ def _announce_pushback(agent, context: TurnContext, verdict, attempt: int) -> No
         emit_event(crew_contract.activity_updated(event))
     except Exception:
         log.debug("crew: pushback not shown in the activity strip", exc_info=True)
+
+
+def _spoke_otherwise(conn, reply: dict) -> bool:
+    """Did this turn put anything in the thread besides the reply bubble?
+
+    A teammate that filed a report, held an action for approval or sent a
+    screenshot has delivered, and quite reasonably has nothing left to add in
+    prose — ``_settle_reply`` drops the empty bubble on purpose. Judging the
+    empty text as a dead turn would flag the most deliberate ending we have.
+    """
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE turn_id = ? AND id != ?",
+            (reply.get("turn_id") or "", int(reply["id"])),
+        ).fetchone()
+        return bool(row and row[0])
+    except Exception:
+        # Assume it did. The cost of being wrong this way is one missing
+        # warning; the other way it is a warning on a turn that worked.
+        log.debug("crew: could not count this turn's messages", exc_info=True)
+        return True
+
+
+def _judged_reply(conn, bot: dict, context: TurnContext, reply: dict, result: Optional[dict]) -> str:
+    """The text that goes in the bubble, once the run itself has been judged.
+
+    Until now this path read one signal — ``final_response`` came back
+    non-empty — and settled the reply as an answer. Four endings produce text
+    that is not an answer, and ``crew.verdict`` tells them apart from the
+    fields the result was already carrying. A routine is mostly covered
+    already — the host raises on ``failed`` / ``completed is False`` and calls
+    an empty reply a failure before it reports the cron run, and
+    ``on_cron_job_finished`` stores that. What it does not check is the last
+    case, a turn that promised to carry on and called nothing; there the result
+    dict never reaches this plugin, so that one stays uncovered for routines
+    rather than being quietly claimed.
+
+    **The teammate's text is never thrown away**, whatever the verdict. Even a
+    failed turn's words are the best evidence of what went wrong, and replacing
+    them with a warning leaves the operator holding a complaint about something
+    they cannot read. What changes is that the warning goes *underneath*, so
+    nothing here reads as an answer when it is not one.
+    """
+    from crew import verdict as crew_verdict
+
+    result = result or {}
+    verdict = crew_verdict.judge(result, spoke_otherwise=_spoke_otherwise(conn, reply))
+    final = str(result.get("final_response") or "").strip()
+    if verdict.ok:
+        return final
+
+    log.info("crew: %s's turn judged %s (%s)", context.bot_id, verdict.state, verdict.reason)
+    _record_verdict(context.bot_id, verdict)
+    if not final:
+        return f"⚠️ {bot['name']}: {verdict.detail}"
+    return f"{final}\n\n{crew_verdict.note(verdict)}"
+
+
+def _record_verdict(bot_id: str, verdict) -> None:
+    """Note on the task why its run ended the way it did.
+
+    Only when a task is open — a typed question has the thread as its record,
+    and there is nothing to write against. Failing here must not disturb the
+    reply, which is why every error is swallowed: the thread already carries
+    the honest version, and the task row is the redundant copy.
+    """
+    from crew import tasks as crew_tasks
+
+    try:
+        held = crew_tasks.current(bot_id)
+        if held is None:
+            return
+        task_id, lease_id = held
+        crew_tasks.checkpoint(crew_db.connect(), task_id, lease_id, {"error": verdict.detail})
+    except Exception:
+        log.debug("crew: could not record the verdict for %s", bot_id, exc_info=True)
 
 
 def _undelivered_note(verdict) -> str:
