@@ -274,3 +274,117 @@ def test_run_one_job_tears_down_deferred_agent_when_save_raises(monkeypatch):
     assert ok is False
     assert "deliver" not in order
     assert order == ["save-raise", "agent.close", "cleanup_stale"], order
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle hooks (cron_job_fired / cron_job_finished)
+#
+# A scheduled run is otherwise invisible to a plugin: hooks inside the turn do
+# fire for cron, but `on_session_end` does not — so an observer could see a job
+# start and never learn it finished. Anything holding a lease on the job's
+# behalf needs both edges.
+# ---------------------------------------------------------------------------
+
+
+def _capture_hooks(monkeypatch):
+    """Record every lifecycle hook `run_one_job` emits."""
+    fired = []
+    monkeypatch.setattr(
+        s, "_emit_job_lifecycle",
+        lambda event, job, **fields: fired.append((event, job["id"], fields)),
+    )
+    return fired
+
+
+def test_a_successful_job_reports_both_edges(monkeypatch):
+    _patch_pipeline(monkeypatch)
+    fired = _capture_hooks(monkeypatch)
+
+    s.run_one_job({"id": "j20", "name": "t"})
+
+    assert [(e, jid) for e, jid, _ in fired] == [
+        ("cron_job_fired", "j20"), ("cron_job_finished", "j20"),
+    ]
+    assert fired[-1][2]["success"] is True
+
+
+def test_a_failing_job_still_reports_that_it_finished(monkeypatch):
+    """Failure is an outcome. An observer told only about successes cannot
+    tell a failed run from a process that died mid-run — which is the one
+    distinction it exists to make."""
+    _patch_pipeline(monkeypatch, success=False, error="boom")
+    fired = _capture_hooks(monkeypatch)
+
+    s.run_one_job({"id": "j21", "name": "t"})
+
+    assert fired[-1][0] == "cron_job_finished"
+    assert fired[-1][2]["success"] is False
+    assert fired[-1][2]["error"] == "boom"
+
+
+def test_a_job_that_raises_reports_that_it_finished(monkeypatch):
+    def boom(job, *, defer_agent_teardown=None):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(s, "run_job", boom)
+    monkeypatch.setattr(s, "mark_job_run", lambda *a, **k: None)
+    fired = _capture_hooks(monkeypatch)
+
+    assert s.run_one_job({"id": "j22", "name": "t"}) is False
+    assert fired[-1][0] == "cron_job_finished"
+    assert fired[-1][2]["success"] is False
+
+
+def test_a_job_skipped_for_its_dispatch_limit_never_says_it_fired(monkeypatch):
+    """The claim comes first on purpose. A one-shot that has already been
+    dispatched must not tell an observer it is running again."""
+    _patch_pipeline(monkeypatch)
+    monkeypatch.setattr(s, "claim_dispatch", lambda jid: False)
+    fired = _capture_hooks(monkeypatch)
+
+    assert s.run_one_job({"id": "j23", "name": "t"}) is True
+    assert fired == []
+
+
+def test_a_run_cut_short_by_shutdown_does_not_claim_to_have_finished(monkeypatch):
+    """Graceful shutdown marks in-flight jobs interrupted and skips
+    `mark_job_run`. The run did not finish, so saying it did would be worse
+    than silence — an observer's own timeout is the truthful signal."""
+    _patch_pipeline(monkeypatch)
+    monkeypatch.setattr(s, "_consume_interrupted_flag", lambda jid: True)
+    fired = _capture_hooks(monkeypatch)
+
+    s.run_one_job({"id": "j24", "name": "t"})
+
+    assert [e for e, _, _ in fired] == ["cron_job_fired"]
+
+
+def test_a_misbehaving_observer_cannot_break_the_job(monkeypatch):
+    """The rule kanban states for its own hooks: an observer must never change
+    whether the job runs or how it is recorded."""
+    calls = _patch_pipeline(monkeypatch)
+
+    def explode(event, **kwargs):
+        raise RuntimeError("plugin is on fire")
+
+    monkeypatch.setattr("hermes_cli.plugins.invoke_hook", explode)
+
+    assert s.run_one_job({"id": "j25", "name": "t"}) is True
+    assert [c[0] for c in calls] == ["run_job", "save", "deliver", "mark"]
+
+
+def test_the_payload_carries_what_an_observer_needs_to_identify_the_job(monkeypatch):
+    _patch_pipeline(monkeypatch)
+    seen = []
+    monkeypatch.setattr("hermes_cli.plugins.invoke_hook",
+                        lambda event, **kw: seen.append((event, kw)))
+
+    s.run_one_job({"id": "j26", "name": "crew:scout:Morning digest",
+                   "schedule": {"kind": "interval"}})
+
+    event, payload = seen[0]
+    assert event == "cron_job_fired"
+    assert payload["job_id"] == "j26"
+    assert payload["job_name"] == "crew:scout:Morning digest"
+    assert payload["schedule_kind"] == "interval"
+    assert "profile_name" in payload

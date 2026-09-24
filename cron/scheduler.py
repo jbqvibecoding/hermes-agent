@@ -3346,6 +3346,38 @@ def _teardown_cron_agent(agent, job_id: str) -> None:
         logger.debug("Job '%s': failed to reap stale auxiliary clients: %s", job_id, e)
 
 
+def _emit_job_lifecycle(event: str, job: dict, **fields) -> None:
+    """Tell plugins a scheduled job started or finished. Best-effort, always.
+
+    Modelled on ``hermes_cli.kanban_db``'s lifecycle emitter, including the
+    part that matters most: **every failure is swallowed**. A misbehaving
+    observer must never change whether a cron job runs or how it is recorded.
+
+    ``profile_name`` is resolved here rather than plumbed through, so a hook
+    fired from the ticker thread carries the profile whose store the job came
+    from without every caller having to know about it.
+    """
+    try:
+        from hermes_cli.plugins import invoke_hook
+        from hermes_cli.profiles import get_active_profile_name
+
+        try:
+            profile_name = get_active_profile_name()
+        except Exception:
+            profile_name = "default"
+        schedule = job.get("schedule") or {}
+        invoke_hook(
+            event,
+            job_id=str(job.get("id") or ""),
+            job_name=str(job.get("name") or ""),
+            schedule_kind=str(schedule.get("kind") or "") if isinstance(schedule, dict) else "",
+            profile_name=profile_name,
+            **fields,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("cron lifecycle hook %s failed: %s", event, exc)
+
+
 def run_one_job(job: dict, *, adapters=None, loop=None, verbose: bool = False) -> bool:
     """Run ONE due job end-to-end: execute → save output → deliver → mark.
 
@@ -3375,6 +3407,10 @@ def run_one_job(job: dict, *, adapters=None, loop=None, verbose: bool = False) -
                 job.get("name", job["id"]),
             )
             return True  # not an error — already handled/removed
+
+        # After the claim, so a job skipped for its dispatch limit never tells
+        # an observer it fired.
+        _emit_job_lifecycle("cron_job_fired", job)
 
         # Run the job under the profile's secret scope. get_secret() fails
         # closed outside a scope once profile isolation is in play (multiple
@@ -3480,14 +3516,21 @@ def run_one_job(job: dict, *, adapters=None, loop=None, verbose: bool = False) -
             success = False
             error = "Agent completed but produced empty response (model error, timeout, or misconfiguration)"
 
+        # A run cut short by graceful shutdown is not a finished run. Saying
+        # nothing lets an observer's own timeout decide, which is the truthful
+        # outcome; claiming it finished would be worse than silence.
         if not _consume_interrupted_flag(job["id"]):
             mark_job_run(job["id"], success, error, delivery_error=delivery_error)
+            _emit_job_lifecycle(
+                "cron_job_finished", job, success=success, error=error or delivery_error,
+            )
         return True
 
     except Exception as e:
         logger.error("Error processing job %s: %s", job['id'], e)
         if not _consume_interrupted_flag(job["id"]):
             mark_job_run(job["id"], False, str(e))
+            _emit_job_lifecycle("cron_job_finished", job, success=False, error=str(e))
         return False
 
 

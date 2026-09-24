@@ -210,6 +210,37 @@ VALID_HOOKS: Set[str] = {
     "kanban_task_claimed",
     "kanban_task_completed",
     "kanban_task_blocked",
+    # Cron job lifecycle hooks. Fired by cron.scheduler.run_one_job — the
+    # shared firing body, so they fire identically for the built-in ticker and
+    # for an external provider's fire_due (Chronos). Observers only: return
+    # values are ignored and any exception is swallowed.
+    #
+    # They exist because a scheduled run is otherwise invisible to a plugin.
+    # Hooks inside the turn (on_session_start, pre_tool_call) do fire for cron,
+    # but on_session_end does NOT — so a plugin could see a job start and never
+    # learn that it finished, which is useless for anything holding a lease or
+    # a claim on the job's behalf.
+    #
+    # WHICH PROCESS: whichever runs the ticker — the gateway by default
+    # (gateway/run.py starts the cron-scheduler thread), or a standalone
+    # provider process.
+    #
+    #   - cron_job_fired    -> after the one-shot dispatch claim succeeds and
+    #                          before the job executes. A job skipped for
+    #                          hitting its dispatch limit does NOT fire.
+    #   - cron_job_finished -> after the run, alongside mark_job_run, on both
+    #                          the success and the exception path.
+    #
+    # cron_job_finished is deliberately NOT fired when the run was cut short by
+    # a graceful shutdown (mark_running_jobs_interrupted). The work did not
+    # finish, and telling an observer it did would be worse than saying
+    # nothing: a plugin tracking the run should let its own timeout decide.
+    #
+    # Common kwargs: job_id: str, job_name: str, schedule_kind: str,
+    #   profile_name: str.
+    # cron_job_finished adds: success: bool, error: str | None.
+    "cron_job_fired",
+    "cron_job_finished",
 }
 
 ENTRY_POINTS_GROUP = "hermes_agent.plugins"

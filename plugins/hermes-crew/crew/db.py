@@ -189,6 +189,42 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_bot ON artifacts(bot_id, mtime DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_bot ON audit(bot_id, id);
 CREATE INDEX IF NOT EXISTS idx_audit_type ON audit(event_type, id);
 
+-- Work that outlives the process that started it.
+--
+-- The lease is the whole mechanism. A worker claims a task by writing its own
+-- `lease_id` and a `lease_until` in the near future, and renews while it runs.
+-- If the process dies the renewals stop, the lease goes stale, and the next
+-- tick in any process takes it over. There is deliberately no startup sweep:
+-- no statement run at boot can tell "the run I crashed out of" from "a run a
+-- healthy peer is in the middle of", and every process here loads the same
+-- plugin. Expiry answers both without having to know which.
+--
+-- `paused` is NOT terminal. The terminal set is succeeded / failed / cancelled.
+CREATE TABLE IF NOT EXISTS tasks (
+    id           TEXT PRIMARY KEY,
+    bot_id       TEXT NOT NULL,
+    thread_id    TEXT NOT NULL DEFAULT '',
+    kind         TEXT NOT NULL DEFAULT 'agent',
+    title        TEXT NOT NULL DEFAULT '',
+    input        TEXT,                       -- JSON: what to do
+    state        TEXT,                       -- JSON: the worker's own scratch
+    status       TEXT NOT NULL DEFAULT 'queued',
+    plan         TEXT,                       -- JSON: TaskStep[]
+    evidence     TEXT,                       -- JSON: Evidence[]
+    lease_id     TEXT,
+    lease_until  INTEGER,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    next_run_at  INTEGER,
+    error        TEXT NOT NULL DEFAULT '',
+    idem_key     TEXT,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+);
+-- The due query's shape: status first, then the two time columns it compares.
+CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(status, lease_until, next_run_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_bot ON tasks(bot_id, updated_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idem ON tasks(idem_key) WHERE idem_key IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS sections (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL DEFAULT '',
