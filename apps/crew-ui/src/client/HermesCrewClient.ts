@@ -26,6 +26,7 @@ import {
   type ModelProviderCatalog,
   type RespondApprovalInput,
   type SetGrantInput,
+  type Task,
   type Routine,
   type Section,
   type SendMessageInput,
@@ -299,6 +300,13 @@ export class HermesCrewClient implements CloudAgentsClient {
     if (query.limit) params.set("limit", String(query.limit));
     const suffix = params.toString();
     return this.request<AuditPage>(`/audit${suffix ? `?${suffix}` : ""}`, { signal });
+  }
+
+  listTasks(agentId: string, signal?: AbortSignal) {
+    return this.request<{ tasks: Task[] }>(
+      `/bots/${encodeURIComponent(agentId)}/tasks`,
+      { signal },
+    ).then((r) => r.tasks);
   }
 
   listArtifacts(agentId: string, signal?: AbortSignal) {

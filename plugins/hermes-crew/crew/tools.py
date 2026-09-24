@@ -462,6 +462,96 @@ def handle_ask_for_login(args: dict, **_kw: Any) -> str:
 # Registration
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# set_plan
+# ---------------------------------------------------------------------------
+
+
+def crew_plan_statuses() -> tuple[str, ...]:
+    from crew.plan import STEP_STATUSES
+
+    return STEP_STATUSES
+
+SET_PLAN_SCHEMA = {
+    "name": "set_plan",
+    "description": (
+        "Replace your plan for the work you are doing right now, and keep it up to date "
+        "as you go. Your operator watches this to see how far along you are. Only useful "
+        "during scheduled or long-running work; a quick answer needs no plan."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "steps": {
+                "type": "array",
+                "description": (
+                    "The whole plan, in order. Send all of it every time — this replaces "
+                    "what was there, it does not merge."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "What this step is, in a few words.",
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": list(crew_plan_statuses()),
+                            "description": (
+                                "'waiting' means blocked on somebody else, which is not "
+                                "the same as not started."
+                            ),
+                        },
+                        "detail": {
+                            "type": "string",
+                            "description": "Optional: one line on what happened.",
+                        },
+                    },
+                    "required": ["title", "status"],
+                },
+            },
+        },
+        "required": ["steps"],
+    },
+}
+
+
+def handle_set_plan(args: dict, **_kw: Any) -> str:
+    turn = orchestrator.resolve_turn()
+    if turn is None:
+        return _no_turn()
+
+    from crew import plan as crew_plan
+    from crew import tasks as crew_tasks
+
+    held = crew_tasks.current(turn.bot_id)
+    if held is None:
+        # Not an error worth a stack trace: most turns are somebody typing a
+        # question, and there is no task to hang a plan on.
+        return json.dumps(
+            {"error": "You have no task running, so there is nothing to plan."},
+            ensure_ascii=False,
+        )
+
+    steps = crew_plan.normalise_plan(args.get("steps"))
+    if not steps:
+        return json.dumps({"error": "Send at least one step."}, ensure_ascii=False)
+
+    task_id, lease_id = held
+    conn = crew_db.connect()
+    try:
+        crew_tasks.checkpoint(conn, task_id, lease_id, {"plan": steps})
+    except crew_tasks.LostLease:
+        # Somebody else owns this task now. Telling the model plainly beats
+        # letting it keep planning work it is no longer doing.
+        return json.dumps(
+            {"error": "This task was taken over or stopped; your plan was not saved."},
+            ensure_ascii=False,
+        )
+    return json.dumps({"saved": True, "steps": steps}, ensure_ascii=False)
+
+
 CREW_TOOLS: tuple[tuple[str, dict, Any, str], ...] = (
     ("message_user", MESSAGE_USER_SCHEMA, handle_message_user, "✓"),
     ("hold_for_approval", HOLD_FOR_APPROVAL_SCHEMA, handle_hold_for_approval, "⏸"),
@@ -469,6 +559,7 @@ CREW_TOOLS: tuple[tuple[str, dict, Any, str], ...] = (
     ("create_routine", CREATE_ROUTINE_SCHEMA, handle_create_routine, "🕐"),
     ("message_bot", MESSAGE_BOT_SCHEMA, handle_message_bot, "↪"),
     ("ask_for_login", ASK_FOR_LOGIN_SCHEMA, handle_ask_for_login, "🔑"),
+    ("set_plan", SET_PLAN_SCHEMA, handle_set_plan, "📋"),
 )
 
 

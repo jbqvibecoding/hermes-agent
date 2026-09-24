@@ -162,6 +162,23 @@ def test_an_owner_that_was_only_slow_keeps_its_task_against_a_would_be_taker(con
     assert still["attempts"] == 1                   # never handed over
 
 
+def test_a_live_lease_cannot_be_taken_over_at_all(conn):
+    """The bug the concurrent test caught, stated directly.
+
+    `claim` used to check only that the row had not changed since it was read —
+    which is trivially true a millisecond after somebody else claimed it. So a
+    second worker that read a freshly-claimed task would "take it over" while
+    the first was still running it. `due()` filters expired leases, so the one
+    caller hid it; expiry belongs in the CAS.
+    """
+    owner = crew_tasks.claim(conn, queued(conn))
+    live = crew_tasks.get(conn, owner["id"])       # still running, lease not up
+
+    assert crew_tasks.claim(conn, live) is None
+    assert crew_tasks.get(conn, owner["id"])["lease_id"] == owner["lease_id"]
+    assert crew_tasks.get(conn, owner["id"])["attempts"] == 1
+
+
 def test_a_task_taken_over_too_many_times_fails_instead_of_looping(conn):
     """Hermes's own scheduler makes recurring cron at-most-once because
     "missing one run is far better than firing dozens of times in a crash

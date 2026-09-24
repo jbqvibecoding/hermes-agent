@@ -133,6 +133,13 @@ def enqueue(
     """
     if status not in STATUSES:
         raise ValueError(f"unknown task status: {status!r}")
+    if plan is None:
+        # Seeded here rather than by the first turn, so the operator can see the
+        # intended shape of the work while it is still queued. A plan that only
+        # appears after the model has produced one is a log, not a plan.
+        from crew import plan as crew_plan
+
+        plan = crew_plan.seed_plan(kind)
     if idem_key:
         existing = _row(conn.execute(
             "SELECT * FROM tasks WHERE idem_key = ?", (idem_key,)
@@ -247,8 +254,19 @@ def claim(conn: sqlite3.Connection, task: dict) -> Optional[dict]:
         predicate += " AND lease_id = ?"
         params.append(task["lease_id"])
     if previous_status == "running":
-        predicate += " AND lease_until = ?"
-        params.append(task["lease_until"])
+        # Two conditions, and they guard different things. `lease_until = ?`
+        # pins the value we read, so an owner that was only slow — not dead —
+        # keeps its task if it wakes and renews between our read and our write.
+        # `lease_until <= now` is the one that says the lease is actually over.
+        #
+        # Without the second, `claim` will happily steal a *live* lease from a
+        # task somebody is running right now, as long as nothing has changed
+        # since we read the row — which is exactly true a millisecond after
+        # somebody else claimed it. `due()` filters expired leases, so the
+        # mistake stayed hidden behind its one caller; expiry belongs in the
+        # CAS, not in an assumption about who calls it.
+        predicate += " AND lease_until = ? AND lease_until <= ?"
+        params.extend([task["lease_until"], ts])
 
     cur = conn.execute(
         f"""
@@ -397,6 +415,31 @@ def requeue(conn: sqlite3.Connection, task_id: str, lease_id: str) -> None:
 #: authority again.
 _held: set[str] = set()
 _held_lock = threading.Lock()
+
+
+#: The task a teammate's in-flight turn belongs to, by bot id. Crew tools and
+#: hooks run inside the agent loop, which knows nothing about tasks, and a
+#: contextvar will not reach them — tool dispatch happens on executor threads
+#: the orchestrator already documents as not carrying one. A plain registry
+#: does, because the hook resolves the bot id from the host's own task_id.
+_current: dict[str, tuple[str, str]] = {}
+_current_lock = threading.Lock()
+
+
+def set_current(bot_id: str, task_id: str, lease_id: str) -> None:
+    with _current_lock:
+        _current[bot_id] = (task_id, lease_id)
+
+
+def clear_current(bot_id: str) -> None:
+    with _current_lock:
+        _current.pop(bot_id, None)
+
+
+def current(bot_id: str) -> Optional[tuple[str, str]]:
+    """``(task_id, lease_id)`` for this teammate's running task, if any."""
+    with _current_lock:
+        return _current.get(bot_id)
 
 
 def hold(task_id: str) -> None:

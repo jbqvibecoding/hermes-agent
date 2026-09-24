@@ -16,6 +16,7 @@ export { DetailPanel } from "./ui/DetailPanel";
 export { PermissionsPanel } from "./ui/PermissionsPanel";
 export { AuditTimeline } from "./ui/AuditTimeline";
 export { FilesPanel } from "./ui/FilesPanel";
+export { PlanPanel } from "./ui/PlanPanel";
 export { CommandPalette } from "./ui/CommandPalette";
 export { HireDialog } from "./ui/HireDialog";
 export { Select } from "./ui/Select";

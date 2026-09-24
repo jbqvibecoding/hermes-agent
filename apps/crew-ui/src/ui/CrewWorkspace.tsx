@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CloudAgentsClient } from "../domain/CloudAgentsClient";
-import type { Agent, Artifact, AuditEvent, Grant, Routine, Section } from "../domain/types";
+import type { Agent, Artifact, AuditEvent, Grant, Routine, Section, Task } from "../domain/types";
 import { useCrewController, type CrewControllerOptions } from "../state/useCrewController";
 import { AgentList, type AgentAction } from "./AgentList";
 import { CommandPalette } from "./CommandPalette";
@@ -47,6 +47,7 @@ export function CrewWorkspace({ client, notify }: {
   const [auditView, setAuditView] = useState<{ id: string; types: string[] }>({ id: "all", types: [] });
   const [auditBefore, setAuditBefore] = useState<number | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailWidth, setDetailWidth] = useState(storedDetailWidth);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -115,6 +116,18 @@ export function CrewWorkspace({ client, notify }: {
     if (agentStatus === "working") return;
     refreshArtifacts();
   }, [agentStatus, refreshArtifacts]);
+
+  // Re-listed on every status change rather than only when work stops: a plan
+  // is worth watching *while* it advances, which is the one time a wrong shape
+  // can still be caught.
+  useEffect(() => {
+    if (!selectedAgentId) { setTasks([]); return; }
+    let alive = true;
+    void client.listTasks(selectedAgentId)
+      .then((next) => { if (alive) setTasks(next); })
+      .catch(() => { if (alive) setTasks([]); });
+    return () => { alive = false; };
+  }, [client, selectedAgentId, agentStatus]);
 
   const loadAudit = useCallback((types: string[], beforeId?: number) => {
     if (!selectedAgentId) { setAudit([]); setAuditBefore(null); return; }
@@ -272,6 +285,7 @@ export function CrewWorkspace({ client, notify }: {
       auditHasMore={auditBefore !== null}
       artifacts={artifacts}
       artifactUrl={(artifact) => client.artifactUrl(artifact)}
+      tasks={tasks}
       onApproval={(id, decision, note, contentHash) => crew.respondToApproval(id, decision, note, contentHash)}
       onComputerAction={(action) => crew.openComputer(action)}
       onDeleteRoutine={async (routineId) => {

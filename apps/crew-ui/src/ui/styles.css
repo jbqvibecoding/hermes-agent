@@ -1153,3 +1153,67 @@ kbd {
   background: color-mix(in srgb, var(--crew-amber) 22%, transparent);
   color: var(--crew-amber);
 }
+
+/* --- what a teammate means to do ----------------------------------------- */
+
+.plan-empty { margin: 0; color: var(--crew-faint); font-size: 0.78rem; }
+.plan-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.plan-task {
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--crew-line);
+  border-radius: var(--crew-radius);
+  background: var(--crew-surface);
+}
+.plan-task-head { display: flex; align-items: baseline; gap: 0.4rem; }
+.plan-task-title { flex: 1 1 auto; font-size: 0.8rem; font-weight: 600; }
+.plan-task-status {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--crew-hover);
+  color: var(--crew-dim);
+  font-size: 0.62rem;
+  text-transform: capitalize;
+}
+.plan-task-status.is-running { background: color-mix(in srgb, var(--crew-accent) 20%, transparent); color: var(--crew-text); }
+.plan-task-status.is-failed { background: color-mix(in srgb, var(--crew-red) 20%, transparent); color: var(--crew-red); }
+.plan-task-status.is-succeeded { background: color-mix(in srgb, var(--crew-green) 20%, transparent); color: var(--crew-green); }
+.plan-task-attempts, .plan-task-error {
+  margin: 0.25rem 0 0;
+  font-size: 0.68rem;
+}
+.plan-task-attempts { color: var(--crew-amber); }
+.plan-task-error { color: var(--crew-red); }
+
+.plan-steps { display: flex; flex-direction: column; margin: 0.45rem 0 0; padding: 0; list-style: none; }
+.plan-step {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.12rem 0;
+  color: var(--crew-dim);
+  font-size: 0.74rem;
+}
+.plan-step-title { flex: 1 1 auto; min-width: 0; }
+.plan-step-detail { flex: 0 0 auto; color: var(--crew-faint); font-size: 0.66rem; }
+.plan-step.is-succeeded { color: var(--crew-faint); }
+.plan-step.is-succeeded .plan-step-title { text-decoration: line-through; }
+.plan-step.is-running { color: var(--crew-text); }
+.plan-step.is-failed { color: var(--crew-red); }
+/* Blocked on somebody, which is not the same as not started — and unlike
+   "pending" it is the one an operator can actually act on. */
+.plan-step.is-waiting { color: var(--crew-amber); }
+
+.evidence { margin-top: 0.45rem; }
+.evidence summary { color: var(--crew-faint); font-size: 0.68rem; cursor: pointer; }
+.evidence-list { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.35rem 0 0; padding: 0; list-style: none; }
+.evidence-head { display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; }
+.evidence-head a { color: var(--crew-accent); text-decoration: none; overflow-wrap: anywhere; }
+.evidence-head a:hover { text-decoration: underline; }
+.evidence-excerpt {
+  margin: 0.1rem 0 0 1rem;
+  color: var(--crew-faint);
+  font-size: 0.66rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}

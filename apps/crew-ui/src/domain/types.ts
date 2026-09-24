@@ -201,6 +201,51 @@ export interface Artifact {
   downloadPath: string;
 }
 
+/**
+ * A step in what a teammate means to do.
+ *
+ * `waiting` is not `pending`: the step is blocked on somebody else, which is a
+ * different fact and the one an operator can act on. It is deliberately not
+ * the task's own status union — a step can be waiting while the task runs, and
+ * merging the two would force one of them to lie.
+ */
+export interface TaskStep {
+  id: string;
+  title: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "waiting";
+  detail?: string;
+}
+
+/**
+ * Something the teammate read. Not what it did — the audit trail answers that.
+ * This answers "why does it say that", which is a different question and the
+ * one people actually ask.
+ */
+export interface Evidence {
+  kind: "mail" | "file" | "web" | "user";
+  title: string;
+  excerpt: string;
+  url?: string;
+}
+
+/** Work that outlives the process that started it. */
+export interface Task {
+  id: string;
+  agentId: string;
+  conversationId: string;
+  kind: string;
+  title: string;
+  status:
+    | "queued" | "running" | "waiting_approval" | "waiting_input"
+    | "scheduled" | "paused" | "succeeded" | "failed" | "cancelled";
+  plan: TaskStep[];
+  evidence: Evidence[];
+  attempts: number;
+  error: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CloudComputer {
   id: string;
   agentId: string;

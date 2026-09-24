@@ -72,6 +72,7 @@ from crew import computer as crew_computer  # noqa: E402
 from crew import contract  # noqa: E402
 from crew import db as crew_db  # noqa: E402
 from crew import grants as crew_grants  # noqa: E402
+from crew import tasks as crew_tasks  # noqa: E402
 from crew import orchestrator, roster, routines, sections  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -636,6 +637,19 @@ def get_screenshot(bot_id: str, filename: str):
     return FileResponse(
         path, media_type="image/png", headers={"Cache-Control": "immutable, max-age=31536000"}
     )
+
+
+# ---------------------------------------------------------------------------
+# Crew-native: what a teammate is working through
+# ---------------------------------------------------------------------------
+
+
+@router.get("/bots/{bot_id}/tasks")
+def get_tasks(bot_id: str, limit: int = Query(20, ge=1, le=200)):
+    """This teammate's tasks, newest first, with their plans and evidence."""
+    conn = _conn()
+    _bot_or_404(conn, bot_id)
+    return {"tasks": [contract.task(row) for row in crew_tasks.list_tasks(conn, bot_id, limit)]}
 
 
 # ---------------------------------------------------------------------------

@@ -434,6 +434,8 @@ def on_post_tool_call(
         thread_id, turn = _where(conn, bot_id, turn_id)
         failed = status == "error" or crew_activity.looks_failed(result)
         _settle_released_approval(conn, tool_call_id, failed=failed)
+        if not failed:
+            _record_evidence(bot_id, tool_name, args, result)
         crew_audit.record(
             conn,
             event_type="tool.failed" if failed else "tool.allowed",
@@ -509,6 +511,9 @@ def on_cron_job_fired(
         with _cron_runs_lock:
             _cron_runs[job_id] = {"task": claimed, "heartbeat": heartbeat}
         crew_tasks.hold(claimed["id"])
+        # The turn runs next, in this process. Tools called during it reach the
+        # task through here.
+        crew_tasks.set_current(bot_id, claimed["id"], claimed["lease_id"])
     except Exception:
         # A routine that refuses to run because we could not open a task for it
         # is a worse outcome than a routine nobody is tracking.
@@ -530,6 +535,7 @@ def on_cron_job_finished(
 
         run["heartbeat"].stop()
         task = run["task"]
+        crew_tasks.clear_current(task["bot_id"])
         crew_tasks.unhold(task["id"])
         crew_tasks.release(
             crew_db.connect(), task["id"], task["lease_id"],
@@ -566,6 +572,39 @@ def _settle_released_approval(
         # Leaving it `executing` is the safe failure: the next load reads it as
         # an outcome nobody knows, which is exactly what it is.
         log.debug("crew: could not settle approval %s", approval_id, exc_info=True)
+
+
+def _record_evidence(bot_id: str, tool: str, args: Any, result: Any) -> None:
+    """Note what the teammate just read, against the task it is doing.
+
+    Only when a task is running: outside one there is nowhere to put it, and a
+    teammate answering a typed question has the thread itself as the record.
+    """
+    try:
+        from crew import plan as crew_plan
+        from crew import tasks as crew_tasks
+
+        held = crew_tasks.current(bot_id)
+        if held is None:
+            return
+        item = crew_plan.evidence_from_call(tool, args, result)
+        if item is None:
+            return                       # this tool did not read anything
+
+        task_id, lease_id = held
+        from crew import db as crew_db
+
+        conn = crew_db.connect()
+        task = crew_tasks.get(conn, task_id)
+        if task is None:
+            return
+        crew_tasks.checkpoint(conn, task_id, lease_id, {
+            "evidence": crew_plan.append_evidence(task["evidence"], item),
+        })
+    except Exception:
+        # Losing a line of evidence must never take down the tool call that
+        # produced it — least of all by raising a LostLease into the agent loop.
+        log.debug("crew: evidence not recorded for %s", tool, exc_info=True)
 
 
 def _record_completed_activity(

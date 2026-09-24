@@ -20,15 +20,16 @@
 
 import { Check, ChevronsRight, Loader2, Maximize2, ShieldAlert, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { ApprovalRequest, Artifact, AuditEvent, CloudComputer, CloudComputerSession, Grant, Routine } from "../domain/types";
+import type { ApprovalRequest, Artifact, AuditEvent, CloudComputer, CloudComputerSession, Grant, Routine, Task } from "../domain/types";
 import { AuditTimeline } from "./AuditTimeline";
 import { FilesPanel } from "./FilesPanel";
+import { PlanPanel } from "./PlanPanel";
 import { PermissionsPanel } from "./PermissionsPanel";
 import { VncDesktop, VncSurface } from "./VncDesktop";
 
 export function DetailPanel({
   open, width, onResize, agentName, computer, approvals, routines,
-  grants, grantsBusy, audit, auditLoading, auditView, auditHasMore, artifacts, artifactUrl,
+  grants, grantsBusy, audit, auditLoading, auditView, auditHasMore, artifacts, artifactUrl, tasks,
   onApproval, onComputerAction, onDeleteRoutine, onSetGrant, onClearGrant,
   onChangeAuditView, onLoadMoreAudit, onClose,
 }: {
@@ -47,6 +48,7 @@ export function DetailPanel({
   auditHasMore: boolean;
   artifacts: Artifact[];
   artifactUrl(artifact: Artifact): string;
+  tasks: Task[];
   onApproval(id: string, decision: "allow" | "deny", note?: string, contentHash?: string): Promise<void>;
   onComputerAction(action: "open" | "takeover"): Promise<CloudComputerSession>;
   onDeleteRoutine(routineId: string): Promise<void>;
@@ -60,7 +62,7 @@ export function DetailPanel({
   // Which drawer the lower half is showing. Default to neither: somebody opens
   // this panel to look at the screen, and a permissions table unfurled by
   // default would push it off the fold.
-  const [drawer, setDrawer] = useState<"" | "files" | "permissions" | "audit">("");
+  const [drawer, setDrawer] = useState<"" | "work" | "files" | "permissions" | "audit">("");
   const [computerBusy, setComputerBusy] = useState(false);
   const [previewSessions, setPreviewSessions] = useState<ReadonlyMap<string, CloudComputerSession>>(() => new Map());
   const [previewLoadingId, setPreviewLoadingId] = useState("");
@@ -268,6 +270,13 @@ export function DetailPanel({
         <button
           type="button"
           role="tab"
+          aria-selected={drawer === "work"}
+          className={drawer === "work" ? "is-current" : ""}
+          onClick={() => setDrawer((current) => (current === "work" ? "" : "work"))}
+        >Work</button>
+        <button
+          type="button"
+          role="tab"
           aria-selected={drawer === "files"}
           className={drawer === "files" ? "is-current" : ""}
           onClick={() => setDrawer((current) => (current === "files" ? "" : "files"))}
@@ -287,6 +296,7 @@ export function DetailPanel({
           onClick={() => setDrawer((current) => (current === "audit" ? "" : "audit"))}
         >History</button>
       </div>
+      {drawer === "work" && <PlanPanel agentName={agentName} tasks={tasks} />}
       {drawer === "files" && <FilesPanel
         agentName={agentName}
         artifacts={artifacts}

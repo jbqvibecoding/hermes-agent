@@ -163,6 +163,7 @@ def _run(conn, task: dict) -> None:
 
     task_id, lease_id = task["id"], task["lease_id"]
     crew_tasks.hold(task_id)
+    crew_tasks.set_current(task["bot_id"], task_id, lease_id)
     heartbeat = crew_tasks.Heartbeat(task_id, lease_id).start()
     try:
         _dispatch(task)
@@ -177,6 +178,7 @@ def _run(conn, task: dict) -> None:
         crew_tasks.release(conn, task_id, lease_id, status="failed", error=str(exc))
     finally:
         heartbeat.stop()
+        crew_tasks.clear_current(task["bot_id"])
         crew_tasks.unhold(task_id)
 
 

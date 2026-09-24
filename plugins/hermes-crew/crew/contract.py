@@ -282,6 +282,29 @@ def artifact_created(row: dict) -> dict:
     }
 
 
+def task(row: dict) -> dict:
+    """A task as the plan and evidence panels render it.
+
+    `plan` and `evidence` go out whole rather than counted, because the point
+    of both is that a person can read them. A progress bar out of a step count
+    would say "3 of 5" and hide which three.
+    """
+    return {
+        "id": row["id"],
+        "agentId": row.get("bot_id") or "",
+        "conversationId": row.get("thread_id") or "",
+        "kind": row.get("kind") or "agent",
+        "title": row.get("title") or "",
+        "status": row.get("status") or "queued",
+        "plan": row.get("plan") or [],
+        "evidence": row.get("evidence") or [],
+        "attempts": int(row.get("attempts") or 0),
+        "error": row.get("error") or "",
+        "createdAt": iso(row.get("created_at")),
+        "updatedAt": iso(row.get("updated_at")),
+    }
+
+
 def approval_decision(decision: str) -> str:
     """Errand's `allow`/`deny` → our `approve`/`discard`."""
     if decision == "allow":

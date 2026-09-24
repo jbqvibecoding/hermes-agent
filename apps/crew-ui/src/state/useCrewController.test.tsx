@@ -59,6 +59,7 @@ function stubClient(overrides: Partial<CloudAgentsClient> = {}): CloudAgentsClie
     listSections: async () => [],
     saveSections: async (sections) => sections,
     listRoutines: async () => [],
+    listTasks: async () => [],
     listArtifacts: async () => [],
     artifactUrl: (artifact) => `/files/${artifact.path}`,
     listGrants: async () => [],

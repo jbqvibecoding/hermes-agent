@@ -31,6 +31,7 @@ import type {
   RespondApprovalInput,
   Routine,
   SetGrantInput,
+  Task,
   Section,
   SendMessageInput,
   Subscription,
@@ -78,6 +79,9 @@ export interface CloudAgentsClient {
   setGrant(input: SetGrantInput, signal?: AbortSignal): Promise<Grant>;
   clearGrant(agentId: string, tool: string, signal?: AbortSignal): Promise<Grant>;
   listAuditEvents(query?: AuditQuery, signal?: AbortSignal): Promise<AuditPage>;
+
+  /** What the teammate is working through, with its plan and its sources. */
+  listTasks(agentId: string, signal?: AbortSignal): Promise<Task[]>;
 
   /** What the teammate actually produced, and where to fetch one from. */
   listArtifacts(agentId: string, signal?: AbortSignal): Promise<Artifact[]>;

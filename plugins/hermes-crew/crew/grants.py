@@ -55,6 +55,7 @@ CRITICAL_TOOLS = frozenset({
     "read_file",
     "search_files",
     "todo",
+    "set_plan",
     "message_user",
     "hold_for_approval",
 })
