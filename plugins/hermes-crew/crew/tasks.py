@@ -380,6 +380,41 @@ def requeue(conn: sqlite3.Connection, task_id: str, lease_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# What this process is already running
+# ---------------------------------------------------------------------------
+
+#: Task ids this process holds a live lease for. The lease alone is not enough
+#: to keep a worker off them, and the gap is specific: in the gateway, the task
+#: a routine opened is running *in this same process*. One hiccup in its
+#: heartbeat — a brief database lock is enough — and this process's own worker
+#: reads a lapsed lease, decides the owner is gone, and runs the routine a
+#: second time. The thread lock in the orchestrator would serialise the two, so
+#: it is a re-run rather than a collision, but a re-run is exactly what the
+#: lease is for.
+#:
+#: Not durable, and it should not be: it describes live work in this
+#: interpreter. After a restart there is none, and the lease is the right
+#: authority again.
+_held: set[str] = set()
+_held_lock = threading.Lock()
+
+
+def hold(task_id: str) -> None:
+    with _held_lock:
+        _held.add(task_id)
+
+
+def unhold(task_id: str) -> None:
+    with _held_lock:
+        _held.discard(task_id)
+
+
+def is_held(task_id: str) -> bool:
+    with _held_lock:
+        return task_id in _held
+
+
+# ---------------------------------------------------------------------------
 # Heartbeat
 # ---------------------------------------------------------------------------
 

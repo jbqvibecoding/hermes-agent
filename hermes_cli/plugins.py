@@ -238,6 +238,10 @@ VALID_HOOKS: Set[str] = {
     #
     # Common kwargs: job_id: str, job_name: str, schedule_kind: str,
     #   profile_name: str.
+    # cron_job_fired adds:    prompt: str — what the job actually runs. An
+    #   observer cannot read this back: cron.jobs resolves its store path once
+    #   at import, so a lookup from another profile's process reads the wrong
+    #   file. Carrying it is the only way a hook can act on the job's behalf.
     # cron_job_finished adds: success: bool, error: str | None.
     "cron_job_fired",
     "cron_job_finished",

@@ -40,6 +40,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import sqlite3
+import threading
 from typing import Any, Optional
 
 log = logging.getLogger(__name__)
@@ -423,6 +424,97 @@ def on_post_tool_call(
         )
     except Exception:
         log.debug("crew: tool call not audited", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# cron_job_fired / cron_job_finished
+#
+# A routine is a Hermes cron job, and the gateway runs it directly — the crew
+# orchestrator is not on that path at all. So without these two the crew cannot
+# tell a routine that finished from one whose process was killed halfway
+# through, and the host deliberately does not retry the second kind.
+#
+# The pair brackets the run: `fired` opens a task and takes a lease on it,
+# `finished` settles it. A process that dies in between simply stops renewing,
+# and the worker takes the task over. Nothing has to detect the death.
+# ---------------------------------------------------------------------------
+
+#: Runs this process is holding a lease for, by job id. Not durable on purpose
+#: — it is a handle on live in-process work, and after a restart there is none.
+_cron_runs: dict[str, dict] = {}
+_cron_runs_lock = threading.Lock()
+
+
+def on_cron_job_fired(
+    job_id: str = "", job_name: str = "", prompt: str = "", **_: Any
+) -> None:
+    """Open a leased task for a crew routine that is about to run."""
+    try:
+        from crew import db as crew_db
+        from crew import routines as crew_routines
+        from crew import tasks as crew_tasks
+
+        parsed = crew_routines.parse_job_name(job_name)
+        if not parsed:
+            return                      # somebody else's cron job
+        bot_id, name = parsed
+
+        conn = crew_db.connect()
+        if crew_db.get_bot(conn, bot_id) is None:
+            return                      # a leftover job for a departed teammate
+
+        task = crew_tasks.enqueue(
+            conn,
+            bot_id=bot_id,
+            kind="routine",
+            title=name,
+            thread_id=crew_db.ensure_dm_thread(conn, bot_id),
+            input={"routine": name, "job_id": job_id, "prompt": prompt},
+            # Per fire, not per routine. A key of `routine:<job_id>` would match
+            # the previous, already-succeeded task — enqueue dedupes on any row
+            # with the key and the column is UNIQUE — so every fire after the
+            # first would silently return the old task and the routine would
+            # never run again. Not stacking two runs of one routine is the
+            # host's job, and advance_next_run already does it.
+            idem_key=f"routine:{job_id}:{crew_db.now_ms()}",
+        )
+        claimed = crew_tasks.claim(conn, task)
+        if claimed is None:
+            return
+
+        heartbeat = crew_tasks.Heartbeat(claimed["id"], claimed["lease_id"]).start()
+        with _cron_runs_lock:
+            _cron_runs[job_id] = {"task": claimed, "heartbeat": heartbeat}
+        crew_tasks.hold(claimed["id"])
+    except Exception:
+        # A routine that refuses to run because we could not open a task for it
+        # is a worse outcome than a routine nobody is tracking.
+        log.warning("crew: could not open a task for cron job %s", job_id, exc_info=True)
+
+
+def on_cron_job_finished(
+    job_id: str = "", success: bool = True, error: str = "", **_: Any
+) -> None:
+    """Settle the task the matching ``fired`` opened."""
+    try:
+        with _cron_runs_lock:
+            run = _cron_runs.pop(job_id, None)
+        if run is None:
+            return
+
+        from crew import db as crew_db
+        from crew import tasks as crew_tasks
+
+        run["heartbeat"].stop()
+        task = run["task"]
+        crew_tasks.unhold(task["id"])
+        crew_tasks.release(
+            crew_db.connect(), task["id"], task["lease_id"],
+            status="succeeded" if success else "failed",
+            error="" if success else (error or "the routine did not complete"),
+        )
+    except Exception:
+        log.warning("crew: could not settle the task for cron job %s", job_id, exc_info=True)
 
 
 def _record_completed_activity(

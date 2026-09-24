@@ -48,12 +48,32 @@ def register(ctx) -> None:
 
     ctx.register_hook("pre_tool_call", crew_hooks.on_pre_tool_call)
     ctx.register_hook("post_tool_call", crew_hooks.on_post_tool_call)
+    ctx.register_hook("cron_job_fired", crew_hooks.on_cron_job_fired)
+    ctx.register_hook("cron_job_finished", crew_hooks.on_cron_job_finished)
+
+    _start_task_worker()
 
     _register_skills(ctx)
 
     _record_policy()
 
-    log.debug("crew: registered %d tools and 2 hooks", len(CREW_TOOLS))
+    log.debug("crew: registered %d tools and 4 hooks", len(CREW_TOOLS))
+
+
+def _start_task_worker() -> None:
+    """Pick up work whose process died, but only where that makes sense.
+
+    ``crew.worker.should_run`` decides: the gateway only, never under pytest,
+    and an environment switch to turn it off. This call is unconditional
+    because that function owns the policy — putting half the gates here would
+    split one decision across two files.
+    """
+    try:
+        from crew import worker as crew_worker
+
+        crew_worker.ensure_worker()
+    except Exception:
+        log.debug("crew: task worker not started", exc_info=True)
 
 
 def _register_skills(ctx) -> None:

@@ -3410,7 +3410,14 @@ def run_one_job(job: dict, *, adapters=None, loop=None, verbose: bool = False) -
 
         # After the claim, so a job skipped for its dispatch limit never tells
         # an observer it fired.
-        _emit_job_lifecycle("cron_job_fired", job)
+        #
+        # `prompt` rides along here and not on `finished`: an observer that
+        # wants to act on the job's behalf — retry it, hold a lease for it —
+        # needs to know what the job actually is, and it cannot read that back.
+        # `cron.jobs` resolves its store path once at import, so an observer in
+        # another profile's process would read the wrong file (see
+        # plugins/hermes-crew/crew/routines.py::_in_profile for the same trap).
+        _emit_job_lifecycle("cron_job_fired", job, prompt=str(job.get("prompt") or ""))
 
         # Run the job under the profile's secret scope. get_secret() fails
         # closed outside a scope once profile isolation is in play (multiple

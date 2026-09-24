@@ -306,3 +306,258 @@ def test_json_columns_survive_the_round_trip(conn):
 def test_an_unknown_status_is_refused(conn):
     with pytest.raises(ValueError):
         queued(conn, status="probably-fine")
+
+
+# ---------------------------------------------------------------------------
+# The cron bracket (F1b)
+#
+# A routine is a cron job the gateway runs directly — the crew orchestrator is
+# not on that path. `fired` opens a leased task, `finished` settles it, and a
+# process that dies in between just stops renewing.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def hooks(conn, monkeypatch):
+    from crew import hooks as crew_hooks
+
+    monkeypatch.setattr(crew_hooks, "_cron_runs", {})
+    return crew_hooks
+
+
+def test_a_routine_firing_opens_a_task_that_is_already_claimed(hooks, conn):
+    hooks.on_cron_job_fired(
+        job_id="j1", job_name="crew:scout:Morning digest", prompt="Do the digest.",
+    )
+    [task] = crew_tasks.list_tasks(conn, "scout")
+    assert task["kind"] == "routine"
+    assert task["status"] == "running"
+    assert task["lease_id"]
+    assert task["input"]["prompt"] == "Do the digest."
+
+
+def test_somebody_elses_cron_job_is_left_alone(hooks, conn):
+    hooks.on_cron_job_fired(job_id="j2", job_name="nightly-backup", prompt="rsync")
+    assert crew_tasks.list_tasks(conn) == []
+
+
+def test_a_job_for_a_teammate_that_no_longer_exists_is_left_alone(hooks, conn):
+    hooks.on_cron_job_fired(job_id="j3", job_name="crew:ghost:Old digest", prompt="x")
+    assert crew_tasks.list_tasks(conn) == []
+
+
+def test_a_routine_that_finishes_settles_its_task(hooks, conn):
+    hooks.on_cron_job_fired(job_id="j4", job_name="crew:scout:Digest", prompt="go")
+    hooks.on_cron_job_finished(job_id="j4", success=True)
+
+    [task] = crew_tasks.list_tasks(conn, "scout")
+    assert task["status"] == "succeeded"
+    assert task["lease_id"] is None
+    assert crew_tasks.due(conn) == []
+
+
+def test_a_routine_that_fails_says_so_on_the_task(hooks, conn):
+    hooks.on_cron_job_fired(job_id="j5", job_name="crew:scout:Digest", prompt="go")
+    hooks.on_cron_job_finished(job_id="j5", success=False, error="the API was down")
+
+    [task] = crew_tasks.list_tasks(conn, "scout")
+    assert task["status"] == "failed"
+    assert task["error"] == "the API was down"
+
+
+def test_a_routine_whose_process_died_is_left_claimable(hooks, conn):
+    """No `finished` ever arrives — the process was killed. The task keeps its
+    lease until it lapses, and then it is somebody's to take over. This is the
+    whole point of the bracket."""
+    hooks.on_cron_job_fired(job_id="j6", job_name="crew:scout:Digest", prompt="go")
+    [task] = crew_tasks.list_tasks(conn, "scout")
+    crew_tasks.unhold(task["id"])                       # the process is gone
+
+    assert crew_tasks.due(conn) == []                   # lease still live
+    expire(conn, task["id"])
+    assert [t["id"] for t in crew_tasks.due(conn)] == [task["id"]]
+
+
+def test_the_same_routine_firing_twice_produces_two_tasks(hooks, conn):
+    """The idempotency key is per fire, not per routine. Keyed per routine, the
+    second fire would match the first — already succeeded — and the routine
+    would never run again. Not stacking two concurrent runs is the host's job,
+    and advance_next_run already does it."""
+    hooks.on_cron_job_fired(job_id="j7", job_name="crew:scout:Digest", prompt="go")
+    hooks.on_cron_job_finished(job_id="j7", success=True)
+    hooks.on_cron_job_fired(job_id="j7", job_name="crew:scout:Digest", prompt="go")
+
+    tasks_now = crew_tasks.list_tasks(conn, "scout")
+    assert len(tasks_now) == 2
+    assert {t["status"] for t in tasks_now} == {"succeeded", "running"}
+
+
+def test_the_heartbeat_stops_when_the_routine_finishes(hooks, conn):
+    hooks.on_cron_job_fired(job_id="j8", job_name="crew:scout:Digest", prompt="go")
+    heartbeat = hooks._cron_runs["j8"]["heartbeat"]
+    hooks.on_cron_job_finished(job_id="j8", success=True)
+    assert heartbeat._stop.is_set()
+    assert hooks._cron_runs == {}
+
+
+def test_a_finish_for_a_job_we_never_saw_start_is_harmless(hooks, conn):
+    hooks.on_cron_job_finished(job_id="never-seen", success=True)
+    assert crew_tasks.list_tasks(conn) == []
+
+
+# ---------------------------------------------------------------------------
+# The worker (F1d)
+# ---------------------------------------------------------------------------
+
+
+def test_the_worker_only_runs_in_the_gateway(monkeypatch):
+    from crew import worker as crew_worker
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("_HERMES_GATEWAY", raising=False)
+    assert crew_worker.should_run() is False
+
+    monkeypatch.setenv("_HERMES_GATEWAY", "1")
+    assert crew_worker.should_run() is True
+
+
+def test_the_worker_never_runs_under_pytest(monkeypatch):
+    """Plugin discovery re-runs for every test, so without this the suite would
+    start a worker per test — and a straggler resolves HERMES_CREW_DB at call
+    time, which after teardown means the developer's real crew database."""
+    from crew import worker as crew_worker
+
+    monkeypatch.setenv("_HERMES_GATEWAY", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "some_test")
+    assert crew_worker.should_run() is False
+
+
+def test_the_worker_can_be_switched_off(monkeypatch):
+    from crew import worker as crew_worker
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("_HERMES_GATEWAY", "1")
+    monkeypatch.setenv("HERMES_CREW_WORKER", "0")
+    assert crew_worker.should_run() is False
+
+
+def test_starting_the_worker_twice_starts_one_thread(conn, tmp_path, monkeypatch):
+    """`register()` genuinely runs more than once per process — the plugin
+    manager re-sweeps on force and after a failed sweep — and a second worker
+    would double every takeover.
+
+    This is the one test that starts a real thread, so it takes the `conn`
+    fixture purely for its `HERMES_CREW_DB` pin. Unsetting `PYTEST_CURRENT_TEST`
+    disarms the guard that normally keeps the worker out of the suite, and
+    `crew_db_path()` resolves at call time — so without the pin a sweep landing
+    between `ensure_worker` and `stop_worker` would write to the developer's
+    real ~/.hermes/crew.db. That is the incident this file's worker guard
+    exists to prevent; it should not happen in the test for it.
+    """
+    from crew import worker as crew_worker
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("_HERMES_GATEWAY", "1")
+    try:
+        assert crew_worker.ensure_worker() is True
+        assert crew_worker.ensure_worker() is False
+    finally:
+        crew_worker.stop_worker(timeout=2)
+
+    assert crew_worker._worker_thread is None
+
+
+def test_the_loop_exits_when_asked(monkeypatch):
+    from crew import worker as crew_worker
+
+    stop = threading.Event()
+    sweeps = []
+    monkeypatch.setattr(crew_worker, "tick", lambda: sweeps.append(1) or stop.set())
+
+    crew_worker.run_worker(stop, interval=0)      # returns, or the test hangs
+    assert sweeps == [1]
+
+
+def test_the_worker_takes_over_an_abandoned_task_and_runs_it(conn, monkeypatch):
+    from crew import worker as crew_worker
+
+    task = crew_tasks.enqueue(
+        conn, bot_id="scout", kind="routine", title="Digest",
+        thread_id="dm:scout", input={"prompt": "Do the digest."},
+    )
+    abandoned = crew_tasks.claim(conn, task)
+    crew_tasks.unhold(abandoned["id"])
+    expire(conn, abandoned["id"])
+
+    ran = []
+    monkeypatch.setattr(
+        "crew.orchestrator.start_turn",
+        lambda bot_id, thread_id, text, **kw: ran.append((bot_id, thread_id, text)),
+    )
+
+    assert crew_worker.tick() == 1
+    assert ran == [("scout", "dm:scout", "Do the digest.")]
+    assert crew_tasks.get(conn, task["id"])["status"] == "succeeded"
+
+
+def test_the_worker_does_not_take_over_a_run_this_process_is_doing(conn, monkeypatch):
+    """The gateway hosts both the routine's own run and the worker. One hiccup
+    in the heartbeat and the worker would read a lapsed lease, decide the owner
+    is gone, and run the routine a second time — in the process that is still
+    running it."""
+    from crew import worker as crew_worker
+
+    task = crew_tasks.enqueue(
+        conn, bot_id="scout", kind="routine", title="Digest",
+        thread_id="dm:scout", input={"prompt": "go"},
+    )
+    mine = crew_tasks.claim(conn, task)
+    crew_tasks.hold(mine["id"])                  # as the cron hook does
+    expire(conn, mine["id"])                     # heartbeat hiccup
+
+    ran = []
+    monkeypatch.setattr(
+        "crew.orchestrator.start_turn",
+        lambda *a, **k: ran.append(a),
+    )
+    try:
+        assert crew_worker.tick() == 0
+        assert ran == []
+    finally:
+        crew_tasks.unhold(mine["id"])
+
+
+def test_a_task_whose_turn_raises_is_failed_with_the_reason(conn, monkeypatch):
+    from crew import worker as crew_worker
+
+    task = crew_tasks.enqueue(
+        conn, bot_id="scout", kind="routine", title="Digest",
+        thread_id="dm:scout", input={"prompt": "go"},
+    )
+
+    def boom(*a, **k):
+        raise RuntimeError("the model provider is down")
+
+    monkeypatch.setattr("crew.orchestrator.start_turn", boom)
+    crew_worker.tick()
+
+    settled = crew_tasks.get(conn, task["id"])
+    assert settled["status"] == "failed"
+    assert "provider is down" in settled["error"]
+
+
+def test_a_task_that_loses_its_lease_mid_run_is_requeued_not_failed(conn, monkeypatch):
+    from crew import worker as crew_worker
+
+    task = crew_tasks.enqueue(
+        conn, bot_id="scout", kind="routine", title="Digest",
+        thread_id="dm:scout", input={"prompt": "go"},
+    )
+
+    def steal(*a, **k):
+        raise crew_tasks.LostLease("taken over")
+
+    monkeypatch.setattr("crew.orchestrator.start_turn", steal)
+    crew_worker.tick()
+
+    assert crew_tasks.get(conn, task["id"])["status"] == "queued"

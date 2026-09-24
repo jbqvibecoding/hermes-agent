@@ -10,6 +10,12 @@ hooks:
   # in the gateway leaves a visible trail. See crew/hooks.py.
   - pre_tool_call
   - post_tool_call
+  # A routine is a cron job the gateway runs directly — the crew orchestrator
+  # is not on that path. These bracket the run so a routine killed halfway
+  # through is distinguishable from one that finished, which the host itself
+  # does not retry.
+  - cron_job_fired
+  - cron_job_finished
 provides_tools:
   - message_user
   - hold_for_approval
