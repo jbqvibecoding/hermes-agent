@@ -67,6 +67,11 @@ it("renders the operator's own decision as a separate note in the thread", () =>
 
 it("renders a memory rule with its diff", () => {
   show("memory_updated", { rule: "Never email Finance before 10am", diff: "+ Never email Finance before 10am" });
+  show("login_request", { site: "Zendesk", why: "the queue is behind a login" });
+  show("login_request", {
+    site: "Zendesk", field: "password", ref: "a3f1",
+    why: "the queue is behind a login",
+  });
   show("memory_updated", { tidied: 2, note: "I merged 2 pair(s) that said the same thing." });
   show("memory_updated", {
     proposal: true, kind: "conflicting", why: "one says reply fast, one says wait",

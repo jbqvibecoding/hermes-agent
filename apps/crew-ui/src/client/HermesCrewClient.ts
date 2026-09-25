@@ -151,6 +151,18 @@ export class HermesCrewClient implements CloudAgentsClient {
     });
   }
 
+  /**
+   * Hand one field to the teammate's page. The value is an argument and
+   * nothing else — it is not cached, not retried, and the response carries
+   * no echo of it.
+   */
+  submitSecret(agentId: string, ref: string, value: string, signal?: AbortSignal) {
+    return this.request<{ filled: boolean }>(
+      `/bots/${encodeURIComponent(agentId)}/secret`,
+      { method: "POST", body: JSON.stringify({ ref, value }), signal },
+    );
+  }
+
   updateAgent(agentId: string, input: UpdateAgentInput, signal?: AbortSignal) {
     return this.request<Agent>(`/v1/agents/${encodeURIComponent(agentId)}`, {
       method: "PATCH",

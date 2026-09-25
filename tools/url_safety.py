@@ -29,7 +29,7 @@ import os
 import socket
 import asyncio
 import re
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 from urllib.parse import parse_qsl, quote, unquote, urljoin, urlparse, urlsplit, urlunsplit
 
 from utils import is_truthy_value
@@ -474,6 +474,69 @@ async def async_is_safe_url(url: str) -> bool:
     ``web_extract_tool``, vision download hooks) instead of ``is_safe_url``.
     """
     return await asyncio.to_thread(is_safe_url, url)
+
+
+def resolve_and_pin(url: str) -> Optional[Tuple[str, str]]:
+    """``(ip, hostname)`` for a URL that passed the safety check, or ``None``.
+
+    :func:`is_safe_url` answers "may we fetch this" and throws the answer away.
+    The caller then connects **by hostname**, which resolves a second time, and
+    between those two lookups the answer can change — DNS rebinding, where the
+    name that validated as public comes back as ``169.254.169.254`` for the
+    connection that matters. OpenMuse's proxy puts the rule in one line:
+    *all upstream sockets connect to a validated IP, never a second DNS lookup*.
+
+    This returns the address that passed so a caller can hold the check and the
+    connection together. It re-uses :func:`is_safe_url` rather than restating
+    its rules — one set of blocklists, and a hostname allowed here is allowed
+    there by construction.
+
+    **Where this is wired, and where it is not.** ``tools/vision_tools.py``
+    verifies the peer against it, because that path opens a socket to a URL the
+    model chose. ``web_extract`` does not: its providers are remote services
+    that fetch the URL themselves, so there is no local connection to pin — the
+    check there can only ever be advisory, and pretending otherwise would be
+    worse than leaving it. The gateway adapters fetch URLs the *platform* gave
+    them, a different trust position, and are left alone this round.
+    """
+    if not is_safe_url(url):
+        return None
+    try:
+        hostname = (urlparse(url).hostname or "").strip().lower().rstrip(".")
+        if not hostname:
+            return None
+        addr_info = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except (socket.gaierror, ValueError):
+        return None
+    for _family, _type, _proto, _canon, sockaddr in addr_info:
+        ip_str = str(sockaddr[0]).split("%")[0]
+        # `is_safe_url` already refused the URL if *any* returned address was
+        # blocked, so the first is as good as the last. Taking the first keeps
+        # this from quietly preferring a different address than the check saw.
+        return ip_str, hostname
+    return None
+
+
+def peer_is_pinned(peer_ip: str, pinned_ip: str) -> bool:
+    """Whether a socket's actual peer is the address that was validated.
+
+    Compared as parsed addresses, not as strings: ``::ffff:93.184.216.34`` and
+    ``93.184.216.34`` are the same host reached two ways, and a string compare
+    would reject a perfectly good connection — which, on a guard that fails
+    closed, means breaking downloads rather than allowing them.
+    """
+    try:
+        left = ipaddress.ip_address(str(peer_ip).split("%")[0])
+        right = ipaddress.ip_address(str(pinned_ip).split("%")[0])
+    except ValueError:
+        return False
+    if left == right:
+        return True
+    for a, b in ((left, right), (right, left)):
+        mapped = getattr(a, "ipv4_mapped", None)
+        if mapped is not None and mapped == b:
+            return True
+    return False
 
 
 def redirect_target_from_response(response: Any) -> Optional[str]:

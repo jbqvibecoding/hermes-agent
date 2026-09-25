@@ -87,5 +87,17 @@ export interface CloudAgentsClient {
   listArtifacts(agentId: string, signal?: AbortSignal): Promise<Artifact[]>;
   artifactUrl(artifact: Artifact): string;
   deleteRoutine(agentId: string, routineId: string, signal?: AbortSignal): Promise<void>;
+
+  /**
+   * Hand one field to the teammate's page, typed by the operator. Ours, not
+   * Errand's: it has no equivalent because it has no screen to type into.
+   *
+   * The value is a parameter and nothing more — the implementation must not
+   * cache it, retry with it, or return it. What is stored anywhere is the
+   * field's label.
+   */
+  submitSecret(
+    agentId: string, ref: string, value: string, signal?: AbortSignal,
+  ): Promise<{ filled: boolean }>;
   screenshotUrl(agentId: string, filename: string): string;
 }

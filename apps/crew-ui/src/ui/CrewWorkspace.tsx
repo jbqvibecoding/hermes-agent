@@ -211,6 +211,10 @@ export function CrewWorkspace({ client, notify }: {
     // A login request is the one chip that is an instruction to the operator,
     // so its button does the thing rather than pointing at where the thing is.
     onOpenScreen: () => { setDetailOpen(true); void crew.openComputer("takeover").catch(() => undefined); },
+    onSubmitSecret: async (ref, value) => {
+      if (!selectedAgent) return;
+      await client.submitSecret(selectedAgent.id, ref, value);
+    },
     screenshotUrl: (agentId, filename) => client.screenshotUrl(agentId, filename),
   }), [client, crew]);
 

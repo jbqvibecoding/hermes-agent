@@ -243,9 +243,10 @@ def artifact_file_path(bot_id: str, rel_path: str) -> Optional[Path]:
 
     Every segment is checked, not just the joined result: ``a/../../../etc`` has
     no segment that looks wrong on its own and a whole-string check would let
-    the join do the walking. The containment check afterwards is the belt to
-    that braces — a resolved path that escaped the workspace is refused even if
-    every segment passed, which is what catches a symlink planted inside.
+    the join do the walking. Containment is the belt to that braces and lives
+    in :func:`crew.paths.resolve_within`, shared with the screenshot route —
+    they guard the same directory, and two opinions about it would mean the
+    safer one was load-bearing by accident.
     """
     from crew import computer as crew_computer
 
@@ -257,14 +258,9 @@ def artifact_file_path(bot_id: str, rel_path: str) -> Optional[Path]:
     if segments[0] in _IGNORED_DIRS:
         return None
 
-    root = crew_computer.workspace_dir(bot_id)
-    try:
-        candidate = (root / rel_path).resolve()
-        if not candidate.is_relative_to(root.resolve()):
-            return None
-    except OSError:
-        return None
-    return candidate if candidate.is_file() else None
+    from crew.paths import resolve_within
+
+    return resolve_within(crew_computer.workspace_dir(bot_id), rel_path)
 
 
 # ---------------------------------------------------------------------------

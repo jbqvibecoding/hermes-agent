@@ -440,9 +440,155 @@ def test_the_screenshot_route_refuses_anything_but_a_screenshot(bot_id, filename
     assert screenshot_file_path(bot_id, filename) is None
 
 
-def test_a_real_screenshot_path_resolves_inside_the_workspace():
-    from crew.computer import screenshot_file_path, workspace_dir
+def test_a_real_screenshot_path_resolves_inside_the_workspace(tmp_path, monkeypatch):
+    """The happy path, now against a file that exists.
 
-    path = screenshot_file_path("scout", "1730000000000.png")
+    The resolver answers "is this a file I may serve" rather than "does this
+    string look alright" — it has to, because the difference between a real
+    screenshot and a symlink is only visible on disk. So the test needs a real
+    one, where before it could assert on the shape of a path to nothing.
+    """
+    from crew import computer as crew_computer
+
+    root = tmp_path / "workspace"
+    (root / "screenshots").mkdir(parents=True)
+    (root / "screenshots" / "1730000000000.png").write_bytes(b"\x89PNG")
+    monkeypatch.setattr(crew_computer, "workspace_dir", lambda bot_id: root)
+
+    path = crew_computer.screenshot_file_path("scout", "1730000000000.png")
     assert path is not None
-    assert path.is_relative_to(workspace_dir("scout"))
+    assert path.is_relative_to(root.resolve())
+
+
+def test_a_screenshot_that_is_a_symlink_is_refused(tmp_path, monkeypatch):
+    """**The hole this was written to close, reproduced first.**
+
+    `/workspace/screenshots/` is a directory the teammate itself writes to, so
+    the filename allowlist is not the boundary it looks like: the teammate can
+    satisfy it with a *symlink*. `Path.is_file()` follows links, so the route's
+    own existence check says yes and `FileResponse` serves whatever it points
+    at — `~/.hermes/.env`, `crew.db`, anything the dashboard process can read.
+
+    The files route next door has done this correctly since Phase E
+    (`artifacts.artifact_file_path`: per-segment allowlist, then `.resolve()`
+    and a containment check, with a docstring naming planted symlinks as the
+    reason). This route had the allowlist and not the containment check.
+    """
+    from crew import computer as crew_computer
+
+    root = tmp_path / "workspace"
+    (root / "screenshots").mkdir(parents=True)
+    secret = tmp_path / "crew.db"
+    secret.write_text("every approval this operator ever made")
+    (root / "screenshots" / "1730000000000.png").symlink_to(secret)
+
+    monkeypatch.setattr(crew_computer, "workspace_dir", lambda bot_id: root)
+
+    assert crew_computer.screenshot_file_path("scout", "1730000000000.png") is None
+
+
+def test_both_file_routes_apply_the_same_judgement(tmp_path, monkeypatch):
+    """One planted symlink, two routes, one answer. They guard the same
+    directory and diverging would mean the safer one is load-bearing by
+    accident."""
+    from crew import artifacts as crew_artifacts
+    from crew import computer as crew_computer
+
+    root = tmp_path / "workspace"
+    (root / "screenshots").mkdir(parents=True)
+    secret = tmp_path / "outside.txt"
+    secret.write_text("not yours")
+    (root / "screenshots" / "1730000000000.png").symlink_to(secret)
+
+    monkeypatch.setattr(crew_computer, "workspace_dir", lambda bot_id: root)
+
+    assert crew_computer.screenshot_file_path("scout", "1730000000000.png") is None
+    assert crew_artifacts.artifact_file_path("scout", "screenshots/1730000000000.png") is None
+
+
+@pytest.mark.parametrize("bot_id", [
+    "..", ".", "a.b", "scout/../etc", "scout:latest", "Scout", "-scout", "",
+    "x" * 65,
+])
+def test_the_tightened_bot_id_validator_refuses_these(bot_id, tmp_path, monkeypatch):
+    """**Each character class here buys something specific**, and OpenBot's
+    `names.ts` names them: a slash escapes a socket API path segment, a dot
+    brings `..` with it, a colon is an image tag. The validator used to allow
+    dots and carry an `or bot_id == ".."` patch at one call site — a patch that
+    was the validator admitting it was too loose, and that covered exactly one
+    of the strings above.
+    """
+    from crew import computer as crew_computer
+
+    root = tmp_path / "workspace"
+    (root / "screenshots").mkdir(parents=True)
+    (root / "screenshots" / "1730000000000.png").write_bytes(b"\x89PNG")
+    monkeypatch.setattr(crew_computer, "workspace_dir", lambda _bot_id: root)
+
+    assert crew_computer.screenshot_file_path(bot_id, "1730000000000.png") is None
+
+
+def test_every_id_the_product_can_actually_create_passes(tmp_path, monkeypatch):
+    """The other direction, and the reason the tightened set is safe to ship:
+    `slugify_bot_id` is the only creation path and it only emits this shape."""
+    from crew import computer as crew_computer
+    from crew.roster import slugify_bot_id
+
+    root = tmp_path / "workspace"
+    (root / "screenshots").mkdir(parents=True)
+    (root / "screenshots" / "1730000000000.png").write_bytes(b"\x89PNG")
+    monkeypatch.setattr(crew_computer, "workspace_dir", lambda _bot_id: root)
+
+    for name in ["Scout", "Ops Lead", "研究员 Ada", "a--b", "QA/Release", "Bob.Smith"]:
+        slug = slugify_bot_id(name)
+        if not slug:
+            continue
+        assert crew_computer.screenshot_file_path(slug, "1730000000000.png") is not None, slug
+
+
+def test_a_symlinked_parent_directory_is_refused_too(tmp_path, monkeypatch):
+    """A link in a *parent* redirects everything under it, and the leaf looks
+    innocent from where it lands — so the walk checks every component, not
+    just the last one."""
+    from crew import artifacts as crew_artifacts
+    from crew import computer as crew_computer
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "notes.md").write_text("not yours")
+    (root / "reports").symlink_to(elsewhere)
+
+    monkeypatch.setattr(crew_computer, "workspace_dir", lambda _bot_id: root)
+    assert crew_artifacts.artifact_file_path("scout", "reports/notes.md") is None
+
+
+def test_a_symlink_pointing_inside_the_workspace_is_still_refused(tmp_path, monkeypatch):
+    """**The case that makes the link walk load-bearing rather than a spare.**
+
+    A link out of the workspace is caught by the containment check on its own,
+    so the two guards cover for each other there and neither is proved. A link
+    that stays *inside* separates them: containment is satisfied, and the file
+    served is still not the one the URL named.
+
+    It matters because "served a different file from the same teammate" is not
+    obviously harmless — the artifacts route hands back whatever path the
+    client asks for, and a teammate that can point `report.md` at a colleague's
+    output has made the URL stop meaning what it says.
+    """
+    from crew import artifacts as crew_artifacts
+    from crew import computer as crew_computer
+
+    root = tmp_path / "workspace"
+    (root / "reports").mkdir(parents=True)
+    (root / "real.md").write_text("the actual file")
+    (root / "reports" / "decoy.md").symlink_to(root / "real.md")
+
+    monkeypatch.setattr(crew_computer, "workspace_dir", lambda _bot_id: root)
+
+    # Containment alone would allow this: the target resolves inside the root.
+    assert (root / "reports" / "decoy.md").resolve().is_relative_to(root.resolve())
+    assert crew_artifacts.artifact_file_path("scout", "reports/decoy.md") is None
+    # …and the file it points at is still served under its own name.
+    assert crew_artifacts.artifact_file_path("scout", "real.md") is not None

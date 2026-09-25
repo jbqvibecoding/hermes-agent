@@ -11,6 +11,7 @@
  */
 
 import { Check, Clock, CornerDownRight, KeyRound, ShieldAlert } from "lucide-react";
+import { useState } from "react";
 import type { ChipKind } from "../../domain/types";
 
 interface ReportLine { system?: string; result?: string; count?: string }
@@ -115,10 +116,69 @@ function BotRefChip({ payload }: { payload: { from?: string; from_name?: string;
   </Chip>;
 }
 
-function LoginChip({ payload, onOpenScreen }: {
-  payload: { site?: string; why?: string };
+/**
+ * Two shapes, and the difference is how much of the operator's attention the
+ * teammate is asking for.
+ *
+ * With a `field`, it is stuck on one input: a masked box here, and the
+ * characters go straight into the page. The value is submitted and forgotten —
+ * it is never part of this component's state beyond the keystroke, never sent
+ * anywhere but the one endpoint, and the teammate never sees it.
+ *
+ * Without one, it needs the whole machine, and the operator takes the wheel as
+ * before. Keeping both is the point: one field is the common case, and a
+ * consent flow with three steps is not.
+ */
+function LoginChip({ payload, onOpenScreen, onSubmitSecret }: {
+  payload: { site?: string; why?: string; field?: string; ref?: string };
   onOpenScreen(): void;
+  onSubmitSecret(ref: string, value: string): Promise<void>;
 }) {
+  const [value, setValue] = useState("");
+  const [state, setState] = useState<"" | "sending" | "sent" | "failed">("");
+
+  if (payload.field && payload.ref) {
+    const ref = payload.ref;
+    const send = async () => {
+      if (!value) return;
+      setState("sending");
+      try {
+        await onSubmitSecret(ref, value);
+        // Cleared on the way out, not kept for a retry. A retry would need the
+        // value to sit in memory after it has been used, which is the one
+        // thing this whole path exists to avoid.
+        setValue("");
+        setState("sent");
+      } catch {
+        setValue("");
+        setState("failed");
+      }
+    };
+    return <Chip label="Needs one thing from you">
+      <div className="crew-login-site">
+        <KeyRound size={13} /> The {payload.field} for {payload.site || "a site"}
+      </div>
+      {payload.why && <div className="crew-login-why">{payload.why}</div>}
+      {state === "sent"
+        ? <div className="crew-login-why">Typed into the page. {payload.site} should move on now.</div>
+        : <form className="crew-secret-row" onSubmit={(event) => { event.preventDefault(); void send(); }}>
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder={payload.field}
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+            />
+            <button className="crew-btn" type="submit" disabled={!value || state === "sending"}>
+              {state === "sending" ? "Typing…" : "Type it in"}
+            </button>
+          </form>}
+      {state === "failed" && <div className="crew-login-why">
+        That did not reach the screen — nothing was typed. Try taking the wheel instead.
+      </div>}
+    </Chip>;
+  }
+
   return <Chip label="Needs you at the keyboard">
     <div className="crew-login-site"><KeyRound size={13} /> Sign in to {payload.site || "a site"}</div>
     {payload.why && <div className="crew-login-why">{payload.why}</div>}
@@ -144,6 +204,7 @@ function ScreenshotChip({ payload, screenshotUrl }: {
 export interface ChipHandlers {
   onDecide(approvalId: string, decision: "allow" | "deny"): void;
   onOpenScreen(): void;
+  onSubmitSecret(ref: string, value: string): Promise<void>;
   screenshotUrl(agentId: string, filename: string): string;
 }
 
@@ -163,7 +224,7 @@ export function ChipView({ kind, payload, handlers }: {
     case "memory_updated": return <MemoryChip payload={data} />;
     case "routine_created": return <RoutineChip payload={data} />;
     case "bot_ref": return <BotRefChip payload={data} />;
-    case "login_request": return <LoginChip payload={data} onOpenScreen={handlers.onOpenScreen} />;
+    case "login_request": return <LoginChip payload={data} onOpenScreen={handlers.onOpenScreen} onSubmitSecret={handlers.onSubmitSecret} />;
     case "screenshot": return <ScreenshotChip payload={data} screenshotUrl={handlers.screenshotUrl} />;
     default: return null;
   }

@@ -417,12 +417,56 @@ async def _download_image(image_url: str, destination: Path, max_retries: int = 
                 f"Blocked redirect to private/internal address: {redirect_url}"
             )
 
+    def _verify_peer(response, pinned_ip: str) -> None:
+        """Refuse a response that came from an address we did not validate.
+
+        The pre-flight check resolves the hostname; httpx then resolves it
+        again to connect. Between those two lookups the answer can change —
+        DNS rebinding — and the second one is the one that matters. Comparing
+        the socket's actual peer against the address that passed closes that
+        gap for the response, which is the half that carries data back.
+
+        It does not un-send the request: by the time there is a socket to
+        inspect, a GET has already reached the address. For a metadata
+        endpoint the damage is the reply, so stopping here stops the
+        exfiltration; a POST to an internal service would already have landed.
+        Pinning the connection itself would need a custom transport and would
+        put TLS hostname verification at risk for every download in the
+        product, which is a worse trade than this residual.
+
+        Best-effort by design: httpx does not promise the socket is reachable
+        on every backend, and a guard that cannot see the peer must not start
+        failing downloads that were always fine.
+        """
+        from tools.url_safety import peer_is_pinned
+
+        try:
+            stream = response.extensions.get("network_stream")
+            sock = stream.get_extra_info("socket") if stream is not None else None
+            peer = sock.getpeername() if sock is not None else None
+        except Exception:
+            return
+        if not peer:
+            return
+        if not peer_is_pinned(str(peer[0]), pinned_ip):
+            raise ValueError(
+                f"Blocked: {image_url} resolved to {pinned_ip} when it was checked "
+                f"but the connection reached {peer[0]} (possible DNS rebinding)"
+            )
+
     last_error = None
     for attempt in range(max_retries):
         try:
             blocked = check_website_access(image_url)
             if blocked:
                 raise PermissionError(blocked["message"])
+
+            from tools.url_safety import resolve_and_pin
+
+            pinned = resolve_and_pin(image_url)
+            if pinned is None:
+                raise ValueError(f"Blocked: {image_url} is not a safe target")
+            pinned_ip = pinned[0]
 
             # Download the image with appropriate headers using async httpx
             # Enable follow_redirects to handle image CDNs that redirect (e.g., Imgur, Picsum)
@@ -439,6 +483,7 @@ async def _download_image(image_url: str, destination: Path, max_retries: int = 
                         "Accept": "image/*,*/*;q=0.8",
                     },
                 )
+                _verify_peer(response, pinned_ip)
                 response.raise_for_status()
 
                 # Reject overly large images early via Content-Length header.

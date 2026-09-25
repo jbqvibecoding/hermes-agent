@@ -54,7 +54,17 @@ CREW_DOCKER_EXTRA_ARGS = [
     "-p", f"127.0.0.1::{CDP_PORT}",
 ]
 
-_SAFE_ID = re.compile(r"^[a-zA-Z0-9._-]+$")
+#: A bot id as `roster.slugify_bot_id` actually produces one: lowercase
+#: alphanumerics and hyphens, starting with an alphanumeric. Tighter than it
+#: needs to be for today's ids on purpose — this is the string that becomes a
+#: container name, a Docker label and a path component, and OpenBot's
+#: `names.ts` spells out what each forbidden character buys: no slash (a socket
+#: API path segment escapes), no dot (`..` follows), no colon (an image tag).
+#:
+#: It used to be `^[a-zA-Z0-9._-]+$` with an `or bot_id == ".."` bolted on at
+#: the one call site that had noticed. That special case was the validator
+#: admitting it was too loose; with dots gone it has nothing left to do.
+_SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _SCREENSHOT_FILE = re.compile(r"^\d+\.png$")
 
 
@@ -393,10 +403,21 @@ def screenshot_file_path(bot_id: str, filename: str) -> Optional[Path]:
     Both components are matched against strict allowlists rather than being
     sanitised: the route is reachable from a browser, and ``..`` in either
     position would otherwise walk out of the workspace and serve ``crew.db``.
-    Ported, with its test, from OpenGrokBot's ``screenshots.ts``.
+    The allowlists came, with their test, from OpenGrokBot's ``screenshots.ts``.
+
+    **The allowlists are not the boundary, though**, and for a while this
+    function acted as if they were. ``/workspace/screenshots/`` is a directory
+    the teammate writes to, so it never needed to smuggle a path past the
+    filename check — it could satisfy the check exactly and make ``1.png`` a
+    symlink. ``is_file()`` follows links, so the route agreed and served
+    whatever it pointed at. :func:`crew.paths.resolve_within` is the check that
+    was missing, and it is the same one the artifacts route has used since it
+    was written.
     """
-    if not _SAFE_ID.match(bot_id or "") or bot_id == "..":
+    from crew.paths import resolve_within
+
+    if not _SAFE_ID.match(bot_id or ""):
         return None
     if not _SCREENSHOT_FILE.match(filename or ""):
         return None
-    return screenshot_dir(bot_id) / filename
+    return resolve_within(screenshot_dir(bot_id), filename)

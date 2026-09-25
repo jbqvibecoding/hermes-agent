@@ -50,12 +50,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 # See the plugin's __init__.py: this file is exec'd as a flat module with no
@@ -625,6 +626,12 @@ def set_routine_enabled(bot_id: str, job_id: str, body: RoutineEnabledBody):
     return {"ok": True, "enabled": body.enabled}
 
 
+#: A screenshot larger than this is not a screenshot. The cap exists because
+#: this route now buffers the file, and a teammate that can write to the
+#: directory can write a very large file into it.
+_MAX_SCREENSHOT_BYTES = 32 * 1024 * 1024
+
+
 @router.get("/screenshots/{bot_id}/{filename}")
 def get_screenshot(bot_id: str, filename: str):
     """Serve a screenshot a teammate posted as evidence.
@@ -634,10 +641,28 @@ def get_screenshot(bot_id: str, filename: str):
     reachable from a browser and a traversal here would serve ``crew.db``.
     """
     path = crew_computer.screenshot_file_path(bot_id, filename)
-    if path is None or not path.is_file():
+    if path is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(
-        path, media_type="image/png", headers={"Cache-Control": "immutable, max-age=31536000"}
+    # Read it ourselves rather than handing the path to FileResponse. The
+    # resolver already refused every symlink it could see, but that is
+    # check-then-use and the teammate owns the directory — this open is the
+    # same decision made at the moment of the read, and on any platform with
+    # O_NOFOLLOW it cannot be raced. Screenshots are small, so buffering one
+    # costs nothing worth trading for that.
+    from crew.paths import open_no_follow
+
+    try:
+        fd = open_no_follow(path)
+        try:
+            data = os.read(fd, _MAX_SCREENSHOT_BYTES + 1)
+        finally:
+            os.close(fd)
+    except OSError:
+        raise HTTPException(status_code=404, detail="Not found") from None
+    if len(data) > _MAX_SCREENSHOT_BYTES:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(
+        data, media_type="image/png", headers={"Cache-Control": "immutable, max-age=31536000"}
     )
 
 
@@ -707,6 +732,69 @@ def download_file(bot_id: str, rel_path: str):
         filename=path.name,
         headers={"X-Content-Type-Options": "nosniff"},
     )
+
+
+class SecretBody(BaseModel):
+    """What the operator submits. ``value`` is the only field that matters and
+    the only one that is never stored."""
+
+    ref: str
+    value: str
+
+
+@router.post("/bots/{bot_id}/secret")
+def submit_secret(bot_id: str, body: SecretBody):
+    """Type a value the teammate asked for straight into its page.
+
+    The value lives for the length of this call. It is not written to the
+    database, not posted to the thread, not returned in the response, and not
+    included in any log line — which is why the failure cases below say what
+    happened to the *request* and never quote what came in.
+    """
+    from crew.secrets import control, fill_secret
+
+    conn = _conn()
+    _bot_or_404(conn, bot_id)
+
+    request = control.take_request(bot_id, body.ref)
+    if request is None:
+        # Claimed by ref, so a box that was replaced or has expired is reported
+        # rather than filled. Somebody typing a password deserves to know it
+        # went nowhere.
+        raise HTTPException(status_code=409, detail="That request is no longer open.")
+
+    if not fill_secret(bot_id, request, body.value):
+        raise HTTPException(status_code=502, detail="Could not reach the screen to type it in.")
+
+    # The thread records that the field was filled, and nothing else about it.
+    crew_db.insert_message(
+        conn,
+        thread_id=crew_db.dm_thread_id(bot_id),
+        sender=bot_id,
+        kind="text",
+        content=f"Thanks — {request.field_label} for {request.site} went into the page.",
+    )
+    return {"filled": True}
+
+
+@router.post("/bots/{bot_id}/control")
+def set_control(bot_id: str, body: dict):
+    """The operator takes or releases the teammate's screen.
+
+    Only a person can take control: there is no route by which the teammate
+    asks for a human to be put in front of a page. `crew/secrets.py` says why
+    at more length — briefly, a bot that can hand itself over can also hand
+    somebody a page they did not ask to see.
+    """
+    from crew.secrets import control
+
+    conn = _conn()
+    _bot_or_404(conn, bot_id)
+    if bool(body.get("held")):
+        control.take(bot_id)
+    else:
+        control.release(bot_id)
+    return {"holder": control.holder(bot_id)}
 
 
 # ---------------------------------------------------------------------------

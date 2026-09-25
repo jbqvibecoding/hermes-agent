@@ -150,6 +150,38 @@ re-check. The subject-and-claim conjunction that refuses those is written from
 scratch, and exists in that shape because either half alone eats ordinary
 facts about the world.
 
+## `crew/paths.py`, `crew/secrets.py` — OpenMuse and OpenBot (both MIT)
+
+**The SSRF work is mostly not here, because it was already done better.**
+`tools/url_safety.py` blocks every range OpenMuse's `validatePublicIp` does and
+more — AWS ECS task credentials, the Azure IMDS wire server, Alibaba Cloud, and
+the IPv4-mapped IPv6 form of each, which the list being ported does not mention
+and which a resolver really does return. Its `_ALWAYS_BLOCKED_*` sets are
+checked before the allow-private toggle, so OpenBot's "metadata endpoints are
+judged before the switch" already holds. What was missing was the one line
+OpenMuse leads with — *all upstream sockets connect to a validated IP, never a
+second DNS lookup* — so `resolve_and_pin` hands back the address that passed
+and `tools/vision_tools.py` checks the socket's peer against it. The residual
+is documented where it applies: the request has already been sent by the time
+there is a peer to inspect, and pinning the connection itself would put TLS
+hostname verification at risk on every download.
+
+**`crew/paths.py` closes a hole rather than porting a design.** OpenMuse walks
+each path segment with `openat` and `O_NOFOLLOW`, and its argument is right —
+`realpath` is check-then-use. `O_NOFOLLOW` is POSIX-only and this repository's
+CI runs Windows, so a guard that must hold everywhere cannot rest on it: the
+resolver decides on any platform, and the read uses the flag where it exists.
+The hole it closes was ours — the screenshot route matched two path components
+against allowlists and served the result, and the directory it guards is one
+the teammate writes to, so a symlink satisfied the allowlist exactly.
+
+**`crew/secrets.py` takes OpenBot's control rules and not its transport.** The
+state machine knows nothing about CDP, which is what makes the two rules worth
+having testable: while a person holds the screen the bot's actions are refused
+rather than queued (a queued click lands after they have walked away), and the
+bot may ask for help but cannot hand itself over (a bot that can put a person
+in front of a page can put them in front of one they did not ask to see).
+
 ## Not taken
 
 **openworkbuddy** is PolyForm Noncommercial 1.0.0, which its own FAQ says binds

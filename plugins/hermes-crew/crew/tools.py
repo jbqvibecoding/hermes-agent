@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from crew import approvals as crew_approvals
@@ -436,6 +437,23 @@ ASK_FOR_LOGIN_SCHEMA = {
         "type": "object",
         "properties": {
             "site": {"type": "string", "description": 'The site, e.g. "Zendesk".'},
+            "field": {
+                "type": "string",
+                "description": (
+                    "The single field you are stuck on, as the page labels it — "
+                    '"password", "verification code". Your operator types it straight into '
+                    "the page and you never see it. Prefer this: it is one box for them "
+                    "instead of a whole screen."
+                ),
+            },
+            "need_full_desktop": {
+                "type": "boolean",
+                "description": (
+                    "Set true only when one field is genuinely not enough — a multi-step "
+                    "consent flow, a dialog you cannot describe. It asks your operator to "
+                    "take over the screen, which costs them much more."
+                ),
+            },
             "why": {
                 "type": "string",
                 "description": "What you will do once you are in, in one line.",
@@ -455,12 +473,50 @@ def handle_ask_for_login(args: dict, **_kw: Any) -> str:
     if not site:
         return json.dumps({"error": "Name the site you are stuck on."}, ensure_ascii=False)
     why = str(args.get("why") or "").strip()
+    field = str(args.get("field") or "").strip()
+    full_desktop = bool(args.get("need_full_desktop"))
 
     # Warm the container before posting the chip so the screen is live by the
     # time the operator clicks through to it.
     endpoints = crew_computer.ensure(turn.bot_id)
 
     conn = crew_db.connect()
+
+    # One field is the common case and the cheap one: the operator types into a
+    # masked box and the characters go straight into the page. Handing over the
+    # whole screen is for when somebody genuinely needs the machine — a
+    # two-factor prompt, a consent dialog, a flow with three steps — and it is
+    # the teammate's job to say which of those it is stuck on.
+    if field and not full_desktop:
+        import secrets as _secrets
+
+        from crew.secrets import SecretRequest, control
+
+        request = control.open_request(SecretRequest(
+            bot_id=turn.bot_id, ref=_secrets.token_hex(2), field_label=field,
+            site=site, why=why, created_at=time.time(),
+        ))
+        crew_db.insert_message(
+            conn,
+            thread_id=turn.thread_id,
+            sender=turn.bot_id,
+            kind="login_request",
+            # The label, never a value. Nothing on this row can carry a secret
+            # because nothing here has ever seen one.
+            payload={"site": site, "why": why, "field": field, "ref": request.ref},
+        )
+        return json.dumps(
+            {
+                "asked": True,
+                "note": (
+                    f"Asked your operator for the {field} for {site}. They type it straight "
+                    f"into the page — you will not see it, and you should not ask for it "
+                    f"again. Stop here until the page moves on."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
     crew_db.insert_message(
         conn,
         thread_id=turn.thread_id,
