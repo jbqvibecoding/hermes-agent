@@ -591,7 +591,7 @@ def _settle_routine_health(
             conn, job_id=job_id, bot_id=bot_id, success=success, error=error,
         )
         if success:
-            _deliver_text_routine(conn, task)
+            deliver_text_routine(conn, task)
             return
 
         if outcome["suspend"]:
@@ -615,8 +615,12 @@ def _settle_routine_health(
         log.warning("crew: could not record routine health for %s", job_id, exc_info=True)
 
 
-def _deliver_text_routine(conn: sqlite3.Connection, task: dict) -> None:
+def deliver_text_routine(conn: sqlite3.Connection, task: dict) -> None:
     """Put a text routine's message in the thread.
+
+    Public because the crash-recovery worker needs the same behaviour:
+    a routine taken over after its process died must be *delivered*, not
+    re-run through a model it was written to avoid.
 
     An agent routine writes its own chips through the crew tools while it runs.
     A text routine never runs a turn — that is the point of it — so nothing has

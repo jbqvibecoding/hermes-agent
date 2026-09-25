@@ -211,7 +211,7 @@ def _run(conn, task: dict) -> None:
     crew_tasks.set_current(task["bot_id"], task_id, lease_id)
     heartbeat = crew_tasks.Heartbeat(task_id, lease_id).start()
     try:
-        _dispatch(task)
+        _dispatch(conn, task)
         crew_tasks.release(conn, task_id, lease_id, status="succeeded")
     except crew_tasks.LostLease:
         # Somebody else owns this now, or it was paused or cancelled under us.
@@ -227,12 +227,25 @@ def _run(conn, task: dict) -> None:
         crew_tasks.unhold(task_id)
 
 
-def _dispatch(task: dict) -> None:
+def _dispatch(conn, task: dict) -> None:
     """Do whatever this kind of task is.
 
     A routine's task carries the cron job's own prompt, so re-running it is the
     same turn the gateway would have run — not a reconstruction of it.
+
+    **A text routine is delivered, not run.** This used to start a turn for
+    every routine it took over, which for a `task_type: "text"` routine means
+    waking a model to read back "stand-up at 09:45" — the exact cost that whole
+    path exists to avoid, and on a teammate whose profile may not even be
+    resolvable from this process. A real crash-recovery run found it: the
+    takeover failed with *"Named profile home does not exist"* for a routine
+    that never needed a profile. Recovery has to do the same thing the normal
+    finish does, and the normal finish delivers the text.
+
+    Raises when the turn does not come back honest, because the caller settles
+    the task on whether this returned.
     """
+    from crew import hooks as crew_hooks
     from crew import orchestrator
 
     if task["kind"] != "routine":
@@ -242,6 +255,25 @@ def _dispatch(task: dict) -> None:
     if not prompt.strip():
         raise ValueError("this routine's task has no prompt to run")
 
-    orchestrator.start_turn(
+    if str((task["input"] or {}).get("task_type") or "") == "text":
+        crew_hooks.deliver_text_routine(conn, task)
+        return
+
+    result = orchestrator.start_turn(
         task["bot_id"], task["thread_id"], prompt, persist_user_message=False,
     )
+
+    # `start_turn` catches its own exceptions and settles an error bubble in
+    # the thread, so it returns *normally* when the turn broke. Without this
+    # the worker wrote `succeeded` over a run whose entire output was
+    # "⚠️ Scout hit an error" — found by a real crash-recovery run, not by a
+    # test, because every test of this path stubs `start_turn`.
+    #
+    # Only the `error` key, and not a second opinion from `crew.verdict`: the
+    # turn was already judged inside `start_turn`, where `_judged_reply` has
+    # the `spoke_otherwise` signal that this side does not. Re-judging here
+    # would call a chip-only turn a failure, which is precisely the mistake
+    # F5 corrected on the interactive path.
+    error = str((result or {}).get("error") or "")
+    if error:
+        raise RuntimeError(error)

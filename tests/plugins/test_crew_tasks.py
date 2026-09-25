@@ -557,6 +557,97 @@ def test_the_worker_takes_over_an_abandoned_task_and_runs_it(conn, monkeypatch):
     assert crew_tasks.get(conn, task["id"])["status"] == "succeeded"
 
 
+def test_a_recovered_text_routine_is_delivered_rather_than_run(conn, monkeypatch):
+    """**A reminder must not cost a model call just because a process died.**
+
+    `task_type: "text"` exists so "stand-up at 09:45" is delivered verbatim
+    instead of waking an agent to read it back. Recovery ignored that and
+    started a turn for every routine it took over — found by a real
+    crash-recovery run, which failed with *"Named profile home does not
+    exist"*: it was resolving a profile for a routine that never needed one.
+    """
+    from crew import worker as crew_worker
+
+    task = crew_tasks.enqueue(
+        conn, bot_id="scout", kind="routine", title="Stand-up",
+        thread_id="dm:scout",
+        input={"prompt": "Stand-up in five.", "task_type": "text"},
+    )
+    abandoned = crew_tasks.claim(conn, task)
+    crew_tasks.unhold(abandoned["id"])
+    expire(conn, abandoned["id"])
+
+    ran = []
+    monkeypatch.setattr(
+        "crew.orchestrator.start_turn",
+        lambda *a, **k: ran.append(a),
+    )
+
+    assert crew_worker.tick() == 1
+    assert ran == [], "no model was woken"
+    assert crew_tasks.get(conn, task["id"])["status"] == "succeeded"
+
+    [message] = crew_db.list_messages(conn, "dm:scout")
+    assert message["content"] == "Stand-up in five."
+    assert message["sender"] == "scout"
+
+
+def test_a_recovered_turn_that_errored_is_not_called_succeeded(conn, monkeypatch):
+    """`start_turn` catches its own exceptions — it settles a "⚠️ hit an error"
+    bubble in the thread and returns *normally*. The worker read that as a
+    completed run and wrote `succeeded` over it, so the Work panel showed a
+    routine that finished and the thread showed a routine that broke.
+
+    Also found by the real run rather than by a test, because every test on
+    this path stubs `start_turn` and a stub does not fail.
+    """
+    from crew import worker as crew_worker
+
+    task = crew_tasks.enqueue(
+        conn, bot_id="scout", kind="routine", title="Digest",
+        thread_id="dm:scout", input={"prompt": "Do the digest."},
+    )
+    abandoned = crew_tasks.claim(conn, task)
+    crew_tasks.unhold(abandoned["id"])
+    expire(conn, abandoned["id"])
+
+    monkeypatch.setattr(
+        "crew.orchestrator.start_turn",
+        lambda *a, **k: {"error": "Named profile home does not exist"},
+    )
+
+    crew_worker.tick()
+
+    settled = crew_tasks.get(conn, task["id"])
+    assert settled["status"] == "failed"
+    assert "profile home" in settled["error"]
+
+
+def test_a_recovered_turn_that_only_filed_chips_still_counts(conn, monkeypatch):
+    """The other side of the test above, and the reason the check is narrow.
+
+    A teammate that files a report chip and says nothing else returns an empty
+    `final_response`, and that is a perfectly good turn — F5 established this
+    on the interactive path with `spoke_otherwise`. The worker has no such
+    signal, so it asks only whether `start_turn` reported an error and leaves
+    the judging where the evidence is.
+    """
+    from crew import worker as crew_worker
+
+    task = crew_tasks.enqueue(
+        conn, bot_id="scout", kind="routine", title="Digest",
+        thread_id="dm:scout", input={"prompt": "Do the digest."},
+    )
+    abandoned = crew_tasks.claim(conn, task)
+    crew_tasks.unhold(abandoned["id"])
+    expire(conn, abandoned["id"])
+
+    monkeypatch.setattr("crew.orchestrator.start_turn", lambda *a, **k: {})
+
+    crew_worker.tick()
+    assert crew_tasks.get(conn, task["id"])["status"] == "succeeded"
+
+
 def test_the_worker_does_not_take_over_a_run_this_process_is_doing(conn, monkeypatch):
     """The gateway hosts both the routine's own run and the worker. One hiccup
     in the heartbeat and the worker would read a lapsed lease, decide the owner
