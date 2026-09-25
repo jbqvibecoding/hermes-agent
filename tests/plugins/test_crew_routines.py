@@ -231,6 +231,56 @@ def test_both_unix_spellings_of_sunday_mean_sunday(dow):
     assert "Sunday" in describe_schedule(f"0 9 * * {dow}")
 
 
+@pytest.mark.parametrize("dow", ["0", "7"])
+def test_our_parser_and_the_hosts_validator_agree_about_sunday(dow):
+    """The other half of the test above, which used to be only a claim.
+
+    That docstring asserts the host means Unix semantics because it validates
+    with croniter — but nothing checked it, so the two parsers could have
+    drifted apart and both tests would still pass. They are used together on
+    one schedule string: ours humanises it for the approval card, croniter
+    decides when it actually fires. A disagreement means the card says Sunday
+    and the job runs Monday, which is the worst available outcome because the
+    person who approved it has no way to notice.
+    """
+    from croniter import croniter
+
+    from crew.schedule import compile_cron_matcher
+
+    expression = f"0 9 * * {dow}"
+    matcher = compile_cron_matcher(expression)
+    assert matcher is not None
+
+    # 2026-09-27 is a Sunday. Ask croniter for the next fire from Saturday.
+    from datetime import datetime
+
+    nxt = croniter(expression, datetime(2026, 9, 26, 12, 0)).get_next(datetime)
+    assert nxt.weekday() == 6, "croniter agrees this is Sunday (Python's Sun == 6)"
+    assert nxt.day == 27 and nxt.hour == 9
+
+
+def test_a_real_cron_expression_survives_the_whole_routine_path(profiles):
+    """Everything else in this file schedules with ``every 30m``.
+
+    That was a workaround for a container with no croniter, not a decision —
+    and it meant the one schedule format an operator is most likely to type
+    was never carried end to end. This is the same path with a real
+    expression.
+    """
+    routine = crew_routines.create_routine(
+        bot_id="scout", name="Weekday digest", schedule="0 9 * * 1-5",
+        instructions="Summarise overnight.",
+    )
+    assert routine["id"]
+
+    [listed] = [r for r in crew_routines.list_routines("scout") if r["id"] == routine["id"]]
+    assert listed["enabled"] is True
+    assert listed["cron"] == "0 9 * * 1-5", "the expression survives the round trip"
+    # The humanised line is what the approval card shows, so it has to say
+    # something a person can check the schedule against.
+    assert listed["human"] == "Weekdays at 9:00 AM"
+
+
 # ---------------------------------------------------------------------------
 # Routine type: a reminder should not cost a model call
 # ---------------------------------------------------------------------------

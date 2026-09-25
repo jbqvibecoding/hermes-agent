@@ -11,7 +11,12 @@ jobs:
     strategy:
       matrix:
         package:
-          [ui-tui, web, apps/bootstrap-installer, apps/desktop, apps/shared]
+          # apps/crew-ui ships a `typecheck` script but was never listed here,
+          # so nothing ran it: three type errors accumulated in its test
+          # fixtures across two features before anybody looked. `apps/desktop`
+          # compiles the same components and stayed green throughout, because
+          # its tsconfig does not pull in `*.test.tsx`.
+          [ui-tui, web, apps/bootstrap-installer, apps/crew-ui, apps/desktop, apps/shared]
       fail-fast: false # report all failures, not just the first one
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

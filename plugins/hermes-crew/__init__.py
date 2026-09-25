@@ -55,11 +55,41 @@ def register(ctx) -> None:
 
     _register_skills(ctx)
 
-    _record_policy()
-
-    _recover_interrupted_releases()
+    # Both of these write to crew.db, and a test run is not a boot. See
+    # `_is_test_process` — leaving them ungated put rows in the developer's
+    # real database, which is the accident `crew.worker.should_run` was
+    # already built to prevent for the worker thread.
+    if not _is_test_process():
+        _record_policy()
+        _recover_interrupted_releases()
 
     log.debug("crew: registered %d tools and 4 hooks", len(CREW_TOOLS))
+
+
+def _is_test_process() -> bool:
+    """Whether this is a test run rather than a Hermes boot.
+
+    ``PYTEST_CURRENT_TEST`` is not enough, and the difference is the whole
+    bug. pytest sets that variable per *test*; this plugin is a bundled
+    backend, so it registers while pytest is still **importing test
+    modules**. No fixture has run at that point, ``HERMES_HOME`` is still
+    unset, and ``crew.db.crew_home()`` therefore falls back to the platform
+    default — the developer's real ``~/.hermes``. A boot-time ledger line
+    then lands in their actual database.
+
+    It did. 27 ``crew.policy_loaded`` rows, one per test-suite run, and
+    nothing was ever red: the writes succeeded. ``tests/conftest.py`` states
+    the rule this violated — *"code using ``Path.home() / '.hermes'`` instead
+    of the canonical ``get_hermes_home()`` is a bug to fix at the callsite"* —
+    and the callsite is registration-time I/O, which happens outside any
+    test's environment by construction.
+
+    So the module check, not the variable: ``pytest`` is in ``sys.modules``
+    from the moment collection starts, which is when the damage was done.
+    """
+    import os
+
+    return "pytest" in sys.modules or bool(os.environ.get("PYTEST_CURRENT_TEST"))
 
 
 def _start_task_worker() -> None:

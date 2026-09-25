@@ -165,6 +165,10 @@ it.each(["session", "connection"])(
       width={340}
       onResize={vi.fn()}
       agentName="Scout"
+      agentRole="Scouting"
+      proactive
+      onSetProactive={vi.fn(async () => undefined)}
+      onDraft={vi.fn()}
       computer={{ id: "crew-scout", agentId: "scout", runtimeName: "crew-scout", status: "online", capabilities: ["open"] }}
       approvals={[]}
       routines={[]}

@@ -15,6 +15,7 @@ import { ChipView, type ChipHandlers } from "./index";
 const handlers = (over: Partial<ChipHandlers> = {}): ChipHandlers => ({
   onDecide: vi.fn(),
   onOpenScreen: vi.fn(),
+  onSubmitSecret: vi.fn(async () => undefined),
   screenshotUrl: (agentId, file) => `/api/plugins/hermes-crew/screenshots/${agentId}/${file}`,
   ...over,
 });

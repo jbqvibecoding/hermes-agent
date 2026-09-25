@@ -67,6 +67,10 @@ function stubClient(overrides: Partial<CloudAgentsClient> = {}): CloudAgentsClie
     clearGrant: async (_agentId, tool) => ({ tool, toolset: "", mode: "ask" as const, why: "", source: "default" as const, protected: false }),
     listAuditEvents: async () => ({ events: [], nextBeforeId: null }),
     deleteRoutine: async () => undefined,
+    // Returns `filled: false`: the stub types no secret into any page, and a
+    // default that claimed success would let a test assert the operator was
+    // signed in when nothing happened.
+    submitSecret: async () => ({ filled: false }),
     screenshotUrl: (a, f) => `/screenshots/${a}/${f}`,
     ...overrides,
   };
