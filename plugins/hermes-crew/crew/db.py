@@ -263,6 +263,27 @@ CREATE TABLE IF NOT EXISTS routine_health (
     last_error      TEXT NOT NULL DEFAULT ''
 );
 
+-- Who is mid-turn right now, in any process.
+--
+-- This started as a dict in the orchestrator's memory, which is right only
+-- when the process being asked is the one running the turn. Since routines
+-- moved to the gateway that is usually false: a routine burning there showed
+-- as **idle** in the dashboard, which is the answer somebody reads before
+-- deciding whether to interrupt.
+--
+-- `expires_at` rather than a flag, per rowboat's agent-activity lease: a flag
+-- needs somebody to clear it, and the case where nobody does — SIGKILL
+-- mid-turn — is exactly the case that matters. Not persisting it avoided that
+-- by being wrong in the other direction; an expiry gets both.
+CREATE TABLE IF NOT EXISTS presence (
+    bot_id      TEXT PRIMARY KEY,
+    holder      TEXT NOT NULL,                -- "<pid>:<run>", so a reused pid cannot renew
+    what        TEXT NOT NULL DEFAULT '',     -- a short human label, not a state
+    thread_id   TEXT NOT NULL DEFAULT '',
+    started_at  INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL
+);
+
 -- What a teammate has already raised unprompted, so it does not raise the
 -- same thing twice. `subject` is a stable key for the thing itself
 -- (`approval:12`, `routine:<job>`, `task:<id>`) rather than for the message,

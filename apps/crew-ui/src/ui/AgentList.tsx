@@ -84,13 +84,19 @@ export function AgentList({
           <span>{agent.name}</span>
           <span className={`agent-status ${agent.status}`} title={STATUS_LABEL[agent.status]} aria-label={STATUS_LABEL[agent.status]} />
         </strong>
-        {agent.lastMessagePreview && <span className="agent-preview agent-preview-entering">
-          <Suspense fallback={agent.lastMessagePreview}>
-            <Streamdown className="agent-preview-markdown" mode="static" controls={false} linkSafety={{ enabled: true }} skipHtml>
-              {agent.lastMessagePreview}
-            </Streamdown>
-          </Suspense>
-        </span>}
+        {/* What it is doing now displaces what it last said. The preview is
+            the better line when a teammate is idle and the worse one while it
+            is mid-routine, because "is this thing moving" is the question
+            somebody is actually asking of a row with a live badge on it. */}
+        {agent.workingOn
+          ? <span className="agent-preview agent-working-on">{agent.workingOn}</span>
+          : agent.lastMessagePreview && <span className="agent-preview agent-preview-entering">
+            <Suspense fallback={agent.lastMessagePreview}>
+              <Streamdown className="agent-preview-markdown" mode="static" controls={false} linkSafety={{ enabled: true }} skipHtml>
+                {agent.lastMessagePreview}
+              </Streamdown>
+            </Suspense>
+          </span>}
       </span>
     </button>
     <button

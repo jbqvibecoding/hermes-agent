@@ -182,8 +182,17 @@ def teammate_status(conn: sqlite3.Connection, bot_id: str, *, working: bool = Fa
     return "idle" if profile_dir(bot_id).is_dir() else "offline"
 
 
-def teammate_view(conn: sqlite3.Connection, bot: dict, *, working: bool = False) -> dict:
-    """Shape one roster row the way the sidebar wants it."""
+def teammate_view(
+    conn: sqlite3.Connection, bot: dict, *, working: bool = False, what: str = "",
+) -> dict:
+    """Shape one roster row the way the sidebar wants it.
+
+    ``what`` is a short human label for the work in flight ("routine: standup",
+    "in Launch room") and is empty whenever nothing is running. It is carried
+    separately from ``status`` rather than folded into it because the status is
+    a closed union the client switches on, and four states that a colour maps
+    to is the reason that union is useful.
+    """
     thread_id = crew_db.dm_thread_id(bot["id"])
     return {
         "id": bot["id"],
@@ -194,6 +203,7 @@ def teammate_view(conn: sqlite3.Connection, bot: dict, *, working: bool = False)
         "thread_id": thread_id,
         "created_at": bot["created_at"],
         "status": teammate_status(conn, bot["id"], working=working),
+        "working_on": what if working else "",
         "exists": profile_dir(bot["id"]).is_dir(),
         "proactive": bool(bot.get("proactive", 1)),
         "last_message": crew_db.last_message(conn, thread_id),
@@ -203,15 +213,18 @@ def teammate_view(conn: sqlite3.Connection, bot: dict, *, working: bool = False)
 def list_teammates(conn: sqlite3.Connection) -> list[dict]:
     """The roster, with each teammate's live state.
 
-    "Who is working right now" lives in the orchestrator's in-process registry,
-    not the database — it is a transient, and a crashed process must not leave
-    a teammate looking busy forever.
+    "Who is working right now" comes from :mod:`crew.presence`, which is a
+    lease in the database rather than a flag in whichever process was asked.
+    That distinction is the whole of it: a routine burning in the gateway used
+    to render here as **idle**, because the dashboard could only see turns the
+    dashboard itself had started.
     """
-    from crew.orchestrator import working_bot_ids
+    from crew import presence as crew_presence
 
-    busy = working_bot_ids()
+    busy = crew_presence.working(conn)
     return [
-        teammate_view(conn, bot, working=bot["id"] in busy)
+        teammate_view(conn, bot, working=bot["id"] in busy,
+                      what=(busy.get(bot["id"]) or {}).get("what", ""))
         for bot in crew_db.list_bots(conn)
     ]
 

@@ -25,6 +25,9 @@ out below, because they are the parts worth not re-deciding.
 | `crew/contract.py` | `errand/src/domain/CloudAgentsClient.ts` | Apache-2.0 | the whole `/v1` domain model |
 | `crew/db.py`, `crew/sections.py` | `grok-bot/shared/sidebar-sections.ts` | MIT | the org chart and its `__agents__` sentinel |
 | `crew/artifacts.py` | `octop/infra/agents/middleware/thread_artifacts.py` | MIT | the path keys, the "looks like a file" predicate, args-before-result |
+| `crew/mentions.py` | `rowboat/protocol/src/mentions.ts` | Apache-2.0 | resolving mentions **once, at write time**, and storing the answer |
+| `crew/presence.py` | `rowboat/skills/spaces/agent-activity.ts` | Apache-2.0 | busy as an expiring lease rather than a flag |
+| `crew/prompts.py::RECEIPTS` | `rowboat/skills/spaces/procedures.ts` | Apache-2.0 | the three receipt marks, and "a receipt says what you did, not what you read" |
 
 ## The decisions worth not re-deciding
 
@@ -53,6 +56,28 @@ between render and click the card can be rewritten underneath the operator.
 **A tool result is read for paths only when the arguments gave none** (octop).
 A result is text the tool wrote and may mention a file it never touched; an
 argument is what the call was actually about.
+
+**Mentions are resolved once, when the message is written** (rowboat). Nothing
+downstream re-reads the text. The alternative drifts: a renderer parses to
+highlight, a router parses to decide who answers, and the day one of them folds
+a separator differently, a message is highlighted for somebody who was never
+asked. `crew/contract.py` ships the stored list to the client for exactly this
+reason — `apps/crew-ui/src/domain/mentions.ts` finds *where* a name sits in the
+string and takes *whether it was an address* from the server.
+
+**Busy is a lease, not a flag** (rowboat). A flag needs somebody to clear it,
+and the case where nobody does — SIGKILL mid-turn — is the case that matters.
+This one is worth stating because the thing it replaced had the opposite
+failure and a defensible-sounding reason for it: keeping "working" in process
+memory meant a crash could not strand it, at the price of the dashboard being
+unable to see a turn it had not started itself. Since routines moved to the
+gateway that was most turns, so a routine burning there rendered as *idle* to
+whoever was deciding whether to interrupt it. An expiry gets both properties.
+
+**A receipt says what you did, not what you read** (rowboat). Agents in a room
+acknowledge each other, at length, and the transcript stops being worth
+reading. One glyph — 👀 / ✅ / ❗ — carries the state, and a line whose whole
+content is "seen" is refused by the prompt.
 
 ## Where we diverged, and why
 

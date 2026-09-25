@@ -78,6 +78,10 @@ def agent(view: dict) -> dict:
         "role": view.get("role") or "",
         "goal": view.get("role") or "",
         "status": view.get("status") or "idle",
+        # What it is busy *with*, when it is busy. Errand's `Agent` has no such
+        # field because its agents do one thing; ours can be mid-routine,
+        # mid-room or mid-reply, and "working" alone does not say which.
+        "workingOn": view.get("working_on") or "",
         "avatar": view.get("emoji") or "🤖",
         "lastActiveAt": iso((last or {}).get("created_at") or view.get("created_at")),
         "unreadCount": 0,
@@ -196,6 +200,11 @@ def message(row: dict) -> dict:
         "createdAt": iso(row.get("created_at")),
         "streaming": bool(row.get("streaming")),
         "sender": sender,
+        # Who this was addressed to, as resolved when it was written. The
+        # client highlights from this list rather than re-reading the text,
+        # which is the whole reason the resolution is stored: two parsers that
+        # disagree would highlight a name for somebody who was never asked.
+        "mentions": list((row.get("payload") or {}).get("mentions") or []),
     }
 
 

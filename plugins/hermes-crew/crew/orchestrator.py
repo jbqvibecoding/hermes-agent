@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import contextvars
 import logging
+import sqlite3
 import threading
 import time
 import uuid
@@ -39,6 +40,8 @@ from typing import Any, Callable, Optional, Sequence
 from crew import approvals as crew_approvals
 from crew import computer as crew_computer
 from crew import db as crew_db
+from crew import mentions as crew_mentions
+from crew import presence as crew_presence
 from crew import prompts, roster
 from crew.a2a import HOP_LIMIT_MESSAGE, MAX_HOPS, can_message, deny_reason, parse_a2a_allow
 
@@ -161,27 +164,65 @@ def new_turn_id() -> str:
     return f"turn_{uuid.uuid4().hex[:16]}"
 
 
-# Who is mid-turn right now. Deliberately in-process and not persisted: a
-# crashed or restarted process must not leave a teammate looking busy forever,
-# and the truthful answer after a restart is "nobody is working", because
-# nobody is. A counter rather than a set because a teammate can be running a
-# DM turn and a group round at the same time.
+# Who is mid-turn right now.
+#
+# This was a dict in this module's memory, and the comment defending that said
+# a crashed process must not leave a teammate looking busy forever. True, and
+# the fix it chose paid for it with the opposite error: the dashboard could
+# only ever see turns the dashboard itself started, so a routine burning in
+# the gateway read as **idle** — to a person deciding whether to interrupt it.
+#
+# `crew.presence` gets both properties by making busy a *lease*: it is in the
+# database so every process can see it, and it expires on its own so a killed
+# process stops claiming it. What is left here is the depth counter, which
+# stays in memory because it is a property of this process: a teammate can be
+# running a DM turn and a group round at once, and the claim belongs to the
+# outermost one.
 _working: dict[str, int] = {}
+_leases: dict[str, "crew_presence.Lease"] = {}
 _working_lock = threading.Lock()
 
 
-def working_bot_ids() -> frozenset[str]:
-    with _working_lock:
-        return frozenset(bot_id for bot_id, depth in _working.items() if depth > 0)
+def working_bot_ids(conn: Optional[sqlite3.Connection] = None) -> frozenset[str]:
+    """Every teammate mid-turn anywhere, not just in this process."""
+    try:
+        return frozenset(crew_presence.working(conn or crew_db.connect()))
+    except Exception:
+        # The badge is not worth an exception on a roster read. Fall back to
+        # what this process knows, which is what the whole roster used to be.
+        log.debug("crew: could not read presence", exc_info=True)
+        with _working_lock:
+            return frozenset(bot_id for bot_id, depth in _working.items() if depth > 0)
 
 
-def _mark_working(bot_id: str, delta: int) -> None:
+def _mark_working(bot_id: str, delta: int, *, what: str = "", thread_id: str = "") -> None:
+    """Enter or leave the working state, claiming the lease at the edges.
+
+    Only the 0→1 and 1→0 transitions touch the database. A nested turn is the
+    same teammate still working, and re-claiming would hand the row a new
+    holder id that the outer turn's release then fails to match — leaving a
+    claim to expire on its own when there is somebody right there to end it.
+    """
     with _working_lock:
-        depth = _working.get(bot_id, 0) + delta
+        before = _working.get(bot_id, 0)
+        depth = before + delta
         if depth > 0:
             _working[bot_id] = depth
         else:
             _working.pop(bot_id, None)
+        if (before > 0) == (depth > 0):
+            return  # a nested turn, not an edge — the claim already stands
+
+        # Both edges drop whatever was held: on the way up that can only be a
+        # leftover from a turn that died without unwinding, and leaving its
+        # renewal thread running would keep a claim alive for work that ended.
+        lease = _leases.pop(bot_id, None)
+        if lease is not None:
+            lease.stop()
+        if depth > 0:
+            _leases[bot_id] = crew_presence.Lease(
+                bot_id, what=what, thread_id=thread_id,
+            ).start()
 
 
 # ---------------------------------------------------------------------------
@@ -576,7 +617,13 @@ def start_turn(
         group_title=group[0] if group else None,
     )
     token = _turn_context.set(context)
-    _mark_working(bot_id, +1)
+    _mark_working(
+        bot_id, +1,
+        # A label, not a state. "working" is what the badge already says; what
+        # a person wants from the sidebar is which room it is working in.
+        what=f"in {group[0]}" if group else "replying",
+        thread_id=thread_id,
+    )
     emit_status(bot_id, "working")
 
     # The reply row exists from the first moment so deltas have somewhere to
@@ -632,7 +679,10 @@ def start_turn(
         # Not a hardcoded "idle": a teammate that ended its turn by holding an
         # action is waiting for a *person*, and announcing idle here would
         # repaint the sidebar grey the instant the amber badge was earned.
-        emit_status(bot_id, roster.teammate_status(conn, bot_id, working=bot_id in working_bot_ids()))
+        emit_status(
+            bot_id,
+            roster.teammate_status(conn, bot_id, working=bot_id in working_bot_ids(conn)),
+        )
 
 
 #: How much extra wall time the delivery check may spend sending a turn back.
@@ -960,7 +1010,7 @@ def run_group_round(
     turn_id: str = "",
     persist_user_message: bool = True,
 ) -> None:
-    """Ask the room, then let the chief close it.
+    """Ask whoever was addressed, then let the chief close an open round.
 
     Members speak **sequentially**, non-chief first and the chief last. The
     order is the feature: each speaker's turn is a separate agent run reading
@@ -968,25 +1018,41 @@ def run_group_round(
     a full set of reports to build the dispatch table from. Running them in
     parallel would be faster and would produce four people answering the same
     question.
+
+    Addressing somebody by name narrows that to them. Before this, "@Ada can
+    you check the deploy?" ran four agent turns and produced three answers
+    nobody asked for, which is both the cost of four model runs and the reason
+    group threads got quiet — a room where every question summons everyone is
+    a room people stop asking questions in.
     """
     conn = crew_db.connect()
     thread = crew_db.get_thread(conn, thread_id)
     if thread is None:
         raise ValueError(f"No thread called {thread_id}.")
 
-    if persist_user_message:
-        crew_db.insert_message(
-            conn, thread_id=thread_id, sender="user", kind="text", content=text
-        )
-
     chief = roster.chief_id()
     members = [crew_db.get_bot(conn, bot_id) for bot_id in crew_db.thread_members(conn, thread_id)]
     members = [m for m in members if m]
     names = [m["name"] for m in members]
-    speakers = [m for m in members if m["id"] != chief] + [m for m in members if m["id"] == chief]
+    speakers, addressed = crew_mentions.speakers_for(text, members, chief_id=chief)
+
+    if persist_user_message:
+        crew_db.insert_message(
+            conn, thread_id=thread_id, sender="user", kind="text", content=text,
+            # Stamped here and never derived again. Everything downstream — who
+            # answers, and whatever a client wants to highlight — reads this
+            # list, so there is exactly one answer to "who was this for" and no
+            # way for two parsers to drift apart on it.
+            payload={"mentions": addressed} if addressed else None,
+        )
 
     for index, bot in enumerate(speakers):
-        seed = prompts.group_chief_seed(text) if bot["id"] == chief else prompts.group_member_seed(text)
+        if addressed:
+            seed = prompts.group_addressed_seed(text, bot["name"], others=len(speakers) > 1)
+        elif bot["id"] == chief:
+            seed = prompts.group_chief_seed(text)
+        else:
+            seed = prompts.group_member_seed(text)
         start_turn(
             bot["id"],
             thread_id,

@@ -1,4 +1,4 @@
-import { C as f } from "./chunk-workspace-DeZa-3h1.js";
+import { C as f } from "./chunk-workspace-BoKucfTa.js";
 export {
   f as default
 };

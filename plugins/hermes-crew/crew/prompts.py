@@ -212,10 +212,46 @@ def handoff_seed(from_name: str, from_id: str, content: str) -> str:
     )
 
 
+#: The three marks a teammate opens a group reply with.
+#:
+#: From rowboat's ``skills/spaces/procedures.ts``, whose rule is the part worth
+#: taking: **a receipt says what you did, not what you read.** A room full of
+#: agents acknowledging each other is the failure mode; one glyph that says
+#: which of three things happened is the fix. Somebody scrolling a busy room
+#: can find every ❗ without reading a word.
+RECEIPTS = (
+    "Open with exactly one of these, then a space:\n"
+    "  👀  — you have picked this up and are working on it now\n"
+    "  ✅  — it is done, and the rest of your line says what came of it\n"
+    "  ❗  — you are stopped and need your operator; say what you need\n"
+    "The mark is about what you did, not what you read. Never post a line whose "
+    "whole content is that you have seen something — that is what the mark is for."
+)
+
+
 def group_member_seed(text: str) -> str:
     return (
         f'Your operator asked the group: "{text}". '
-        f"Answer for your own patch only, in two lines or less."
+        f"Answer for your own patch only, in two lines or less.\n{RECEIPTS}"
+    )
+
+
+def group_addressed_seed(text: str, name: str, *, others: bool = False) -> str:
+    """The seed for a teammate who was named, rather than the room.
+
+    It is told it was named. Without that it reads a message addressed to
+    somebody by name and has to guess whether answering is its place — and the
+    guess it makes is to answer anyway, which is the behaviour being fixed.
+    """
+    company = (
+        "Others were named too and will answer for themselves; "
+        if others else
+        "Nobody else was asked, so this one is yours to finish. "
+    )
+    return (
+        f'Your operator asked you directly, by name: "{text}". '
+        f"{company}"
+        f"Answer as {name}, for your own patch, in two lines or less.\n{RECEIPTS}"
     )
 
 
@@ -223,5 +259,7 @@ def group_chief_seed(text: str) -> str:
     return (
         f'Your operator asked the group: "{text}". Everyone else has reported above. '
         f'Post the dispatch table now — one "✓ item → @bot · when" line each — '
-        f"then one sentence on what needs your operator today."
+        f"then one sentence on what needs your operator today.\n"
+        f"The @names in that table are addresses: writing @bot is how your "
+        f"operator can then ask that one teammate without waking the room."
     )

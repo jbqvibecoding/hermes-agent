@@ -27,6 +27,16 @@ export interface Agent {
   role: string;
   goal: string;
   status: AgentStatus;
+  /**
+   * A short label for the work in flight — "routine: Morning digest", "in
+   * Launch room", "replying" — and empty whenever nothing is running.
+   *
+   * Errand's agents do one thing, so `status` is the whole answer there. Ours
+   * can be mid-routine, mid-room or mid-reply, and a person deciding whether
+   * to interrupt wants to know which. Kept out of `status` because that is a
+   * closed union a colour maps to, which is what makes it useful.
+   */
+  workingOn?: string;
   /** The teammate's emoji. Errand generates an avatar; we let people pick one. */
   avatar: string;
   lastActiveAt: string;
@@ -69,6 +79,13 @@ export interface Message {
   interrupted?: boolean;
   /** Which teammate said it. Empty for the operator; a room needs this to attribute. */
   sender?: string;
+  /**
+   * Which teammates this was addressed to, resolved by the server when the
+   * message was written and never derived again. Empty means it went to the
+   * whole room — which is not the same as addressing nobody, and is why this
+   * is a list rather than a flag.
+   */
+  mentions?: string[];
 }
 
 export interface Conversation {

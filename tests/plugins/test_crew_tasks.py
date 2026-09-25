@@ -382,6 +382,46 @@ def test_a_routine_that_fails_says_so_on_the_task(hooks, conn):
     assert task["error"] == "the API was down"
 
 
+def test_a_running_routine_shows_as_working_to_the_dashboard(hooks, conn):
+    """**The gap the presence lease was built for.**
+
+    A routine runs in the gateway. The badge used to read a dict in whichever
+    process was asked, so the dashboard — which never ran the turn — showed the
+    teammate as *idle* for the whole run, to a person deciding whether to
+    interrupt it. `conn` here is the reader that is not the runner.
+    """
+    from crew import presence
+
+    hooks.on_cron_job_fired(job_id="j7", job_name="crew:scout:Morning digest", prompt="go")
+
+    busy = presence.working(conn)
+    assert set(busy) == {"scout"}
+    assert busy["scout"]["what"] == "routine: Morning digest", "which routine, not just 'working'"
+
+
+def test_the_badge_goes_out_when_the_routine_ends(hooks, conn):
+    """Released, not left to expire. The expiry is the safety net for the run
+    that never reaches this line — a teammate that finished should go grey now,
+    not up to a lease later."""
+    from crew import presence
+
+    hooks.on_cron_job_fired(job_id="j8", job_name="crew:scout:Digest", prompt="go")
+    hooks.on_cron_job_finished(job_id="j8", success=True)
+    assert presence.working(conn) == {}
+
+
+def test_a_routine_whose_process_died_stops_claiming_the_badge(hooks, conn):
+    """No `finished` arrives; nothing runs to clear anything. The claim lapses
+    on its own, which is the one thing a persisted flag could not do."""
+    import time
+
+    from crew import presence
+
+    hooks.on_cron_job_fired(job_id="j9", job_name="crew:scout:Digest", prompt="go")
+    assert presence.working(conn)                       # claimed while it runs
+    assert presence.working(conn, now=time.time() + presence.LEASE_S + 1) == {}
+
+
 def test_a_routine_whose_process_died_is_left_claimable(hooks, conn):
     """No `finished` ever arrives — the process was killed. The task keeps its
     lease until it lapses, and then it is somebody's to take over. This is the

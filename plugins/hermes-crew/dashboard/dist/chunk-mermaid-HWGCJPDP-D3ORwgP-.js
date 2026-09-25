@@ -1,4 +1,4 @@
-import { R as Er, g as Yu, m as pe, c as Cd, d as ye, e as ke, b as Me, f as qu, h as Ka, i as Vt, j as Id, u as Ce, k as en, a as Ae, l as $e, S as _i, r as Zi, n as Vu } from "./chunk-workspace-DeZa-3h1.js";
+import { R as Er, g as Yu, m as pe, c as Cd, d as ye, e as ke, b as Me, f as qu, h as Ka, i as Vt, j as Id, u as Ce, k as en, a as Ae, l as $e, S as _i, r as Zi, n as Vu } from "./chunk-workspace-BoKucfTa.js";
 const Fr = (
   // Note: overloads in JSDoc can’t yet use different `@template`s.
   /**
@@ -20344,7 +20344,7 @@ var wc = en(!1), Lc = () => Ce(wc), Jr = (...e) => tc(Ul(e)), _x = (e, t) => {
   for (; t > 0 && e[t - 1] === `
 `; ) t--;
   return e.slice(0, t);
-}, Ox = Vu(() => import("./chunk-highlighted-body-KPVGNVTW-DOK-sYl3.js").then((e) => ({ default: e.HighlightedCodeBlockBody }))), Bc = ({ code: e, language: t, className: n, children: r, isIncomplete: i = !1, startLine: a, lineNumbers: s, ...u }) => {
+}, Ox = Vu(() => import("./chunk-highlighted-body-KPVGNVTW-0jHrZZkK.js").then((e) => ({ default: e.HighlightedCodeBlockBody }))), Bc = ({ code: e, language: t, className: n, children: r, isIncomplete: i = !1, startLine: a, lineNumbers: s, ...u }) => {
   let o = ie(), { codeBlockMaxHeight: c } = Ce(De), d = ye(() => Rx(e), [e]), h = ye(() => ({ bg: "transparent", fg: "inherit", tokens: d.split(`
 `).map((p) => [{ content: p, color: "inherit", bgColor: "transparent", htmlStyle: {}, offset: 0 }]) }), [d]);
   return A(Pc.Provider, { value: { code: e }, children: re(Dc, { dir: "ltr", isIncomplete: i, language: t, children: [A(vc, { language: t }), r ? A("div", { className: o("pointer-events-none sticky top-2 z-10 -mt-10 flex h-8 items-center justify-end"), children: A("div", { className: o("pointer-events-auto flex shrink-0 items-center gap-2 rounded-md border border-sidebar bg-sidebar/80 px-1.5 py-1 supports-[backdrop-filter]:bg-sidebar/70 supports-[backdrop-filter]:backdrop-blur"), "data-streamdown": "code-block-actions", children: r }) }) : null, A(_i, { fallback: A(Lx, { className: n, language: t, lineNumbers: s, maxHeight: c, result: h, startLine: a, ...u }), children: A(Ox, { className: n, code: d, language: t, lineNumbers: s, maxHeight: c, raw: h, startLine: a, ...u }) })] }) });

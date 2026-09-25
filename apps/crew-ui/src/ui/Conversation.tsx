@@ -18,6 +18,7 @@ import {
   lazy, Suspense, useEffect, useLayoutEffect, useRef, useState,
   type FormEvent, type MouseEvent,
 } from "react";
+import { splitMentions } from "../domain/mentions";
 import type { ActivityEvent, Agent, Conversation as Thread, Message } from "../domain/types";
 import { AgentAvatar } from "./AgentAvatar";
 import { ChipView, type ChipHandlers } from "./chips";
@@ -93,13 +94,17 @@ function WorkingActivity({ agent, label, activities, startedAt }: {
   </details>;
 }
 
-export function MessageView({ message, agent, senderName, activities, chips, entering = false }: {
+export function MessageView({
+  message, agent, senderName, activities, chips, entering = false, room = [],
+}: {
   message: Message;
   agent?: Pick<Agent, "id" | "name">;
   senderName?: string;
   activities: ActivityEvent[];
   chips: ChipHandlers;
   entering?: boolean;
+  /** Who is in this thread, for turning `message.mentions` back into names. */
+  room?: Agent[];
 }) {
   const text = textOf(message);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -146,7 +151,11 @@ export function MessageView({ message, agent, senderName, activities, chips, ent
               skipHtml
             >{text}</Streamdown>
           </Suspense>
-        : text}
+        : splitMentions(text, message.mentions, room).map((span, index) => span.agentId
+            ? <mark key={index} className="mention" title={`Asked ${
+                room.find((a) => a.id === span.agentId)?.name ?? span.agentId
+              } directly`}>{span.text}</mark>
+            : <span key={index}>{span.text}</span>)}
     </div>}
     {agentWorking && <WorkingActivity
       agent={agent} label={workingLabel} activities={conversationActivities} startedAt={message.createdAt} />}
@@ -192,6 +201,11 @@ export function Conversation({
 
   const title = thread?.title || agent?.name || "Crew";
   const isRoom = thread?.kind === "group";
+  // Only for turning ids the server sent back into names to show. Membership
+  // is not re-derived here: who was addressed already arrived resolved.
+  const roomMembers = (thread?.members ?? [])
+    .map((id) => agentsById.get(id))
+    .filter((a): a is Agent => Boolean(a));
   const threadKey = thread?.id ?? agent?.id ?? "";
 
   useLayoutEffect(() => {
@@ -328,6 +342,7 @@ export function Conversation({
               // Only a room needs an attribution line; in a DM there is only
               // ever one voice on that side.
               senderName={isRoom ? agentsById.get(message.sender ?? "")?.name : undefined}
+              room={roomMembers}
               activities={activities}
               chips={chips}
               entering={enteringMessageIds.has(message.id) || message.id.startsWith("optimistic-user:")}

@@ -28,6 +28,13 @@ Written for this repo rather than ported: `src/client/HermesCrewClient.ts`,
 `src/ui/CrewWorkspace.tsx`, `src/ui/HireDialog.tsx`, `src/ui/AgentAvatar.tsx`,
 `src/ui/chips/`.
 
+`src/domain/mentions.ts` is ours, but the rule it follows is rowboat's
+(`protocol/src/mentions.ts`, Apache-2.0): the server resolves mentions once,
+when the message is written, and this file only locates them in the string —
+whether a span is an address comes from `message.mentions`. Deciding that here
+too would make this a second parser, and the day the two fold a separator
+differently, a line is highlighted for a teammate who was never asked.
+
 ## Notes on the two places we could not follow Errand
 
 **noVNC's import path.** Errand imports `@novnc/novnc/lib/rfb.js`, which worked

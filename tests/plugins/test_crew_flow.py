@@ -327,6 +327,79 @@ def test_the_group_seeds_are_invisible(crew):
     assert user_messages[0]["content"] == "where are we?"
 
 
+def test_naming_one_teammate_does_not_summon_the_room(crew):
+    """**Three agent turns become one.**
+
+    Before this, "@Scout ..." ran every member: four models answered a question
+    aimed at one of them, and the two answers nobody wanted were what made
+    group threads not worth using. Asserting on the *senders* rather than on
+    the router is what makes this a test about cost — a turn that did not
+    happen leaves no message.
+    """
+    crew_db.ensure_group_thread(crew.conn, "group:crew", "Offsite crew", ["chief", "scout", "sorter"])
+    crew.scripts["scout"] = ["👀 on it"]
+    crew.scripts["sorter"] = ["Sorter's patch is fine."]
+    crew.scripts["chief"] = ["✓ nothing → nobody · today"]
+
+    orchestrator.run_group_round("group:crew", "@scout can you check the deploy?")
+
+    senders = [m["sender"] for m in crew_db.list_messages(crew.conn, "group:crew")]
+    assert senders == ["user", "scout"]
+
+
+def test_who_was_addressed_is_stamped_on_the_message_once(crew):
+    """Resolved at write time and stored, per rowboat's mentions.
+
+    Nothing downstream re-reads the text, which is the property that keeps a
+    renderer's idea of who was addressed and the router's from ever drifting
+    apart. The row carries ids, not the names that were typed — two teammates
+    can share a display name and neither can share an id.
+    """
+    crew_db.ensure_group_thread(crew.conn, "group:crew", "Offsite crew", ["chief", "scout"])
+    crew.scripts["scout"] = ["fine"]
+
+    orchestrator.run_group_round("group:crew", "@Scout the deploy?")
+
+    [message] = [m for m in crew_db.list_messages(crew.conn, "group:crew") if m["sender"] == "user"]
+    assert message["payload"] == {"mentions": ["scout"]}
+
+
+def test_a_question_to_the_room_is_stamped_with_nothing(crew):
+    """The absence is as load-bearing as the presence: an empty list would read
+    as "addressed to nobody", and a client highlighting mentions would have to
+    tell the two apart."""
+    crew_db.ensure_group_thread(crew.conn, "group:crew", "Offsite crew", ["chief", "scout"])
+    crew.scripts["scout"] = ["fine"]
+    crew.scripts["chief"] = ["fine"]
+
+    orchestrator.run_group_round("group:crew", "where are we?")
+
+    [message] = [m for m in crew_db.list_messages(crew.conn, "group:crew") if m["sender"] == "user"]
+    assert message["payload"] is None
+
+
+def test_an_addressed_teammate_is_told_it_was_named(crew, monkeypatch):
+    """Otherwise it reads a message aimed at somebody by name and has to guess
+    whether answering is its place — and the guess it makes is to answer."""
+    crew_db.ensure_group_thread(crew.conn, "group:crew", "Offsite crew", ["chief", "scout"])
+    crew.scripts["scout"] = ["fine"]
+
+    seeds: list[str] = []
+    real = orchestrator.start_turn
+    monkeypatch.setattr(
+        orchestrator, "start_turn",
+        lambda bot_id, thread_id, text, **kw: (
+            seeds.append(text), real(bot_id, thread_id, text, **kw),
+        )[1],
+    )
+
+    orchestrator.run_group_round("group:crew", "@scout the deploy?")
+
+    assert len(seeds) == 1
+    assert "directly, by name" in seeds[0]
+    assert "asked the group" not in seeds[0]
+
+
 # ---------------------------------------------------------------------------
 # Tools outside a thread
 # ---------------------------------------------------------------------------

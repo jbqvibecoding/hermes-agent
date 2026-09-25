@@ -477,6 +477,7 @@ def on_cron_job_fired(
     """Open a leased task for a crew routine that is about to run."""
     try:
         from crew import db as crew_db
+        from crew import presence as crew_presence
         from crew import routines as crew_routines
         from crew import tasks as crew_tasks
 
@@ -517,8 +518,17 @@ def on_cron_job_fired(
         crew_routines.record_attempt(conn, job_id=job_id, bot_id=bot_id)
 
         heartbeat = crew_tasks.Heartbeat(claimed["id"], claimed["lease_id"]).start()
+        # This run happens in the gateway, and before the presence lease the
+        # dashboard had no way to know it was happening at all — the badge read
+        # the asking process's own memory, so a routine burning here showed as
+        # "idle" to whoever was deciding whether to interrupt it.
+        lease = crew_presence.Lease(
+            bot_id, what=f"routine: {name}", thread_id=claimed.get("thread_id", ""),
+        ).start()
         with _cron_runs_lock:
-            _cron_runs[job_id] = {"task": claimed, "heartbeat": heartbeat}
+            _cron_runs[job_id] = {
+                "task": claimed, "heartbeat": heartbeat, "presence": lease,
+            }
         crew_tasks.hold(claimed["id"])
         # The turn runs next, in this process. Tools called during it reach the
         # task through here.
@@ -543,6 +553,12 @@ def on_cron_job_finished(
         from crew import tasks as crew_tasks
 
         run["heartbeat"].stop()
+        # Released rather than left to expire: the badge should go out when the
+        # routine ends, not up to a lease later. The expiry is the safety net
+        # for the run that never reaches this line, not the normal path.
+        presence_lease = run.get("presence")
+        if presence_lease is not None:
+            presence_lease.stop()
         task = run["task"]
         crew_tasks.clear_current(task["bot_id"])
         crew_tasks.unhold(task["id"])

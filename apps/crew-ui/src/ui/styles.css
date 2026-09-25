@@ -285,6 +285,25 @@
   font: inherit;
   white-space: nowrap;
 }
+/* An address, not a highlight: this marks the teammate a line was aimed at,
+   and only the server's resolution puts it here. Tinted rather than boxed
+   because a room where two of five words are boxed is harder to read than one
+   with no marks at all. */
+.message .mention {
+  padding: 0 0.1em;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--crew-green) 18%, transparent);
+  color: inherit;
+  font-weight: 600;
+}
+
+/* Live work reads differently from a quote of the last thing said: it is the
+   teammate's own state, not its words, so it is italic and tinted to the same
+   green as the badge above it rather than styled as remembered text. */
+.agent-working-on {
+  color: color-mix(in srgb, var(--crew-green) 70%, var(--crew-dim));
+  font-style: italic;
+}
 .agent-preview-markdown br { display: none; }
 .agent-preview-markdown ul, .agent-preview-markdown ol { list-style: none; }
 .agent-preview-markdown li + li::before { content: " · "; }
