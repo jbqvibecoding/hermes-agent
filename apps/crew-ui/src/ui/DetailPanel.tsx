@@ -25,19 +25,22 @@ import { AuditTimeline } from "./AuditTimeline";
 import { FilesPanel } from "./FilesPanel";
 import { PlanPanel } from "./PlanPanel";
 import { PermissionsPanel } from "./PermissionsPanel";
+import { routineExamples } from "../domain/routineExamples";
 import { VncDesktop, VncSurface } from "./VncDesktop";
 
 export function DetailPanel({
-  open, width, onResize, agentName, computer, approvals, routines,
+  open, width, onResize, agentName, agentRole, computer, approvals, routines,
   grants, grantsBusy, audit, auditLoading, auditView, auditHasMore, artifacts, artifactUrl, tasks,
   proactive, onSetProactive,
-  onApproval, onComputerAction, onDeleteRoutine, onSetGrant, onClearGrant,
+  onApproval, onComputerAction, onDeleteRoutine, onDraft, onSetGrant, onClearGrant,
   onChangeAuditView, onLoadMoreAudit, onClose,
 }: {
   open: boolean;
   width: number;
   onResize(width: number): void;
   agentName: string;
+  /** The teammate's one-line job, for picking routine suggestions that fit it. */
+  agentRole: string;
   computer?: CloudComputer;
   approvals: ApprovalRequest[];
   routines: Routine[];
@@ -55,6 +58,8 @@ export function DetailPanel({
   onApproval(id: string, decision: "allow" | "deny", note?: string, contentHash?: string): Promise<void>;
   onComputerAction(action: "open" | "takeover"): Promise<CloudComputerSession>;
   onDeleteRoutine(routineId: string): Promise<void>;
+  /** Put text in the composer for the operator to edit and send. */
+  onDraft(text: string): void;
   onSetGrant(tool: string, mode: "deny" | "ask" | "allow"): Promise<void>;
   onClearGrant(tool: string): Promise<void>;
   onChangeAuditView(viewId: string, types: string[]): void;
@@ -268,7 +273,11 @@ export function DetailPanel({
       </label>
     </section>
 
-    {routines.length > 0 && <section className="routines-section">
+    {/* Rendered when the list is empty too, which it did not used to be.
+        Hiding the section until a teammate had a routine meant the people who
+        had never asked for one — the only people who needed to know the
+        feature was there — were the only ones it was hidden from. */}
+    <section className="routines-section">
       <div className="eyebrow">Routines</div>
       {routines.map((routine) => <div className="routine-row" key={routine.id}>
         <div>
@@ -281,7 +290,20 @@ export function DetailPanel({
           onClick={() => void onDeleteRoutine(routine.id)}
         ><Trash2 size={14} /></button>
       </div>)}
-    </section>}
+      {routines.length === 0 && <div className="routine-empty">
+        <p>Nothing on a schedule yet. Ask for something like:</p>
+        {routineExamples(agentRole).map((example) => <button
+          type="button"
+          className="routine-suggestion"
+          key={example}
+          // Fills the composer rather than sending. The time of day in a
+          // suggestion is a guess about somebody's morning, and that guess is
+          // the thing they will want to change before it becomes a standing
+          // instruction.
+          onClick={() => onDraft(example)}
+        >{example}</button>)}
+      </div>}
+    </section>
 
     <section className="drawer-section">
       <div className="drawer-tabs" role="tablist" aria-label="More about this teammate">

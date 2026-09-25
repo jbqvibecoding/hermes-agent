@@ -55,6 +55,9 @@ export function CrewWorkspace({ client, notify }: {
   const [dialogBusy, setDialogBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string>();
   const [focusRequest, setFocusRequest] = useState(0);
+  // A suggestion waiting in the composer. The nonce is what lets the same
+  // one be offered again after the operator has cleared it.
+  const [composerDraft, setComposerDraft] = useState({ text: "", nonce: 0 });
 
   const { agents, conversations, selectedAgent, selectedAgentId, selectedThreadId } = crew;
   const rooms = useMemo(() => conversations.filter((c) => c.kind === "group"), [conversations]);
@@ -269,6 +272,7 @@ export function CrewWorkspace({ client, notify }: {
       chips={chips}
       loading={crew.conversationLoading}
       focusRequest={focusRequest}
+      draft={composerDraft}
       onSend={(text) => crew.sendMessage(text).catch(() => undefined)}
       onToggleDetails={() => setDetailOpen((open) => !open)}
     />
@@ -278,6 +282,7 @@ export function CrewWorkspace({ client, notify }: {
       width={detailWidth}
       onResize={setDetailWidth}
       agentName={selectedAgent.name}
+      agentRole={selectedAgent.role}
       computer={crew.computer}
       approvals={crew.approvals}
       routines={routines}
@@ -296,6 +301,7 @@ export function CrewWorkspace({ client, notify }: {
       onSetProactive={(on) => crew.updateAgent(selectedAgent.id, { proactive: on })}
       onApproval={(id, decision, note, contentHash) => crew.respondToApproval(id, decision, note, contentHash)}
       onComputerAction={(action) => crew.openComputer(action)}
+      onDraft={(text) => setComposerDraft((current) => ({ text, nonce: current.nonce + 1 }))}
       onDeleteRoutine={async (routineId) => {
         await client.deleteRoutine(selectedAgent.id, routineId);
         setRoutines((current) => current.filter((routine) => routine.id !== routineId));

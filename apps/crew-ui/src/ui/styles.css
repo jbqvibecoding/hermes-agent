@@ -285,6 +285,34 @@
   font: inherit;
   white-space: nowrap;
 }
+/* The empty state that teaches the feature. Suggestions read as sentences
+   somebody could have typed, not as buttons, because what is being offered is
+   a thing to say — the click fills the composer and the operator edits it. */
+.routine-empty p {
+  margin: 0 0 0.4rem;
+  color: var(--crew-dim);
+  font-size: 0.75rem;
+}
+.routine-suggestion {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.3rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--crew-faint);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--crew-text);
+  font: inherit;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.routine-suggestion:hover {
+  border-color: color-mix(in srgb, var(--crew-green) 45%, var(--crew-faint));
+  background: color-mix(in srgb, var(--crew-green) 7%, transparent);
+}
+
 /* An address, not a highlight: this marks the teammate a line was aimed at,
    and only the server's resolution puts it here. Tinted rather than boxed
    because a room where two of five words are boxed is harder to read than one

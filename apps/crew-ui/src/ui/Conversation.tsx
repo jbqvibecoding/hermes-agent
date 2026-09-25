@@ -166,7 +166,7 @@ export function MessageView({
 
 export function Conversation({
   agent, thread, agentsById, messages, activities, chips,
-  loading = false, focusRequest = 0, onSend, onToggleDetails,
+  loading = false, focusRequest = 0, draft: draftRequest, onSend, onToggleDetails,
 }: {
   agent?: Agent;
   thread?: Thread;
@@ -176,6 +176,13 @@ export function Conversation({
   chips: ChipHandlers;
   loading?: boolean;
   focusRequest?: number;
+  /**
+   * Text to put in the composer, with a counter so the same suggestion can be
+   * offered twice. Not `onSend`: a suggested routine carries a guessed time of
+   * day, and that guess is what somebody wants to change before it becomes a
+   * standing instruction.
+   */
+  draft?: { text: string; nonce: number };
   onSend(text: string): Promise<void>;
   onToggleDetails(): void;
 }) {
@@ -261,6 +268,16 @@ export function Conversation({
     if (programmaticScrollTimer.current) window.clearTimeout(programmaticScrollTimer.current);
   }, []);
   useEffect(() => { if (focusRequest > 0) composerRef.current?.focus(); }, [threadKey, focusRequest]);
+  useEffect(() => {
+    if (!draftRequest?.nonce) return;
+    setDraft(draftRequest.text);
+    const composer = composerRef.current;
+    composer?.focus();
+    // Caret at the end: the suggestion is a starting point to edit, and
+    // landing with everything selected means the first keystroke destroys it.
+    composer?.setSelectionRange(draftRequest.text.length, draftRequest.text.length);
+    // Keyed on the nonce alone, so offering the same suggestion twice works.
+  }, [draftRequest?.nonce]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   function revealScrollbarBriefly() {
     if (programmaticScrollRef.current || Date.now() < suppressScrollbarUntilRef.current) return;
