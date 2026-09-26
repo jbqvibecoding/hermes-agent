@@ -156,7 +156,27 @@ def tick() -> int:
         _run(conn, claimed)
     _speak(conn)
     _garden(conn)
+    _watch(conn)
     return taken
+
+
+def _watch(conn) -> None:
+    """Say something when a teammate has been quiet too long.
+
+    Everything else here judges turns that have *ended*. This is the only part
+    that looks at one still running, and it rides the same sweep for the same
+    reason — the gates that let a background thread exist in this process were
+    paid for once.
+
+    Swallowed like the rest: a notice nobody got is a worse thread, not a
+    worse outcome, and it must not cost somebody the recovery of real work.
+    """
+    try:
+        from crew import watchdog as crew_watchdog
+
+        crew_watchdog.tick(conn)
+    except Exception:
+        log.debug("crew: the silence sweep failed", exc_info=True)
 
 
 def _speak(conn) -> None:

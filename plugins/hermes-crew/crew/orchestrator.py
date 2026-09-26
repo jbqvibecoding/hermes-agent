@@ -40,6 +40,7 @@ from typing import Any, Callable, Optional, Sequence
 from crew import approvals as crew_approvals
 from crew import computer as crew_computer
 from crew import db as crew_db
+from crew import handoffs as crew_handoffs
 from crew import mentions as crew_mentions
 from crew import presence as crew_presence
 from crew import prompts, roster
@@ -661,7 +662,9 @@ def start_turn(
                     agent, bot, context, result, started_at=started_at,
                 )
 
-        _settle_reply(conn, reply, _judged_reply(conn, bot, context, reply, result))
+        final, verdict = _judged_reply(conn, bot, context, reply, result)
+        _settle_reply(conn, reply, final)
+        _answer_handoff(conn, bot, context, final, verdict)
         if computer_live:
             _record_artifacts(conn, context, started_at)
         return result or {}
@@ -808,8 +811,15 @@ def _spoke_otherwise(conn, reply: dict) -> bool:
         return True
 
 
-def _judged_reply(conn, bot: dict, context: TurnContext, reply: dict, result: Optional[dict]) -> str:
-    """The text that goes in the bubble, once the run itself has been judged.
+def _judged_reply(
+    conn, bot: dict, context: TurnContext, reply: dict, result: Optional[dict],
+) -> tuple[str, Any]:
+    """The bubble's text and the verdict behind it, once the run is judged.
+
+    Both, because the caller needs the verdict too: an answer owed to another
+    teammate must not carry a failure notice back as though it were the answer.
+    Recomputing it there would mean a second `judge()` without the
+    `spoke_otherwise` signal this one has.
 
     Until now this path read one signal — ``final_response`` came back
     non-empty — and settled the reply as an answer. Four endings produce text
@@ -834,13 +844,13 @@ def _judged_reply(conn, bot: dict, context: TurnContext, reply: dict, result: Op
     verdict = crew_verdict.judge(result, spoke_otherwise=_spoke_otherwise(conn, reply))
     final = str(result.get("final_response") or "").strip()
     if verdict.ok:
-        return final
+        return final, verdict
 
     log.info("crew: %s's turn judged %s (%s)", context.bot_id, verdict.state, verdict.reason)
     _record_verdict(context.bot_id, verdict)
     if not final:
-        return f"⚠️ {bot['name']}: {verdict.detail}"
-    return f"{final}\n\n{crew_verdict.note(verdict)}"
+        return f"⚠️ {bot['name']}: {verdict.detail}", verdict
+    return f"{final}\n\n{crew_verdict.note(verdict)}", verdict
 
 
 def _record_verdict(bot_id: str, verdict) -> None:
@@ -988,6 +998,17 @@ def relay(from_bot_id: str, to_bot_id: str, content: str, hop: int) -> dict:
         payload={"from": from_bot_id, "from_name": from_name, "content": content},
     )
 
+    # Recorded *before* the turn starts, because the turn may settle on
+    # another thread before this function returns and it has to find the row.
+    crew_handoffs.record(
+        conn,
+        from_bot_id=from_bot_id,
+        to_bot_id=to_bot_id,
+        from_thread_id=crew_db.dm_thread_id(from_bot_id),
+        ask=content,
+        hop=hop + 1,
+    )
+
     start_turn_async(
         to_bot_id,
         target_thread,
@@ -996,6 +1017,68 @@ def relay(from_bot_id: str, to_bot_id: str, content: str, hop: int) -> dict:
         hop=hop + 1,
     )
     return {"delivered": True, "to_name": target["name"]}
+
+
+def _answer_handoff(conn, bot: dict, context: TurnContext, final: str, verdict) -> None:
+    """If this turn owed somebody an answer, take it back to them.
+
+    Called once a turn has settled, so ``final`` is the text the operator can
+    actually see — which is the text worth carrying back. A teammate that
+    answered by filing chips and saying nothing has produced something for its
+    own thread and nothing quotable for anybody else's.
+
+    Failures are swallowed. The answer is already in the receiver's thread; not
+    managing to echo it is worse than the status quo by nothing at all, and
+    taking a turn down over it would lose the work.
+    """
+    try:
+        owed = crew_handoffs.pending_for(conn, context.bot_id)
+        if owed is None:
+            return
+        if not crew_handoffs.close(conn, owed["id"]):
+            return                      # somebody else's turn already took it
+
+        asker = crew_db.get_bot(conn, owed["from_bot_id"])
+        if asker is None:
+            return
+
+        # The *verdict*, not just the text. A turn that ended badly still
+        # settles a bubble — F5 puts the teammate's own words in it with a
+        # warning underneath — and carrying that back would hand the asker a
+        # failure notice dressed as an answer.
+        answer = (final or "").strip() if verdict.deliverable else ""
+        if not answer:
+            # Nothing to re-ask with. Close the loop visibly rather than
+            # inventing a round: a chip costs nothing and "Scout came back
+            # with nothing" is a fact, where a model turn spent narrating an
+            # absence is a fabricated answer.
+            crew_db.insert_message(
+                conn,
+                thread_id=owed["from_thread_id"],
+                sender=context.bot_id,
+                kind="bot_ref",
+                payload={
+                    "from": context.bot_id, "from_name": bot["name"],
+                    "content": f"Came back with nothing on: {owed['ask']}",
+                },
+            )
+            return
+
+        if int(owed["hop"]) >= MAX_HOPS:
+            # The dispatch spent the budget. Leave the answer where it is
+            # rather than starting a turn that `relay` would have refused.
+            log.info("crew: not carrying %s's answer back — hop limit", context.bot_id)
+            return
+
+        start_turn_async(
+            owed["from_bot_id"],
+            owed["from_thread_id"],
+            prompts.handoff_return_seed(bot["name"], context.bot_id, owed["ask"], answer),
+            persist_user_message=False,
+            hop=int(owed["hop"]) + 1,
+        )
+    except Exception:
+        log.debug("crew: could not carry an answer back to the asker", exc_info=True)
 
 
 # ---------------------------------------------------------------------------

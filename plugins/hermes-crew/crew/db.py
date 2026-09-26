@@ -263,6 +263,28 @@ CREATE TABLE IF NOT EXISTS routine_health (
     last_error      TEXT NOT NULL DEFAULT ''
 );
 
+-- Work one teammate handed another, and has not heard back about.
+--
+-- `relay` starts the receiver's turn in the *receiver's* thread and returns.
+-- The asker's thread therefore ends on "I've passed that to Scout" and never
+-- says another word, however well Scout does. This row is what lets the
+-- answer come back — and it is a row, not a callback, because the two turns
+-- are separate agent runs and on the recovery path separate processes.
+--
+-- `hop` is the receiver's, so the reply is bounded by the same MAX_HOPS
+-- budget `crew.a2a` spends on the dispatch rather than a second one.
+CREATE TABLE IF NOT EXISTS handoffs (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_bot_id    TEXT NOT NULL,
+    to_bot_id      TEXT NOT NULL,
+    from_thread_id TEXT NOT NULL,   -- where the answer has to land
+    ask            TEXT NOT NULL DEFAULT '',
+    hop            INTEGER NOT NULL DEFAULT 0,
+    created_at     INTEGER NOT NULL,
+    answered_at    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_handoffs_owed ON handoffs(to_bot_id, answered_at, id);
+
 -- Who is mid-turn right now, in any process.
 --
 -- This started as a dict in the orchestrator's memory, which is right only
@@ -281,7 +303,12 @@ CREATE TABLE IF NOT EXISTS presence (
     what        TEXT NOT NULL DEFAULT '',     -- a short human label, not a state
     thread_id   TEXT NOT NULL DEFAULT '',
     started_at  INTEGER NOT NULL,
-    expires_at  INTEGER NOT NULL
+    expires_at  INTEGER NOT NULL,
+    -- When the operator was told this turn had gone quiet. Lives here rather
+    -- than in a table of its own because the row is deleted when the turn
+    -- ends, which is exactly the lifetime "warn once per turn" needs — no
+    -- reset, no cleanup, no way for a stale marker to silence the next one.
+    warned_at   INTEGER NOT NULL DEFAULT 0
 );
 
 -- What a teammate has already raised unprompted, so it does not raise the

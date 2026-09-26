@@ -87,18 +87,41 @@ def crew(tmp_path, monkeypatch):
     monkeypatch.setattr(roster, "chief_id", lambda: "chief")
 
     # Run "async" turns inline so assertions are deterministic. The production
-    # path is a worker thread; nothing under test depends on that.
+    # path is a worker thread; nothing under test depends on that — **except**
+    # when the target thread already has a turn in flight.
+    #
+    # That case is real: a handoff answer goes back to the teammate that asked,
+    # and the ask came from a turn that is still on the stack in this harness.
+    # A real thread would just wait for it to finish. Inline, it deadlocks on
+    # that thread's lock, so it is held back and `drain()` runs it — which is
+    # what "async" meant all along.
     started: list[tuple] = []
+    deferred: list[tuple] = []
 
     def run_inline(bot_id, thread_id, text, **kwargs):
         started.append((bot_id, thread_id, text, kwargs))
+        if orchestrator._thread_lock(thread_id).locked():
+            deferred.append((bot_id, thread_id, text, kwargs))
+            return None
         orchestrator.start_turn(bot_id, thread_id, text, **kwargs)
         return None
+
+    def drain(limit: int = 8) -> int:
+        """Run the turns a real deployment would have run on other threads."""
+        ran = 0
+        while deferred and ran < limit:
+            bot_id, thread_id, text, kwargs = deferred.pop(0)
+            orchestrator.start_turn(bot_id, thread_id, text, **kwargs)
+            ran += 1
+        return ran
 
     monkeypatch.setattr(orchestrator, "start_turn_async", run_inline)
     orchestrator.reset_all_agents()
 
-    yield type("Crew", (), {"conn": conn, "scripts": scripts, "started": started})()
+    yield type("Crew", (), {
+        "conn": conn, "scripts": scripts, "started": started,
+        "deferred": deferred, "drain": staticmethod(drain),
+    })()
     crew_db.close_all()
 
 
@@ -258,6 +281,76 @@ def test_the_chief_can_hand_work_to_anyone(crew):
     assert len(handoff) == 1
     assert handoff[0]["payload"]["from"] == "chief"
     assert "brief me on X" in handoff[0]["payload"]["content"]
+
+
+def test_the_asker_hears_back_in_its_own_thread(crew):
+    """**The gap this closes.**
+
+    Before: the operator asks Chief, Chief says "Handed to Scout", and Chief's
+    thread ends there forever. Scout's answer is in Scout's thread, and whether
+    Scout says anything back depends on the model deciding to call
+    `message_bot` a second time unprompted.
+
+    Chief answers in its own voice rather than having Scout's text forwarded,
+    which is the point of spending a turn on it: Chief knows why the question
+    was asked and can say what the answer settles.
+    """
+    crew.scripts["chief"] = [
+        ("message_bot", {"to": "scout", "content": "brief me on X by 5pm"}),
+        "Handed to Scout.",
+    ]
+    crew.scripts["scout"] = ["X is fine, shipping Thursday."]
+    orchestrator.start_turn("chief", "dm:chief", "get me a brief on X")
+
+    assert crew.drain() == 1, "the answer comes back as a turn on Chief's thread"
+
+    [seed] = [t for t in crew.started if t[1] == "dm:chief"]
+    assert "X is fine, shipping Thursday." in seed[2]
+    assert "You asked @Scout" in seed[2]
+
+
+def test_the_answer_is_carried_back_once(crew):
+    """A second turn by the same teammate must not re-deliver an answer that
+    was already taken back — the operator would read it twice and the second
+    one costs a model run."""
+    crew.scripts["chief"] = [
+        ("message_bot", {"to": "scout", "content": "brief me"}), "Handed over.",
+    ]
+    crew.scripts["scout"] = ["Done."]
+    orchestrator.start_turn("chief", "dm:chief", "ask Scout")
+    assert crew.drain() == 1
+
+    crew.scripts["scout"] = ["Something unrelated."]
+    orchestrator.start_turn("scout", "dm:scout", "a later, separate question")
+    assert crew.drain() == 0, "nothing is owed any more"
+
+
+def test_a_teammate_with_nothing_to_say_does_not_start_a_turn(crew):
+    """A chip, not a round. "Scout came back with nothing" is a fact worth a
+    line in Chief's thread; a model turn spent narrating an absence is an
+    answer nobody gave."""
+    crew.scripts["chief"] = [
+        ("message_bot", {"to": "scout", "content": "brief me"}), "Handed over.",
+    ]
+    crew.scripts["scout"] = [""]
+    orchestrator.start_turn("chief", "dm:chief", "ask Scout")
+
+    assert crew.drain() == 0, "no turn was queued for Chief"
+    [note] = [c for c in chips(crew.conn, "dm:chief", "bot_ref")]
+    assert "Came back with nothing" in note["payload"]["content"]
+
+
+def test_the_reply_spends_the_same_hop_budget_as_the_dispatch(crew):
+    """`crew.a2a` allows one dispatch plus one reply, and this *is* the reply.
+    Giving it a budget of its own would turn "A asks B" into a conversation
+    the operator never asked for and cannot see the end of."""
+    crew.scripts["chief"] = [
+        ("message_bot", {"to": "scout", "content": "brief me"}), "Handed over.",
+    ]
+    crew.scripts["scout"] = ["Here it is."]
+    orchestrator.start_turn("chief", "dm:chief", "ask Scout", hop=orchestrator.MAX_HOPS - 1)
+
+    assert crew.drain() == 0, "the dispatch spent the budget; the answer stays put"
 
 
 def test_peers_cannot_reach_each_other_by_default(crew):

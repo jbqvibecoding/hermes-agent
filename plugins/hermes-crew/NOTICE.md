@@ -28,6 +28,8 @@ out below, because they are the parts worth not re-deciding.
 | `crew/mentions.py` | `rowboat/protocol/src/mentions.ts` | Apache-2.0 | resolving mentions **once, at write time**, and storing the answer |
 | `crew/presence.py` | `rowboat/skills/spaces/agent-activity.ts` | Apache-2.0 | busy as an expiring lease rather than a flag |
 | `crew/prompts.py::RECEIPTS` | `rowboat/skills/spaces/procedures.ts` | Apache-2.0 | the three receipt marks, and "a receipt says what you did, not what you read" |
+| `crew/handoffs.py` | `octop/docs/agent-interop-mailbox.md` | MIT | re-asking the original agent with the answer, on its own thread |
+| `crew/watchdog.py` | `openbot/.../turn-watchdog.ts`, `stall-guard.ts` | MIT | watch the silence, not the duration |
 
 ## The decisions worth not re-deciding
 
@@ -73,6 +75,19 @@ memory meant a crash could not strand it, at the price of the dashboard being
 unable to see a turn it had not started itself. Since routines moved to the
 gateway that was most turns, so a routine burning there rendered as *idle* to
 whoever was deciding whether to interrupt it. An expiry gets both properties.
+
+**The answer goes back to the teammate that asked, in its own voice**
+(octop). Not forwarded to the operator as though the second teammate were
+speaking to them: the first one knows why the question was asked and is the
+one who can say what the answer settles. That costs a turn, and the turn is
+the point.
+
+**Watch the silence, not the duration** (OpenBot). A time limit caps how much
+work a teammate may do, which nobody asked for — a genuine two-hour job is a
+good outcome. A silence limit caps how long somebody is left watching a
+spinner with no idea whether anything is happening, which is the actual
+complaint. And it never kills the turn: ending a run that is waiting on a slow
+API costs the work and fixes nothing.
 
 **A receipt says what you did, not what you read** (rowboat). Agents in a room
 acknowledge each other, at length, and the transcript stops being worth

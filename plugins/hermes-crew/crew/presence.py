@@ -132,11 +132,26 @@ def working(conn: sqlite3.Connection, *, now: Optional[float] = None) -> dict[st
     """
     stamp = int((now or time.time()) * 1000)
     rows = conn.execute(
-        "SELECT bot_id, holder, what, thread_id, started_at, expires_at "
+        "SELECT bot_id, holder, what, thread_id, started_at, expires_at, warned_at "
         "FROM presence WHERE expires_at > ?",
         (stamp,),
     ).fetchall()
     return {row["bot_id"]: dict(row) for row in rows}
+
+
+def mark_warned(conn: sqlite3.Connection, bot_id: str, *, now: Optional[float] = None) -> bool:
+    """Record that the operator has been told this turn went quiet.
+
+    Scoped to ``warned_at = 0``, so two sweeps that overlap produce one
+    message. The marker dies with the row when the turn ends, which is the
+    lifetime "once per turn" actually wants.
+    """
+    stamp = int((now or time.time()) * 1000)
+    cur = conn.execute(
+        "UPDATE presence SET warned_at=? WHERE bot_id=? AND warned_at=0", (stamp, bot_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
 
 
 def is_working(conn: sqlite3.Connection, bot_id: str, *, now: Optional[float] = None) -> bool:

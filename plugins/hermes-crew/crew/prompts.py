@@ -212,6 +212,24 @@ def handoff_seed(from_name: str, from_id: str, content: str) -> str:
     )
 
 
+def handoff_return_seed(to_name: str, to_id: str, ask: str, answer: str) -> str:
+    """Wake the teammate that asked, now that the answer exists.
+
+    It answers in **its own** voice rather than having the reply forwarded, and
+    that is the whole reason this costs a turn instead of a copy-paste: the
+    operator asked this teammate, this teammate knows why it asked, and it is
+    the one that can say what the answer means for the thing they wanted. A
+    forwarded quote makes the operator do that join themselves.
+    """
+    return (
+        f"You asked @{to_name} ({to_id}): {ask}\n"
+        f"They came back with:\n{answer}\n\n"
+        f"Tell your operator what this means for what they asked you — in your "
+        f"own words, in two lines or less. Do not repeat the whole answer back "
+        f"to them; say what it settles and what is left."
+    )
+
+
 #: The three marks a teammate opens a group reply with.
 #:
 #: From rowboat's ``skills/spaces/procedures.ts``, whose rule is the part worth
