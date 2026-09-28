@@ -130,12 +130,18 @@ function BotRefChip({ payload }: { payload: { from?: string; from_name?: string;
  * consent flow with three steps is not.
  */
 function LoginChip({ payload, onOpenScreen, onSubmitSecret }: {
-  payload: { site?: string; why?: string; field?: string; ref?: string };
+  payload: { site?: string; why?: string; field?: string; ref?: string; filled?: boolean };
   onOpenScreen(): void;
   onSubmitSecret(ref: string, value: string): Promise<void>;
 }) {
   const [value, setValue] = useState("");
-  const [state, setState] = useState<"" | "sending" | "sent" | "failed">("");
+  const [local, setState] = useState<"" | "sending" | "sent" | "failed">("");
+  // `filled` comes from the server, `local` from this browser. Either settles
+  // the card: the browser that typed the password knows first, and every other
+  // open client — a phone, another tab, a colleague — learns from the row.
+  // Without the server half they keep showing a live password box for a
+  // request that was answered minutes ago.
+  const state = payload.filled ? "sent" : local;
 
   if (payload.field && payload.ref) {
     const ref = payload.ref;

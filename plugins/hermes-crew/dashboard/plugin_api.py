@@ -766,15 +766,52 @@ def submit_secret(bot_id: str, body: SecretBody):
     if not fill_secret(bot_id, request, body.value):
         raise HTTPException(status_code=502, detail="Could not reach the screen to type it in.")
 
+    thread_id = crew_db.dm_thread_id(bot_id)
+
+    # Close the card itself, for the screens that are not this one.
+    #
+    # The chip tracks "sending / sent" in React state, which is right for the
+    # browser that typed the password and says nothing to any other. A second
+    # open client — a phone, a colleague, the same person's other tab — keeps
+    # showing a live password box for a request that has already been answered,
+    # with a message underneath saying it went in. Marking the row and
+    # re-emitting it is enough: `message.updated` is the frame `_settle_reply`
+    # already uses for a row whose rowid cannot re-deliver it through the tail.
+    _close_login_chip(conn, thread_id, body.ref)
+
     # The thread records that the field was filled, and nothing else about it.
     crew_db.insert_message(
         conn,
-        thread_id=crew_db.dm_thread_id(bot_id),
+        thread_id=thread_id,
         sender=bot_id,
         kind="text",
         content=f"Thanks — {request.field_label} for {request.site} went into the page.",
     )
     return {"filled": True}
+
+
+def _close_login_chip(conn, thread_id: str, ref: str) -> None:
+    """Mark the login card answered and tell every open client.
+
+    Best-effort: the value has already reached the page by the time this runs,
+    so failing here leaves a stale card somewhere, not an unsigned-in teammate.
+    Raising would turn a cosmetic problem into a 500 on a request that
+    succeeded.
+    """
+    from crew import contract as crew_contract
+    from crew.orchestrator import emit_event
+
+    try:
+        for message in reversed(crew_db.list_messages(conn, thread_id)):
+            payload = message.get("payload") or {}
+            if message.get("kind") != "login_request" or payload.get("ref") != ref:
+                continue
+            updated = {**payload, "filled": True}
+            crew_db.update_message_payload(conn, int(message["id"]), updated)
+            emit_event(crew_contract.message_updated({**message, "payload": updated}))
+            return
+    except Exception:
+        log.debug("crew: could not close the login card for %s", thread_id, exc_info=True)
 
 
 @router.post("/bots/{bot_id}/control")

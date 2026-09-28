@@ -257,6 +257,62 @@ def test_asking_for_the_full_desktop_wins_over_a_named_field(conn, monkeypatch):
     assert chip["payload"].get("vnc_url")
 
 
+def test_the_card_closes_for_the_screens_that_did_not_type_it(conn, monkeypatch):
+    """**The chip tracks "sent" in React state, which only one browser has.**
+
+    Everyone else — a phone, another tab, a colleague watching the thread —
+    keeps rendering a live password box for a request that was answered
+    minutes ago, with a line underneath saying it already went in. Marking the
+    row is what lets the other screens agree; the `message.updated` frame is
+    the one `_settle_reply` already uses for a row the id-ordered tail cannot
+    re-deliver.
+    """
+    import importlib.util
+
+    from crew import computer as crew_computer
+    from crew import orchestrator
+    from crew import secrets as crew_secrets
+    from crew import tools as crew_tools
+
+    monkeypatch.setattr(crew_computer, "ensure", lambda bot_id: {"vnc_url": None})
+    monkeypatch.setattr(crew_computer, "endpoints", lambda bot_id: {"cdp_url": "http://x"})
+    monkeypatch.setattr(crew_secrets, "_type_into_focused", lambda url, value: True)
+    monkeypatch.setattr(
+        orchestrator, "resolve_turn",
+        lambda: orchestrator.TurnContext(bot_id="scout", thread_id="dm:scout", turn_id="t1"),
+    )
+
+    crew_tools.handle_ask_for_login({"site": "Zendesk", "field": "password", "why": "queue"})
+    [chip] = [m for m in crew_db.list_messages(conn, "dm:scout") if m["kind"] == "login_request"]
+    assert not chip["payload"].get("filled"), "the card starts open"
+
+    spec = importlib.util.spec_from_file_location(
+        "_crew_plugin_api_secret",
+        Path(__file__).resolve().parents[2]
+        / "plugins" / "hermes-crew" / "dashboard" / "plugin_api.py",
+    )
+    assert spec and spec.loader
+    api = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(api)
+
+    emitted: list[dict] = []
+    monkeypatch.setattr(orchestrator, "emit_event", lambda event: emitted.append(event))
+
+    api.submit_secret("scout", api.SecretBody(ref=chip["payload"]["ref"], value="hunter2"))
+
+    [closed] = [m for m in crew_db.list_messages(conn, "dm:scout") if m["kind"] == "login_request"]
+    assert closed["payload"]["filled"] is True
+    assert [e for e in emitted if e.get("type") == "message.updated"], (
+        "an already-delivered row needs an explicit frame — the tail will not resend it"
+    )
+
+    blob = b"".join(
+        p.read_bytes() for p in Path(conn.execute("PRAGMA database_list").fetchall()[0][2]).parent
+        .glob("crew.db*") if p.is_file()
+    )
+    assert b"hunter2" not in blob, "closing the card must not store what was typed"
+
+
 def test_filling_with_no_screen_reports_failure_rather_than_pretending(monkeypatch):
     """A secret that silently went nowhere is the worst outcome available: the
     operator believes they have signed the teammate in."""

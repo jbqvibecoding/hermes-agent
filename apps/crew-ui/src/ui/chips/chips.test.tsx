@@ -127,3 +127,24 @@ it("renders nothing for a kind the backend added and this renderer has not", () 
   const { container } = show("wat" as ChipKind, { anything: true });
   expect(container).toBeEmptyDOMElement();
 });
+
+it("shows a secret card as answered on a screen that did not answer it", () => {
+  // `filled` is the server's half. The browser that typed the password knows
+  // from its own React state; every other open client — a phone, another tab,
+  // a colleague watching the thread — has only the row, and without this keeps
+  // offering a live password box for a request that is already closed.
+  show("login_request", {
+    site: "Zendesk", field: "password", ref: "a3f1", filled: true,
+    why: "the queue is behind a login",
+  });
+  expect(screen.queryByPlaceholderText("password")).not.toBeInTheDocument();
+  expect(screen.getByText(/went into the page|Typed into the page/)).toBeInTheDocument();
+});
+
+it("still asks when the server has not recorded an answer", () => {
+  show("login_request", {
+    site: "Zendesk", field: "password", ref: "a3f1",
+    why: "the queue is behind a login",
+  });
+  expect(screen.getByPlaceholderText("password")).toBeInTheDocument();
+});
