@@ -79,5 +79,21 @@ export default defineConfig({
   preview: {
     host: '127.0.0.1',
     port: 4174
+  },
+  // Vitest reads this file, so the renderer's tests get the aliases and the
+  // react plugin above for free. Two things it was not getting:
+  //
+  // `environment` lived in the `test:ui` script rather than here, so the
+  // invocation AGENTS.md describes ("run via the repo-root vitest") ran
+  // component tests under `node` and every one of them died on
+  // `document is not defined` — 320 failures, none of them the code's fault.
+  //
+  // And `electron/*.test.cjs` are `node --test` files with their own script
+  // (`test:desktop:platforms`), but vitest's default include matches `.cjs`,
+  // so it collected 34 files written for another runner and called each one a
+  // failure. That is what made this suite look broken when it mostly is not.
+  test: {
+    environment: 'jsdom',
+    exclude: ['**/node_modules/**', '**/dist/**', 'electron/**']
   }
 })

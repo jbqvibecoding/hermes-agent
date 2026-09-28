@@ -76,6 +76,12 @@ jobs:
     if: needs.detect.outputs.frontend == 'true'
     uses: ./.github/workflows/typecheck.yml
 
+  vitest:
+    name: TypeScript tests
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    uses: ./.github/workflows/vitest.yml
+
   docs-site:
     name: Docs Site
     needs: detect
@@ -140,6 +146,7 @@ jobs:
       - tests
       - lint
       - typecheck
+      - vitest
       - docs-site
       - history-check
       - contributor-check

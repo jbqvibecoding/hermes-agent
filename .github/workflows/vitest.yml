@@ -1,0 +1,38 @@
+# .github/workflows/vitest.yml
+name: Vitest
+
+# Nothing ran the TypeScript tests. The repo has 265 `*.test.ts(x)` files and
+# no workflow invoked vitest at all, so every one of them was a test somebody
+# wrote, somebody reviewed, and nobody ever ran again after the day it merged.
+# `typecheck.yml` next door compiles the same packages — it just never asserts
+# that any of them behave.
+#
+# The matrix is deliberately short of the full list. Two packages measured
+# green and are here; the other two are not, and putting a red package in a
+# brand-new job teaches everybody to ignore the job on its first day. What they
+# need is written down in the commit that added this file, so the gap is a
+# known quantity rather than a silence.
+on:
+  workflow_call:
+
+jobs:
+  vitest:
+    name: Run TypeScript tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [web, apps/crew-ui]
+      fail-fast: false # report all failures, not just the first one
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      # --ignore-scripts for the same reason typecheck.yml gives: these suites
+      # are jsdom, so they need the TS sources and type defs, not node-pty's
+      # native build. retry covers registry blips.
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci --ignore-scripts
+      - run: npm run --prefix ${{ matrix.package }} test
