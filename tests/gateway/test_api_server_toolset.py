@@ -2,6 +2,7 @@
 from unittest.mock import patch, MagicMock
 
 
+from hermes_cli.tools_config import _get_plugin_toolset_keys
 from toolsets import resolve_toolset, get_toolset, validate_toolset
 
 
@@ -175,4 +176,52 @@ class TestApiServerAdapterToolset:
             mock_agent_cls.assert_called_once()
             call_kwargs = mock_agent_cls.call_args
             toolsets = call_kwargs.kwargs.get("enabled_toolsets")
+            # The override governs the *configurable* toolsets. Plugin toolsets
+            # are a second, documented axis: `_get_platform_tools` enables a
+            # plugin toolset the user has never been offered ("unknown plugin →
+            # default enabled", hermes_cli/tools_config.py), so a freshly
+            # installed plugin's tools work before anyone opens `hermes tools`.
+            # Asserting the exact set froze the in-tree plugin list into this
+            # test — it goes red when any plugin ships a default-on toolset,
+            # which says nothing about whether the override was respected.
+            # The next test covers the half that *is* about the override.
+            assert sorted(set(toolsets) - _get_plugin_toolset_keys()) == ["terminal", "web"]
+
+    @patch("gateway.platforms.api_server.AIOHTTP_AVAILABLE", True)
+    def test_create_agent_leaves_out_a_plugin_toolset_the_user_turned_off(self):
+        """A plugin toolset the user has been offered and left out stays out.
+
+        The other half of the rule above, and the half with teeth: "unknown
+        plugin → default enabled" only holds until `hermes tools` records that
+        the user was shown this platform's plugin toolsets. After that, absent
+        means the user turned it off, and the override must be obeyed exactly.
+        Without this, "default enabled" would be indistinguishable from "cannot
+        be switched off".
+        """
+        from gateway.platforms.api_server import APIServerAdapter
+        from gateway.config import PlatformConfig
+
+        adapter = APIServerAdapter(PlatformConfig())
+
+        with patch("gateway.run._resolve_runtime_agent_kwargs") as mock_kwargs, \
+             patch("gateway.run._resolve_gateway_model") as mock_model, \
+             patch("gateway.run._load_gateway_config") as mock_config, \
+             patch("run_agent.AIAgent") as mock_agent_cls:
+
+            mock_kwargs.return_value = {"api_key": "test-key", "base_url": None,
+                                        "provider": None, "api_mode": None,
+                                        "command": None, "args": []}
+            mock_model.return_value = "test/model"
+            # Derived, not hardcoded: whatever plugin toolsets this checkout
+            # ships, the user has now seen all of them and picked none.
+            mock_config.return_value = {
+                "platform_toolsets": {"api_server": ["web", "terminal"]},
+                "known_plugin_toolsets": {"api_server": sorted(_get_plugin_toolset_keys())},
+            }
+            mock_agent_cls.return_value = MagicMock()
+
+            adapter._create_agent()
+
+            mock_agent_cls.assert_called_once()
+            toolsets = mock_agent_cls.call_args.kwargs.get("enabled_toolsets")
             assert sorted(toolsets) == ["terminal", "web"]
