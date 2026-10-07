@@ -13,6 +13,7 @@ stops being enforced.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -592,3 +593,101 @@ def test_a_symlink_pointing_inside_the_workspace_is_still_refused(tmp_path, monk
     assert crew_artifacts.artifact_file_path("scout", "reports/decoy.md") is None
     # …and the file it points at is still served under its own name.
     assert crew_artifacts.artifact_file_path("scout", "real.md") is not None
+
+
+# ---------------------------------------------------------------------------
+# Where a teammate's computer is published
+# ---------------------------------------------------------------------------
+
+
+def _ports(container_port: int, *bindings: tuple[str, str]) -> dict:
+    """A `docker inspect .NetworkSettings.Ports` fragment."""
+    return {
+        f"{container_port}/tcp": [
+            {"HostIp": host_ip, "HostPort": host_port} for host_ip, host_port in bindings
+        ]
+    }
+
+
+def test_a_loopback_publish_is_read_as_the_host_port():
+    from crew import computer as crew_computer
+
+    port, elsewhere = crew_computer._published_port(
+        _ports(crew_computer.NOVNC_PORT, ("127.0.0.1", "49154")), crew_computer.NOVNC_PORT
+    )
+    assert port == 49154
+    assert elsewhere == ()
+
+
+def test_a_blank_host_address_is_still_treated_as_loopback():
+    """Kept deliberately. Some Docker versions report a blank `HostIp` for a
+    loopback publish, and tightening this to fix a *message* would break a
+    working computer — which is the wrong trade."""
+    from crew import computer as crew_computer
+
+    port, elsewhere = crew_computer._published_port(
+        _ports(crew_computer.CDP_PORT, ("", "49155")), crew_computer.CDP_PORT
+    )
+    assert port == 49155
+    assert elsewhere == ()
+
+
+@pytest.mark.parametrize("host_ip", ["0.0.0.0", "::", "192.168.1.20"])
+def test_a_publish_on_any_other_address_is_refused_and_reported(host_ip):
+    """Refusing was already right; **reporting** is the new half.
+
+    Returning only `Optional[int]` collapsed two states the caller has to tell
+    apart — nothing published, and published somewhere we will not use — and
+    the second is the one that matters.
+    """
+    from crew import computer as crew_computer
+
+    port, elsewhere = crew_computer._published_port(
+        _ports(crew_computer.NOVNC_PORT, (host_ip, "6080")), crew_computer.NOVNC_PORT
+    )
+    assert port is None
+    assert elsewhere == (f"{host_ip}:6080",)
+
+
+def test_an_off_box_screen_is_described_as_exposed_not_as_missing(monkeypatch):
+    """**The bug this was written for.**
+
+    A container started without `CREW_DOCKER_EXTRA_ARGS` publishes on all
+    interfaces. The port is published — too widely — and the operator was told
+    "its screen port is not published", so they went looking for a missing
+    port while anyone on the network could open the screen. A security-relevant
+    state described as its own opposite.
+    """
+    from crew import computer as crew_computer
+
+    monkeypatch.setattr(crew_computer, "container_id", lambda bot_id: "c0ffee1234567890")
+    monkeypatch.setattr(
+        crew_computer, "_run_docker",
+        lambda args, timeout=15: json.dumps({
+            **_ports(crew_computer.NOVNC_PORT, ("0.0.0.0", "6080")),
+            **_ports(crew_computer.CDP_PORT, ("0.0.0.0", "9222")),
+        }),
+    )
+
+    info = crew_computer.endpoints("scout")
+    assert info["running"] is True
+    assert info["vnc_url"] is None and info["cdp_url"] is None
+    error = info["error"]
+    assert "not loopback" in error
+    assert "0.0.0.0:6080" in error and "0.0.0.0:9222" in error
+    # The DevTools port is named first: it is full control of the browser,
+    # where the screen is a view and a keyboard.
+    assert error.index("DevTools") < error.index("its screen")
+    assert "not published" not in error
+
+
+def test_a_container_with_no_published_ports_still_says_so(monkeypatch):
+    """The older message has to survive — it describes a different repair."""
+    from crew import computer as crew_computer
+
+    monkeypatch.setattr(crew_computer, "container_id", lambda bot_id: "c0ffee1234567890")
+    monkeypatch.setattr(crew_computer, "_run_docker", lambda args, timeout=15: "{}")
+
+    info = crew_computer.endpoints("scout")
+    assert info["vnc_url"] is None
+    assert "not published" in info["error"]

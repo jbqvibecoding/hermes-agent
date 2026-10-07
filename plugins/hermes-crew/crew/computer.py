@@ -184,18 +184,43 @@ def container_id(bot_id: str) -> Optional[str]:
     return ids[0] if ids else None
 
 
-def _published_port(ports: dict, container_port: int) -> Optional[int]:
-    """Read the loopback host port Docker assigned to ``container_port``."""
-    bindings = ports.get(f"{container_port}/tcp") or []
-    for binding in bindings:
+#: Host addresses we are willing to build a URL for. A blank one is kept
+#: because that is what some Docker versions report for a loopback publish, and
+#: refusing it would break a working computer to fix a message.
+_LOOPBACK_HOST_IPS = ("127.0.0.1", "::1", "")
+
+
+def _published_port(ports: dict, container_port: int) -> tuple[Optional[int], tuple[str, ...]]:
+    """The loopback host port Docker gave this container port, and what else it is on.
+
+    Two answers rather than one, because an ``Optional[int]`` collapses two
+    states the caller has to tell apart: **nothing is published**, and
+    **something is published somewhere we refuse to use**. The second is the
+    one that matters — a container started without
+    :data:`CREW_DOCKER_EXTRA_ARGS` publishes on all interfaces, and this
+    module's promise (see the module docstring) is that a teammate's screen is
+    never reachable off-box.
+
+    Returning only the port meant that case reported "not published" while the
+    truth was the opposite, so the operator was told the screen was missing
+    when in fact anyone on the network could open it.
+    """
+    loopback: Optional[int] = None
+    elsewhere: list[str] = []
+    for binding in ports.get(f"{container_port}/tcp") or []:
         host_ip = binding.get("HostIp") or ""
         host_port = binding.get("HostPort") or ""
-        if host_port and host_ip in ("127.0.0.1", "::1", ""):
-            try:
-                return int(host_port)
-            except ValueError:
-                continue
-    return None
+        if not host_port:
+            continue
+        if host_ip in _LOOPBACK_HOST_IPS:
+            if loopback is None:
+                try:
+                    loopback = int(host_port)
+                except ValueError:
+                    pass
+            continue
+        elsewhere.append(f"{host_ip}:{host_port}")
+    return loopback, tuple(elsewhere)
 
 
 def endpoints(bot_id: str) -> dict:
@@ -224,8 +249,8 @@ def endpoints(bot_id: str) -> dict:
     except json.JSONDecodeError:
         ports = {}
 
-    vnc = _published_port(ports, NOVNC_PORT)
-    cdp = _published_port(ports, CDP_PORT)
+    vnc, vnc_elsewhere = _published_port(ports, NOVNC_PORT)
+    cdp, cdp_elsewhere = _published_port(ports, CDP_PORT)
     result = {
         "running": True,
         "container_id": cid,
@@ -235,7 +260,26 @@ def endpoints(bot_id: str) -> dict:
         # noVNC RFB client connects to directly — see `vnc_session()`.
         "vnc_ws_url": f"ws://127.0.0.1:{vnc}/websockify" if vnc else None,
     }
-    if not vnc:
+    # Said before the "not published" case, because it is the opposite problem
+    # and the old message sent the operator looking for a missing port while
+    # the screen was in fact open to the network. CDP is named first when both
+    # are wrong: an unauthenticated DevTools port is full control of the
+    # browser, where the screen is "only" a view and a keyboard.
+    exposed = [
+        f"{label} on {', '.join(where)}"
+        for label, where in (("its browser's DevTools port", cdp_elsewhere),
+                             ("its screen", vnc_elsewhere))
+        if where
+    ]
+    if exposed:
+        result["error"] = (
+            f"This teammate's container publishes {' and '.join(exposed)} — not loopback. "
+            "Anything that can reach that address can drive this teammate's browser and "
+            "read whatever it is signed into. It was started without the crew computer "
+            f"settings — `docker rm -f {cid[:12]}` and it will come back published on "
+            "127.0.0.1 only."
+        )
+    elif not vnc:
         result["error"] = (
             "This teammate's container is running but its screen port is not published. "
             "It was probably started before the crew computer settings were applied — "
