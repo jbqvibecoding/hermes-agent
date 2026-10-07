@@ -523,6 +523,83 @@ def test_an_implicit_turn_falls_back_to_the_active_profiles_thread(crew, monkeyp
     assert turn.thread_id == "dm:scout"
 
 
+def test_a_webhook_delivered_turn_reports_into_the_routed_teammates_thread(crew):
+    """The chain a webhook delivery really walks, with nothing about it stubbed.
+
+    The test above patches ``get_active_profile_name`` and checks what
+    ``resolve_turn()`` returns. That proves the *mechanism*; it cannot prove the
+    *path*, because the thing it stubs is the one link that has to work: a
+    webhook never names a teammate, it names a **profile**, and the teammate's
+    identity has to survive being carried as ``HERMES_HOME`` and read back out
+    the other end. Stub that and the test would keep passing even if the two
+    halves agreed on nothing.
+
+    The real links, in order:
+
+    1. ``POST /p/scout/webhooks/<route>`` → ``_resolve_request_profile`` →
+       ``source.profile = "scout"``      (``gateway/platforms/webhook.py:766``)
+    2. the turn runs inside ``_profile_runtime_scope(get_profile_dir("scout"))``
+       (``gateway/run.py:12116``, resolved at ``:16770``)
+    3. nothing on that path calls :func:`crew.orchestrator.start_turn`, so there
+       is no explicit crew turn context — the webhook adapter does not know the
+       crew exists
+    4. the teammate calls ``message_user``; ``resolve_turn()`` recovers the
+       profile from ``HERMES_HOME``   (``hermes_cli/profiles.py:1832``)
+    5. the report lands in ``dm:scout``
+
+    Link 2 is reproduced the way the gateway does it — the override ContextVar,
+    not a patched getter — so link 4 exercises the real inference, including the
+    ``<root>/profiles/<name>`` arithmetic that makes the round trip work at all.
+    ``get_profile_dir`` is pure path arithmetic (it creates nothing) and the
+    fixture's ``HERMES_HOME`` is a tempdir, so no real profile is touched.
+
+    What this pins that nothing else does: the chip goes to the teammate that
+    the *request* was routed to, not to whichever profile the gateway process
+    happens to be running as. On a multiplexing gateway those differ, and
+    getting it wrong would file one teammate's work in another's thread.
+    """
+    from hermes_cli.profiles import get_profile_dir
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    assert orchestrator._turn_context.get() is None, "a webhook turn carries no context"
+
+    crew.scripts["scout"] = [
+        (
+            "message_user",
+            {
+                "kind": "report",
+                "payload": {
+                    "lines": [{"system": "deploy hook", "result": "build 412 is green"}],
+                    "closing": "nothing needed from you.",
+                },
+            },
+        ),
+        "filed it",
+    ]
+    agent = ScriptedAgent(crew.scripts, "scout")
+
+    # Exactly what gateway/run.py:12116 does for the duration of the turn.
+    token = set_hermes_home_override(str(get_profile_dir("scout")))
+    try:
+        answer = agent.run_conversation("a webhook fired: deploy finished")
+    finally:
+        reset_hermes_home_override(token)
+
+    assert answer["final_response"] == "filed it"
+    assert [json.loads(r) for r in agent.tool_results] == [{"delivered": True, "lines": 1}]
+
+    filed = chips(crew.conn, "dm:scout", "report")
+    assert len(filed) == 1
+    assert filed[0]["sender"] == "scout"
+    assert filed[0]["payload"]["lines"] == [
+        {"system": "deploy hook", "result": "build 412 is green"}
+    ]
+    # Not the chief's thread, and not the room: a report belongs to its author.
+    assert chips(crew.conn, "dm:chief", "report") == []
+    # And the scope is given back, so the next turn in this process is unaffected.
+    assert orchestrator.resolve_turn() is None
+
+
 # ---------------------------------------------------------------------------
 # Routing
 # ---------------------------------------------------------------------------
