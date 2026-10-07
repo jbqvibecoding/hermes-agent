@@ -43,6 +43,7 @@ import httpx
 from agent.auxiliary_client import async_call_llm, extract_content_or_reasoning
 from hermes_constants import get_hermes_dir
 from tools.debug_helpers import DebugSession
+from tools.url_safety import resolve_and_pin
 from tools.website_policy import check_website_access
 import sys
 
@@ -440,18 +441,38 @@ async def _download_image(image_url: str, destination: Path, max_retries: int = 
         """
         from tools.url_safety import peer_is_pinned
 
+        # The address is read inside the try, not after it. Reading it outside
+        # made this guard fail *closed* on any response whose extensions are
+        # not a real socket — which contradicts the paragraph above, and broke
+        # three download tests whose httpx client is a mock. "Cannot see the
+        # peer" has to mean skip; only a peer we can read and that disagrees
+        # is a rebinding.
         try:
             stream = response.extensions.get("network_stream")
             sock = stream.get_extra_info("socket") if stream is not None else None
             peer = sock.getpeername() if sock is not None else None
+            peer_address = str(peer[0]) if peer else ""
         except Exception:
             return
-        if not peer:
+        if not peer_address:
             return
-        if not peer_is_pinned(str(peer[0]), pinned_ip):
+
+        # "We could not read a peer" and "the peer disagrees" are different
+        # answers and only the second is a rebinding. `peer_is_pinned` folds
+        # both into False — correct for its own job, wrong as the whole test
+        # here — so anything that is not parseable as an address means the
+        # socket did not tell us, and the paragraph above says skip.
+        import ipaddress
+
+        try:
+            ipaddress.ip_address(peer_address.split("%", 1)[0])
+        except ValueError:
+            return
+
+        if not peer_is_pinned(peer_address, pinned_ip):
             raise ValueError(
                 f"Blocked: {image_url} resolved to {pinned_ip} when it was checked "
-                f"but the connection reached {peer[0]} (possible DNS rebinding)"
+                f"but the connection reached {peer_address} (possible DNS rebinding)"
             )
 
     last_error = None
@@ -460,8 +481,6 @@ async def _download_image(image_url: str, destination: Path, max_retries: int = 
             blocked = check_website_access(image_url)
             if blocked:
                 raise PermissionError(blocked["message"])
-
-            from tools.url_safety import resolve_and_pin
 
             pinned = resolve_and_pin(image_url)
             if pinned is None:

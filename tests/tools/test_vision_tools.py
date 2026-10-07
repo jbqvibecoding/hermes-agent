@@ -572,6 +572,10 @@ class TestVisionSafetyGuards:
                 return None
 
         with (
+            # `_download_image` pins the resolved IP before connecting (DNS-rebinding
+            # guard). Stubbed here for the same reason `check_website_access` is: a
+            # hermetic test must not do a real DNS lookup, and this one would.
+            patch("tools.vision_tools.resolve_and_pin", return_value=("93.184.216.34", "example.com")),
             patch("tools.vision_tools.check_website_access", side_effect=fake_check),
             patch("tools.vision_tools.httpx.AsyncClient") as mock_client_cls,
             pytest.raises(PermissionError, match="Blocked by website policy"),
@@ -1126,6 +1130,10 @@ class TestDownloadRetryClassification:
         mock_client = self._make_client_raising_status(404)
         with (
             patch("tools.vision_tools.httpx.AsyncClient", return_value=mock_client),
+            # `_download_image` pins the resolved IP before connecting (DNS-rebinding
+            # guard). Stubbed here for the same reason `check_website_access` is: a
+            # hermetic test must not do a real DNS lookup, and this one would.
+            patch("tools.vision_tools.resolve_and_pin", return_value=("93.184.216.34", "example.com")),
             patch("tools.vision_tools.check_website_access", return_value=None),
             patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
             pytest.raises(httpx.HTTPStatusError),
@@ -1146,6 +1154,10 @@ class TestDownloadRetryClassification:
         mock_client = self._make_client_raising_status(503)
         with (
             patch("tools.vision_tools.httpx.AsyncClient", return_value=mock_client),
+            # `_download_image` pins the resolved IP before connecting (DNS-rebinding
+            # guard). Stubbed here for the same reason `check_website_access` is: a
+            # hermetic test must not do a real DNS lookup, and this one would.
+            patch("tools.vision_tools.resolve_and_pin", return_value=("93.184.216.34", "example.com")),
             patch("tools.vision_tools.check_website_access", return_value=None),
             patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
             pytest.raises(httpx.HTTPStatusError),
@@ -1318,3 +1330,78 @@ class TestVisionCpuBurstCap:
             f"analyses were serialized to the cap (peak={calls_peak}); only the "
             "encode burst should be bounded, not the whole call"
         )
+
+
+class TestDownloadPeerPinning:
+    """The DNS-rebinding guard, through the function that owns it.
+
+    `_verify_peer` is a closure inside `_download_image`, so these drive the
+    real download path rather than reaching for the closure — which is also
+    the only way to prove the guard is still *wired in*.
+
+    The distinction under test is the one that broke it: "the socket did not
+    tell us an address" and "the socket told us a different address" are
+    different answers, and only the second is a rebinding. Collapsing them made
+    the guard fail closed on every response whose transport is not a real
+    socket — three download tests in this file, and in production any httpx
+    backend that reports extensions differently.
+    """
+
+    PINNED = ("93.184.216.34", "example.com")
+
+    def _client(self, peer):
+        """An AsyncClient whose response reports `peer` as its socket peer."""
+        socket = MagicMock()
+        socket.getpeername.return_value = peer
+        stream = MagicMock()
+        stream.get_extra_info.return_value = socket
+
+        response = MagicMock()
+        response.extensions = {"network_stream": stream}
+        response.raise_for_status = MagicMock()
+        response.content = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+        response.headers = {"content-type": "image/png", "content-length": "72"}
+
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.get = AsyncMock(return_value=response)
+        return client
+
+    async def _download(self, peer, tmp_path):
+        from tools.vision_tools import _download_image
+
+        with (
+            patch("tools.vision_tools.httpx.AsyncClient", return_value=self._client(peer)),
+            patch("tools.vision_tools.check_website_access", return_value=None),
+            patch("tools.vision_tools.resolve_and_pin", return_value=self.PINNED),
+        ):
+            await _download_image(
+                "https://example.com/cat.png", tmp_path / "cat.png", max_retries=1
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_peer_that_disagrees_is_refused(self, tmp_path):
+        """**The guard's whole job.** Checked one address, reached another."""
+        with pytest.raises(ValueError, match="DNS rebinding"):
+            await self._download(("169.254.169.254", 80), tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_the_pinned_peer_is_allowed(self, tmp_path):
+        await self._download((self.PINNED[0], 443), tmp_path)
+        assert (tmp_path / "cat.png").exists()
+
+    @pytest.mark.asyncio
+    async def test_the_same_host_reached_over_ipv6_is_allowed(self, tmp_path):
+        """A dual-stack client reports `::ffff:93.184.216.34` for the address
+        that validated as `93.184.216.34`. Refusing that breaks every download
+        on such a stack, which is how a security check gets switched off."""
+        await self._download((f"::ffff:{self.PINNED[0]}", 443, 0, 0), tmp_path)
+        assert (tmp_path / "cat.png").exists()
+
+    @pytest.mark.asyncio
+    async def test_a_peer_it_cannot_read_is_not_a_rebinding(self, tmp_path):
+        """The regression this class exists for: no readable address means the
+        socket did not tell us, not that somebody moved the target."""
+        await self._download(None, tmp_path)
+        assert (tmp_path / "cat.png").exists()
