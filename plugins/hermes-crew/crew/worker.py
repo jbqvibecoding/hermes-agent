@@ -51,6 +51,23 @@ _worker_stop = threading.Event()
 _worker_lock = threading.Lock()
 
 
+def is_gateway_process() -> bool:
+    """Whether this process is the Hermes gateway.
+
+    The positive half of :func:`should_run`, split out because the plugin's
+    registration-time writes need the same question answered and the marker
+    deserves one home. ``gateway/run.py`` sets ``_HERMES_GATEWAY=1`` at module
+    import, which is before plugin discovery runs, so a plugin registering
+    inside the gateway always sees it — and nothing else does.
+
+    That last part is the point. Asking "is this a test?" and writing when the
+    answer is no cannot work: a plugin registers in CLI processes, in the
+    gateway, and in whatever subprocess a test happens to spawn. Only the
+    gateway can be recognised *positively*; everything else is an open set.
+    """
+    return os.environ.get("_HERMES_GATEWAY") == "1"
+
+
 def should_run() -> bool:
     """Whether this process is allowed to run the worker.
 
@@ -67,7 +84,7 @@ def should_run() -> bool:
         return False
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return False
-    return os.environ.get("_HERMES_GATEWAY") == "1"
+    return is_gateway_process()
 
 
 def ensure_worker() -> bool:

@@ -55,41 +55,68 @@ def register(ctx) -> None:
 
     _register_skills(ctx)
 
-    # Both of these write to crew.db, and a test run is not a boot. See
-    # `_is_test_process` — leaving them ungated put rows in the developer's
-    # real database, which is the accident `crew.worker.should_run` was
-    # already built to prevent for the worker thread.
-    if not _is_test_process():
+    # Both of these write to crew.db, and only a booting gateway may do that.
+    # See `_is_gateway_boot` for why this is a positive test for the gateway
+    # rather than a test for "not pytest" — the second shape leaked twice.
+    if _is_gateway_boot():
         _record_policy()
         _recover_interrupted_releases()
 
     log.debug("crew: registered %d tools and 4 hooks", len(CREW_TOOLS))
 
 
-def _is_test_process() -> bool:
-    """Whether this is a test run rather than a Hermes boot.
+def _is_gateway_boot() -> bool:
+    """Whether a real Hermes gateway is starting, and may therefore write.
 
-    ``PYTEST_CURRENT_TEST`` is not enough, and the difference is the whole
-    bug. pytest sets that variable per *test*; this plugin is a bundled
-    backend, so it registers while pytest is still **importing test
-    modules**. No fixture has run at that point, ``HERMES_HOME`` is still
-    unset, and ``crew.db.crew_home()`` therefore falls back to the platform
-    default — the developer's real ``~/.hermes``. A boot-time ledger line
-    then lands in their actual database.
+    This gate has been wrong twice, in the same direction both times, and the
+    shape of the mistake is the part worth keeping.
 
-    It did. 27 ``crew.policy_loaded`` rows, one per test-suite run, and
-    nothing was ever red: the writes succeeded. ``tests/conftest.py`` states
-    the rule this violated — *"code using ``Path.home() / '.hermes'`` instead
-    of the canonical ``get_hermes_home()`` is a bug to fix at the callsite"* —
-    and the callsite is registration-time I/O, which happens outside any
-    test's environment by construction.
+    **First try: ``PYTEST_CURRENT_TEST``.** pytest sets that per *test*; this
+    plugin is a bundled backend, so it registers while pytest is still
+    **importing test modules**. No fixture has run, ``HERMES_HOME`` is still
+    unset, and ``crew.db.crew_home()`` falls back to the platform default —
+    the developer's real ``~/.hermes``. 27 ``crew.policy_loaded`` rows landed
+    in a real database and nothing was ever red: the writes succeeded.
 
-    So the module check, not the variable: ``pytest`` is in ``sys.modules``
-    from the moment collection starts, which is when the damage was done.
+    **Second try: ``"pytest" in sys.modules``.** True from the moment
+    collection starts, so it closed that hole. The first full-suite run with
+    this plugin installed showed it was still not enough: a fresh ``crew.db``
+    appeared in the run's ``$HOME``, carrying exactly one ``audit`` row — the
+    ledger line below, which is how it was traced back here. Tests spawn
+    subprocesses, those subprocesses load plugins, and in them pytest is *not*
+    imported and ``HERMES_HOME`` is *not* inherited. Reproduced directly: a
+    bare ``python`` that imports this module and calls ``register()`` creates
+    ``~/.hermes/crew.db``.
+
+    The lesson is not "find a better test for pytest". Both tries asked *is
+    this a test?* and wrote when the answer was no — and the set of processes
+    that are neither the gateway nor a test is open: CLI runs, ``hermes``
+    subprocesses, a doctest, somebody's script. It cannot be enumerated, so a
+    guard built by elimination will keep losing to the next process shape.
+
+    So ask the other question. The gateway, and only the gateway, can be
+    recognised *positively*: it sets ``_HERMES_GATEWAY=1`` at import of
+    ``gateway/run.py``, before plugin discovery. ``crew.worker.should_run``
+    has rested on that marker since the worker was written;
+    ``is_gateway_process`` is that half of it, shared rather than restated.
+
+    The pytest check stays as a second condition, because the gateway's own
+    tests set the marker deliberately (``tests/plugins/test_crew_tasks.py``)
+    and those must not start writing to a real home either.
     """
     import os
 
-    return "pytest" in sys.modules or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    if "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    try:
+        from crew import worker as crew_worker
+
+        return crew_worker.is_gateway_process()
+    except Exception:
+        # Cannot tell → do not write. A missing ledger line is a cosmetic gap;
+        # a row in somebody's real database is the bug described above.
+        log.debug("crew: could not tell whether this is a gateway boot", exc_info=True)
+        return False
 
 
 def _start_task_worker() -> None:
