@@ -97,14 +97,25 @@ describe('panes store', () => {
       expect(getPaneStateSnapshot('files')?.widthOverride).toBeUndefined()
     })
 
-    it('width override is in-memory only — not persisted across reloads', () => {
+    it('width override survives a reload', () => {
+      // This test used to be called "in-memory only — not persisted across
+      // reloads" and assert the opposite. The store deliberately changed:
+      // `persist` says so in as many words ("Persists both open state and
+      // resize width"), `load` reads `widthOverride` back, and `isSnapshot`
+      // validates it — three coordinated pieces, not an accident. A pane you
+      // resized should still be that width tomorrow.
+      //
+      // Renamed rather than patched: a test whose *name* states the old
+      // contract while its body asserts the new one is worse than a red one.
       ensurePaneRegistered('files', { open: true })
       setPaneWidthOverride('files', 300)
 
       const persisted = window.localStorage.getItem(STORAGE_KEY)
 
       expect(persisted).not.toBeNull()
-      expect(JSON.parse(persisted ?? '{}')).toEqual({ files: { open: true } })
+      expect(JSON.parse(persisted ?? '{}')).toEqual({
+        files: { open: true, widthOverride: 300 }
+      })
     })
 
     it('open flag is persisted across changes', () => {

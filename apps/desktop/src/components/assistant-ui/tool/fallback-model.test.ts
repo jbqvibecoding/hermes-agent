@@ -89,7 +89,10 @@ describe('buildToolView browser_navigate title', () => {
     )
 
     expect(view.status).toBe('error')
-    expect(view.title).toBe('Failed to open hermes-agent.nousresearch.com')
+    // Host **and** path: `hostnameOf` appends `pathname` whenever it is not
+    // "/", and that is the useful half — `/docs` and `/admin/delete` are the
+    // same host and very different tool calls. These expectations predate it.
+    expect(view.title).toBe('Failed to open hermes-agent.nousresearch.com/docs')
   })
 
   it('shows opened title on success', () => {
@@ -103,7 +106,7 @@ describe('buildToolView browser_navigate title', () => {
     )
 
     expect(view.status).toBe('success')
-    expect(view.title).toBe('Opened hermes-agent.nousresearch.com')
+    expect(view.title).toBe('Opened hermes-agent.nousresearch.com/docs')
   })
 })
 

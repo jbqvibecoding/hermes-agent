@@ -284,7 +284,12 @@ describe('OAuth onboarding', () => {
         return { ok: true, status: 'approved' }
       }
 
-      if (path === '/api/model/options') {
+      // `startsWith`, like the recommended-default arm below: the onboarding
+      // path asks for `includeUnconfigured`, which `getGlobalModelOptions`
+      // turns into a query string. An exact match never fired, the call threw
+      // into its own `try`, and the flow silently finished as `idle` with no
+      // model to confirm.
+      if (path.startsWith('/api/model/options')) {
         return {
           providers: [
             {
@@ -357,7 +362,7 @@ describe('OAuth onboarding', () => {
 
     expect(calls.some(c => c.path === '/api/model/set')).toBe(true)
 
-    const optionsIndex = calls.findIndex(c => c.path === '/api/model/options')
+    const optionsIndex = calls.findIndex(c => c.path.startsWith('/api/model/options'))
     const recommendedIndex = calls.findIndex(c => c.path.startsWith('/api/model/recommended-default'))
     const setIndex = calls.findIndex(c => c.path === '/api/model/set')
 

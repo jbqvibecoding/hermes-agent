@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -32,7 +33,11 @@ vi.mock('@/hermes', () => ({
   saveMoaModels: (body: unknown) => saveMoaModels(body),
   setEnvVar: (key: string, value: string) => setEnvVar(key, value),
   getHermesConfigRecord: () => getHermesConfigRecord(),
-  saveHermesConfig: (config: unknown) => saveHermesConfig(config)
+  saveHermesConfig: (config: unknown) => saveHermesConfig(config),
+  // Called at import time by a store subscription, not by this component — so
+  // leaving it out of the mock made every test in the file fail on module
+  // load. `use-session-actions.test.tsx` stubs it the same way.
+  setApiRequestProfile: vi.fn()
 }))
 
 vi.mock('@/store/onboarding', () => ({
@@ -72,7 +77,18 @@ afterEach(() => {
 async function renderModelSettings() {
   const { ModelSettings } = await import('./model-settings')
 
-  return render(<ModelSettings />)
+  // ModelSettings reads through `useQuery` now, so it needs a provider —
+  // without one every test in this file died on "No QueryClient set". Same
+  // shape as `model-menu-panel.test.tsx`, including `retry: false`: a retrying
+  // query turns one failed fetch into a test that hangs until the timeout
+  // rather than one that fails and says why.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  return render(
+    <QueryClientProvider client={client}>
+      <ModelSettings />
+    </QueryClientProvider>
+  )
 }
 
 describe('ModelSettings', () => {

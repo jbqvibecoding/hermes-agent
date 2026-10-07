@@ -139,6 +139,10 @@ describe('usePreviewRouting', () => {
     act(() => handleEvent({ payload: { path: './dist/index.html' }, session_id: 'session-1', type: 'tool.complete' }))
 
     expect($previewTarget.get()).toBeNull()
-    expect(window.localStorage.getItem('hermes.desktop.sessionPreviews.v1')).toBeNull()
+    // The registry now writes an empty map rather than leaving the key absent,
+    // which satisfies this test's actual point — nothing was auto-opened —
+    // while failing a check for `null`. Asserting the map is empty holds for
+    // either, and still fails the moment a preview gets persisted.
+    expect(JSON.parse(window.localStorage.getItem('hermes.desktop.sessionPreviews.v1') ?? '{}')).toEqual({})
   })
 })

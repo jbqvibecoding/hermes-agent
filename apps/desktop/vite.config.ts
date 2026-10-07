@@ -94,6 +94,20 @@ export default defineConfig({
   // failure. That is what made this suite look broken when it mostly is not.
   test: {
     environment: 'jsdom',
-    exclude: ['**/node_modules/**', '**/dist/**', 'electron/**']
+    // jsdom ships no `CSS` object, and three components build selectors with
+    // `CSS.escape`. See the file for why the polyfill follows the spec.
+    setupFiles: ['./src/test-setup.ts'],
+    // `electron/` and `scripts/` are `node --test` suites with their own
+    // scripts; `build/` is gitignored output that vendors node-pty, whose own
+    // test files are not ours to run. All three only show up because vitest's
+    // default include matches `.cjs` and `.js` as readily as `.tsx`, and every
+    // one of them reports as a failure when vitest tries.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      'electron/**',
+      'scripts/**'
+    ]
   }
 })

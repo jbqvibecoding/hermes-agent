@@ -33,10 +33,13 @@ describe('AttachmentList', () => {
   it('renders empty list without error', () => {
     renderWithI18n(<AttachmentList attachments={[]} />)
 
-    const container =
-      screen.getByTestId?.('composer-attachments') ?? document.querySelector('[data-slot="composer-attachments"]')
-
-    expect(container).toBeDefined()
+    // `getByTestId` **throws** when nothing matches, so the `??` fallback
+    // below it could never run — and the component marks that element with
+    // `data-slot`, not `data-testid`. Querying the attribute the component
+    // actually sets is both the fix and the honest assertion: `toBeDefined`
+    // on a `querySelector` result passes for `null`, so it was checking
+    // nothing either way.
+    expect(document.querySelector('[data-slot="composer-attachments"]')).not.toBeNull()
   })
 
   it('does not crash when attachments array contains undefined entries', () => {

@@ -24,7 +24,11 @@ describe('requestModelOptions', () => {
 
     await expect(requestModelOptions({ gateway: gateway as never, sessionId: null })).resolves.toBe(gatewayPayload)
 
-    expect(gateway.request).toHaveBeenCalledWith('model.options', {})
+    // `explicit_only` rides every chat-picker request by default — the source
+    // documents why (#56974: list only providers somebody actually configured).
+    // This expectation predated that default and had been red ever since,
+    // which nothing noticed because no CI job ran these tests.
+    expect(gateway.request).toHaveBeenCalledWith('model.options', { explicit_only: true })
     expect(getGlobalModelOptions).not.toHaveBeenCalled()
   })
 
@@ -36,6 +40,7 @@ describe('requestModelOptions', () => {
     await requestModelOptions({ gateway: gateway as never, refresh: true, sessionId: 'session-1' })
 
     expect(gateway.request).toHaveBeenCalledWith('model.options', {
+      explicit_only: true,
       refresh: true,
       session_id: 'session-1'
     })
@@ -44,6 +49,19 @@ describe('requestModelOptions', () => {
   it('falls back to REST when no gateway is connected', async () => {
     await requestModelOptions({ refresh: true })
 
-    expect(getGlobalModelOptions).toHaveBeenCalledWith({ refresh: true })
+    expect(getGlobalModelOptions).toHaveBeenCalledWith({ explicitOnly: true, refresh: true })
+  })
+
+  it('includes ambient providers when the caller asks for them', async () => {
+    // The only reason the flag exists: onboarding and setup need to show
+    // providers the user has not configured yet. Nothing covered that side, so
+    // the default could have been inverted and these tests would still pass.
+    const gateway = {
+      request: vi.fn(() => Promise.resolve(globalOptions))
+    }
+
+    await requestModelOptions({ explicitOnly: false, gateway: gateway as never, sessionId: null })
+
+    expect(gateway.request).toHaveBeenCalledWith('model.options', {})
   })
 })

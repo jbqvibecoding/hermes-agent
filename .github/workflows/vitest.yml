@@ -7,11 +7,15 @@ name: Vitest
 # `typecheck.yml` next door compiles the same packages — it just never asserts
 # that any of them behave.
 #
-# The matrix is deliberately short of the full list. Two packages measured
-# green and are here; the other two are not, and putting a red package in a
-# brand-new job teaches everybody to ignore the job on its first day. What they
-# need is written down in the commit that added this file, so the gap is a
-# known quantity rather than a silence.
+# The matrix holds the packages that measured green. `apps/desktop` joined it
+# once its 320 failures turned out to be two config problems and a backlog of
+# stale expectations — it is the largest suite in the repo at 1182 tests, and
+# it ran three times clean before being listed here.
+#
+# `ui-tui` is still out: it needs `hermes-ink` built first (22 files cannot
+# resolve `./dist/entry-exports.js` without it) and has four terminal-geometry
+# failures. Putting a red package in a job teaches everybody to ignore the job,
+# so it waits for its own change.
 on:
   workflow_call:
 
@@ -21,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [web, apps/crew-ui]
+        package: [web, apps/crew-ui, apps/desktop]
       fail-fast: false # report all failures, not just the first one
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
