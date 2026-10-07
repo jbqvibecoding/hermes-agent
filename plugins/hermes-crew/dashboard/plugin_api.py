@@ -736,10 +736,18 @@ def download_file(bot_id: str, rel_path: str):
 
 class SecretBody(BaseModel):
     """What the operator submits. ``value`` is the only field that matters and
-    the only one that is never stored."""
+    the only one that is never stored *unless* ``remember`` says to."""
 
     ref: str
     value: str
+    #: Save this for next time, so a teammate stuck on the same field at the
+    #: same site does not have to wake anybody. Off by default: putting a
+    #: credential on disk is a decision, and it is the operator's to make at
+    #: the moment they are already looking at the field it belongs to.
+    remember: bool = False
+    #: Shown back in the saved-credentials list so two accounts at one site can
+    #: be told apart. Stored lossily — see `crew.vault.account_hint`.
+    account: str = ""
 
 
 @router.post("/bots/{bot_id}/secret")
@@ -766,6 +774,11 @@ def submit_secret(bot_id: str, body: SecretBody):
     if not fill_secret(bot_id, request, body.value):
         raise HTTPException(status_code=502, detail="Could not reach the screen to type it in.")
 
+    # Only after it landed. Saving a value that could not be typed in would
+    # fill the vault with credentials nobody has ever seen work, and the next
+    # teammate would use them unattended.
+    remembered = _remember_secret(bot_id, request, body) if body.remember else None
+
     thread_id = crew_db.dm_thread_id(bot_id)
 
     # Close the card itself, for the screens that are not this one.
@@ -785,9 +798,54 @@ def submit_secret(bot_id: str, body: SecretBody):
         thread_id=thread_id,
         sender=bot_id,
         kind="text",
-        content=f"Thanks — {request.field_label} for {request.site} went into the page.",
+        content=(
+            f"Thanks — {request.field_label} for {request.site} went into the page."
+            + (f" Saved for {remembered} — this one will not need asking again."
+               if remembered else "")
+        ),
     )
-    return {"filled": True}
+    return {"filled": True, "remembered": remembered}
+
+
+def _remember_secret(bot_id: str, request, body: SecretBody) -> Optional[str]:
+    """Save what was just typed, bound to the origin the page is actually at.
+
+    Returns the origin it was saved for, or ``None`` when it was not saved —
+    and not saving is never an error on this route. The operator's actual
+    request was "type this in", and that has already succeeded; turning a
+    failed bookkeeping step into a 500 would tell them the password did not go
+    in when it did.
+
+    The origin comes from the live page for the same reason the filling path
+    reads it there: ``request.site`` is a label a *model* wrote. Saving against
+    it would let a teammate that had been talked onto a lookalike have the
+    operator's real credential filed under the real site's name.
+    """
+    from crew import secrets as crew_secrets
+    from crew import tools as crew_tools
+    from crew import vault as crew_vault
+
+    try:
+        kind = crew_tools._vault_kind(request.field_label)
+        if not kind:
+            log.info(
+                "crew: not saving %r for %s — it is not a kind the vault fills",
+                request.field_label, bot_id,
+            )
+            return None
+        cdp_url = (crew_computer.endpoints(bot_id) or {}).get("cdp_url")
+        origin = crew_secrets.page_origin(cdp_url) if cdp_url else None
+        if not origin:
+            return None
+        item = crew_vault.save(
+            _conn(), bot_id=bot_id, origin=origin, kind=kind,
+            secret=body.value, account=body.account, label=request.site,
+        )
+        return item["origin"]
+    except Exception:
+        # Never the payload: an exception here can quote the value.
+        log.warning("crew: could not save the %s for %s", request.field_label, bot_id)
+        return None
 
 
 def _close_login_chip(conn, thread_id: str, ref: str) -> None:

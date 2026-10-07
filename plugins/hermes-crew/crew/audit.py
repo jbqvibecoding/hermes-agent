@@ -57,6 +57,14 @@ EVENT_TYPES = (
     "grant.changed",      # the operator moved a tool between deny/ask/allow
     "crew.policy_loaded", # the rules in force, written at every plugin load
     "crew.bot_declined",  # self-reported: the teammate refused before any tool
+    # A saved credential was typed into a page with nobody watching. That is
+    # the one thing the vault does that the masked-box path does not, so it is
+    # the one thing that has to leave a trace without an operator present.
+    "vault.filled",
+    # …and the near-miss: a credential was saved for this site and the page
+    # itself said no. Worth a row of its own, because "it did not fill" and
+    # "there was nothing to fill" send a reader looking in different places.
+    "vault.declined",
 )
 
 #: A digest is 12 hex chars: enough to match two calls against each other,

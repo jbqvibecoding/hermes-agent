@@ -33,11 +33,12 @@ split.
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
@@ -204,15 +205,96 @@ def fill_secret(bot_id: str, request: SecretRequest, value: str) -> bool:
         return False
 
 
-def _type_into_focused(cdp_url: str, value: str) -> bool:
-    """Send the characters to the focused element over CDP.
+#: Read in the page, not asked of the model. ``self.origin`` rather than
+#: ``location.origin`` is the whole trick, and it is openinstinct's
+#: (``lib/autofill/login.ts:144``): a sandboxed document's ``self.origin`` is
+#: the string ``"null"``, which no saved credential can ever match, while its
+#: ``location.origin`` still reads like the site it was framed from.
+_ORIGIN_EXPRESSION = "self.origin"
 
-    ``Input.insertText`` rather than key events: it is one call, it does not
-    have to model modifier state for characters outside ASCII, and a password
-    with a non-ASCII character in it is exactly the case a key-by-key approach
-    gets wrong.
+#: ``autocomplete`` is what a page uses to tell a password manager what a field
+#: is for, so it is the right thing to ask — and the two answers below are the
+#: ones a *saved* credential must never be typed into. Lifted from
+#: openinstinct's ``classifyNativeLoginControl``.
+_REFUSED_AUTOCOMPLETE = ("new-password", "one-time-code")
+
+_FOCUSED_CONTROL_EXPRESSION = """
+(() => {
+  const el = document.activeElement;
+  if (!el || el.tagName !== 'INPUT') return null;
+  return {
+    type: (el.getAttribute('type') || 'text').toLowerCase(),
+    autocomplete: (el.getAttribute('autocomplete') || '').toLowerCase(),
+    readonly: el.hasAttribute('readonly') || el.disabled === true,
+  };
+})()
+"""
+
+
+def page_origin(cdp_url: str) -> Optional[str]:
+    """The origin of the page in front of the teammate, as the page states it.
+
+    ``None`` when it cannot be read, which callers must treat as "do not fill".
     """
-    import json
+    value = _evaluate(cdp_url, _ORIGIN_EXPRESSION)
+    return value if isinstance(value, str) and value else None
+
+
+def focused_control(cdp_url: str) -> Optional[dict]:
+    """What the focused input is, or ``None`` if there isn't one."""
+    value = _evaluate(cdp_url, _FOCUSED_CONTROL_EXPRESSION)
+    return value if isinstance(value, dict) else None
+
+
+def control_refuses_a_saved_secret(control: Optional[dict]) -> Optional[str]:
+    """Why this field must not be filled from the vault, or ``None``.
+
+    Reading the field rather than believing the teammate's label for it. A
+    teammate that says "password" while the page says ``new-password`` is
+    about to put the operator's live credential into a change-password form,
+    and the page is the one telling the truth.
+    """
+    if control is None:
+        return "there is no field focused on the page"
+    if control.get("readonly"):
+        return "the focused field cannot be typed into"
+    autocomplete = str(control.get("autocomplete") or "")
+    if autocomplete in _REFUSED_AUTOCOMPLETE:
+        return f"the focused field is marked {autocomplete!r}, which a saved credential is never for"
+    if str(control.get("type") or "") in ("checkbox", "radio", "file", "submit", "button"):
+        return "the focused element is not a field a credential goes into"
+    return None
+
+
+def _evaluate(cdp_url: str, expression: str) -> Any:
+    """Run one expression in the page and return a plain value.
+
+    Returns ``None`` on any failure. Callers treat that as a refusal, never as
+    a pass — the whole point of asking the page is that we act on its answer,
+    and no answer is not an answer.
+    """
+    try:
+        socket, _ = _open_page_socket(cdp_url)
+    except Exception:
+        log.debug("crew: could not reach the page to evaluate %s", expression.strip()[:40])
+        return None
+    try:
+        socket.send(json.dumps({
+            "id": 1,
+            "method": "Runtime.evaluate",
+            "params": {"expression": expression, "returnByValue": True},
+        }))
+        reply = json.loads(socket.recv() or "{}")
+    except Exception:
+        return None
+    finally:
+        socket.close()
+    result = ((reply.get("result") or {}).get("result") or {})
+    return result.get("value")
+
+
+def _open_page_socket(cdp_url: str):
+    """A websocket onto the first page target, and its description."""
     import urllib.request
 
     from websocket import create_connection  # type: ignore[import-untyped]
@@ -221,9 +303,23 @@ def _type_into_focused(cdp_url: str, value: str) -> bool:
         targets = json.loads(response.read().decode("utf-8") or "[]")
     pages = [t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
     if not pages:
+        raise RuntimeError("no page target")
+    return create_connection(pages[0]["webSocketDebuggerUrl"], timeout=10), pages[0]
+
+
+def _type_into_focused(cdp_url: str, value: str) -> bool:
+    """Send the characters to the focused element over CDP.
+
+    ``Input.insertText`` rather than key events: it is one call, it does not
+    have to model modifier state for characters outside ASCII, and a password
+    with a non-ASCII character in it is exactly the case a key-by-key approach
+    gets wrong.
+    """
+    try:
+        socket, _ = _open_page_socket(cdp_url)
+    except Exception:
         return False
 
-    socket = create_connection(pages[0]["webSocketDebuggerUrl"], timeout=10)
     try:
         socket.send(json.dumps({
             "id": 1, "method": "Input.insertText", "params": {"text": value},

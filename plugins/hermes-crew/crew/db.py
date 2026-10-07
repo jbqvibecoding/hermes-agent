@@ -360,6 +360,39 @@ CREATE TABLE IF NOT EXISTS stream_cursor (
     seq  INTEGER NOT NULL DEFAULT 0
 );
 INSERT OR IGNORE INTO stream_cursor (id, seq) VALUES (1, 0);
+
+-- A credential a teammate may use without a person at the keyboard, split
+-- across two tables on purpose (after openinstinct's `vault_items` /
+-- `encrypted_secrets`). Listing what is saved — for the dashboard, never for a
+-- model — reads `vault_items` only, so the ciphertext is never on a path that
+-- merely wants to show a name. `account_hint` is deliberately lossy:
+-- "zendesk.com · j…@example.com".
+--
+-- One entry per (teammate, origin, kind): two passwords for one site is a way
+-- to fill the wrong one. `crew.vault.save` enforces it by replacing.
+CREATE TABLE IF NOT EXISTS vault_items (
+    id           TEXT PRIMARY KEY,
+    bot_id       TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    label        TEXT NOT NULL DEFAULT '',
+    account_hint TEXT NOT NULL DEFAULT '',
+    -- Normalised by `crew.vault.normalise_origin`, which also refuses anything
+    -- a password should not be typed into. The binding is the control: a
+    -- credential is filled only where the *live page* reports this origin.
+    origin       TEXT NOT NULL,
+    created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_vault_items_lookup ON vault_items (bot_id, origin, kind);
+
+-- `bot_id` is duplicated here rather than joined for: it is half of the AEAD's
+-- additional data, so the row that holds the ciphertext has to carry the
+-- identity the ciphertext was sealed against. A read that joined for it could
+-- be handed the wrong one by a malformed `vault_items`.
+CREATE TABLE IF NOT EXISTS vault_secrets (
+    item_id    TEXT PRIMARY KEY,
+    bot_id     TEXT NOT NULL,
+    ciphertext TEXT NOT NULL
+);
 """
 
 # Additive column migrations, applied idempotently after _SCHEMA. Each entry is

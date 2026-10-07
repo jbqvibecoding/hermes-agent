@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Optional
 
 from crew import approvals as crew_approvals
 from crew import computer as crew_computer
@@ -464,6 +464,106 @@ ASK_FOR_LOGIN_SCHEMA = {
 }
 
 
+#: Checked before anything else, because "verification code" contains neither
+#: of the other groups' words and must not fall through to them. A saved
+#: one-time code is either expired or a misunderstanding, so the vault never
+#: answers for one — the operator does.
+_FRESH_EVERY_TIME = ("code", "otp", "2fa", "token", "pin", "验证码", "一次性")
+_PASSWORD_WORDS = ("password", "passphrase", "passwd", "密码")
+_USERNAME_WORDS = ("user", "email", "login", "account", "e-mail", "用户", "邮箱", "账号")
+
+
+def _vault_kind(field: str) -> Optional[str]:
+    """Which saved credential, if any, a field label is asking for.
+
+    The label comes from the model, so this decides only *which entry to look
+    for* — never whether filling is safe. That question is put to the page
+    (``crew.secrets.control_refuses_a_saved_secret``), which is the one party
+    here with no reason to be wrong about what its own field is.
+    """
+    lowered = (field or "").strip().lower()
+    if not lowered:
+        return None
+    if any(word in lowered for word in _FRESH_EVERY_TIME):
+        return None
+    if any(word in lowered for word in _PASSWORD_WORDS):
+        return "password"
+    if any(word in lowered for word in _USERNAME_WORDS):
+        return "username"
+    return None
+
+
+def _fill_from_vault(
+    conn: Any, turn: Any, *, site: str, field: str, cdp_url: Optional[str]
+) -> Optional[str]:
+    """Answer ``ask_for_login`` from a saved credential, or ``None`` to ask.
+
+    ``None`` on every uncertainty, and the fall-through is the masked box the
+    operator already knows — so the worst case of this whole path is the
+    behaviour we had before it existed.
+
+    The order is the control. The origin is read **from the live page**, never
+    taken from the teammate's ``site`` string: the teammate says "Zendesk", the
+    page says where it actually is, and only the page's answer is allowed to
+    pick a credential. A teammate that has been talked onto a lookalike by
+    something it read mid-task therefore finds nothing saved.
+    """
+    from crew import audit as crew_audit
+    from crew import secrets as crew_secrets
+    from crew import vault as crew_vault
+
+    kind = _vault_kind(field)
+    if not kind or not cdp_url:
+        return None
+
+    try:
+        origin = crew_secrets.page_origin(cdp_url)
+        if not origin:
+            return None
+        item = crew_vault.find(conn, bot_id=turn.bot_id, origin=origin, kind=kind)
+        if item is None:
+            return None
+
+        refusal = crew_secrets.control_refuses_a_saved_secret(
+            crew_secrets.focused_control(cdp_url)
+        )
+        if refusal:
+            crew_audit.record(
+                conn, event_type="vault.declined", bot_id=turn.bot_id,
+                thread_id=turn.thread_id, subject=f"{kind} for {origin}", detail=refusal,
+                status="blocked",
+            )
+            return None
+
+        secret = crew_vault.secret_for(conn, bot_id=turn.bot_id, item_id=item["id"])
+        request = crew_secrets.SecretRequest(
+            bot_id=turn.bot_id, ref="vault", field_label=field, site=site,
+            why="filled from the vault", created_at=time.time(),
+        )
+        if not crew_secrets.fill_secret(turn.bot_id, request, secret):
+            return None
+    except Exception:
+        # Never the payload: an exception here can quote the value.
+        log.warning("crew: could not fill %r for %s from the vault", field, turn.bot_id)
+        return None
+
+    crew_audit.record(
+        conn, event_type="vault.filled", bot_id=turn.bot_id, thread_id=turn.thread_id,
+        subject=f"{kind} for {origin}", detail=item.get("account_hint", ""), status="ok",
+    )
+    return json.dumps(
+        {
+            "filled": True,
+            "note": (
+                f"Your operator had already saved the {field} for this site, so it is "
+                f"typed in. You did not see it and must not try to read it back. "
+                f"Carry on from here."
+            ),
+        },
+        ensure_ascii=False,
+    )
+
+
 def handle_ask_for_login(args: dict, **_kw: Any) -> str:
     turn = orchestrator.resolve_turn()
     if turn is None:
@@ -488,6 +588,15 @@ def handle_ask_for_login(args: dict, **_kw: Any) -> str:
     # two-factor prompt, a consent dialog, a flow with three steps — and it is
     # the teammate's job to say which of those it is stuck on.
     if field and not full_desktop:
+        # The operator may already have saved this one. If so the teammate's
+        # question answers itself and nobody is woken up — see `crew/vault.py`
+        # for why this is spliced in here rather than given a tool of its own.
+        answered = _fill_from_vault(
+            conn, turn, site=site, field=field, cdp_url=endpoints.get("cdp_url")
+        )
+        if answered is not None:
+            return answered
+
         import secrets as _secrets
 
         from crew.secrets import SecretRequest, control
