@@ -163,6 +163,130 @@ def test_a_classifier_that_raises_does_not_break_the_turn(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# The hard floor — the one list nothing opens
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def never(monkeypatch):
+    """Set ``crew.never`` for one test."""
+
+    def _set(*entries: str) -> None:
+        from crew import orchestrator
+
+        monkeypatch.setattr(orchestrator, "_crew_config", lambda: {"never": list(entries)})
+
+    return _set
+
+
+def test_the_never_list_outranks_the_operators_own_grant(conn, never):
+    """The point of a floor is that it is not an exception layer.
+
+    Everything else here can be overturned by something: the risk table by a
+    grant, a ``deny`` grant by ``CRITICAL_TOOLS``, an unknown tool by the
+    classifier. Without this there is nowhere to write "not this, ever" — the
+    nearest thing is a per-tool ``deny`` grant, which ``CRITICAL_TOOLS``
+    outranks and which cannot say anything about *who* or *what*.
+    """
+    crew_grants.set_grant(conn, "scout", "send_email", "allow", "it only mails me")
+    assert crew_policy.evaluate(conn, "scout", "send_email", {"to": "a@b.c"}).allowed
+
+    never("legal@competitor.example")
+    verdict = crew_policy.evaluate(
+        conn, "scout", "send_email", {"to": "legal@competitor.example"}
+    )
+    assert verdict.mode == "deny"
+    assert verdict.source == "floor"
+
+
+def test_the_never_list_outranks_the_tools_that_outrank_everything_else(conn, never):
+    """``CRITICAL_TOOLS`` beats a ``deny`` grant by design. The floor beats it."""
+    tool = sorted(crew_grants.CRITICAL_TOOLS)[0]
+    assert crew_policy.evaluate(conn, "scout", tool, {"path": "/tmp/ok"}).allowed
+
+    never("/etc/shadow")
+    assert crew_policy.evaluate(conn, "scout", tool, {"path": "/etc/shadow"}).mode == "deny"
+
+
+def test_the_floor_reads_the_arguments_and_not_just_the_keys_it_expected(conn, never):
+    """The reason this matches on the serialised call rather than on named keys.
+
+    open-instinct has both: a floor, and a ``merchantOf(args)`` that sniffs for
+    ``merchant|vendor|store|…``. Their own docs record that the sniffer never
+    fired on the actual payment tool, because that tool's argument is called
+    ``merchantName``. A floor that stops applying when somebody renames a
+    parameter is decoration, so this one does not care what the key is called.
+    """
+    never("acme-holdings")
+    for key in ("merchant", "merchantName", "vendor_id", "notes", "whatever_42"):
+        verdict = crew_policy.evaluate(conn, "scout", "purchase", {key: "ACME-Holdings Ltd"})
+        assert verdict.mode == "deny", key
+        assert verdict.source == "floor", key
+
+
+def test_the_floor_matches_nested_arguments(conn, never):
+    never("acme-holdings")
+    verdict = crew_policy.evaluate(
+        conn, "scout", "purchase", {"order": {"lines": [{"seller": "ACME-Holdings"}]}}
+    )
+    assert verdict.mode == "deny"
+
+
+def test_an_empty_never_list_changes_nothing(conn, never):
+    never()
+    crew_grants.set_grant(conn, "scout", "send_email", "allow")
+    assert crew_policy.evaluate(conn, "scout", "send_email", {"to": "a@b.c"}).allowed
+    assert crew_policy.hard_floor("send_email", {"to": "a@b.c"}) is None
+
+
+def test_the_refusal_quotes_the_operators_words_and_never_the_arguments(conn, never):
+    """The reason travels to the model and into the ledger.
+
+    The needle is the operator's own string, so quoting it tells the teammate
+    something it can act on. The arguments are the other half of the call and
+    can hold a credential, so they stay out of it.
+    """
+    never("competitor.example")
+    verdict = crew_policy.evaluate(
+        conn, "scout", "send_email",
+        {"to": "legal@competitor.example", "password": "hunter2-do-not-leak"},
+    )
+    assert "competitor.example" in verdict.why
+    assert "hunter2-do-not-leak" not in verdict.why
+
+
+def test_a_call_that_cannot_be_rendered_is_refused_rather_than_waved_through(conn, never, monkeypatch):
+    """Fail closed, and deliberately not "fall back to the ladder".
+
+    If the call cannot be rendered we do not know whether the floor applies,
+    and a floor a teammate steps over by passing something unserialisable is
+    not a floor. The cost of being wrong this way is one refused call.
+    """
+    never("anything")
+
+    def unrenderable(*a, **kw):
+        raise ValueError("nope")
+
+    monkeypatch.setattr(crew_policy.json, "dumps", unrenderable)
+    verdict = crew_policy.evaluate(conn, "scout", "read_file", {"path": "/tmp/x"})
+    assert verdict.mode == "deny"
+    assert verdict.source == "floor"
+
+
+def test_the_list_is_read_on_every_call_so_editing_it_bites_immediately(conn, monkeypatch):
+    """Revoking takes effect on the next tool call, not the next restart —
+    the rule ``crew_grants.decide`` already follows."""
+    from crew import orchestrator
+
+    entries: list[str] = []
+    monkeypatch.setattr(orchestrator, "_crew_config", lambda: {"never": list(entries)})
+
+    assert crew_policy.hard_floor("send_email", {"to": "a@b.c"}) is None
+    entries.append("a@b.c")
+    assert crew_policy.hard_floor("send_email", {"to": "a@b.c"}) is not None
+
+
+# ---------------------------------------------------------------------------
 # The hook — where the refusal actually happens
 # ---------------------------------------------------------------------------
 

@@ -27,6 +27,7 @@ it is never consulted about a call the operator has ruled on.
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from dataclasses import dataclass
@@ -82,6 +83,10 @@ def evaluate(
     ``classify=False`` skips the model — used by the tests and by any path
     where a round trip would be worse than asking.
     """
+    floored = hard_floor(tool, args)
+    if floored is not None:
+        return floored
+
     decision = crew_grants.decide(conn, bot_id, tool)
 
     # An explicit grant, a protected tool, or a risk rule that recognised this
@@ -97,6 +102,85 @@ def evaluate(
     if guessed == "allow":
         return Verdict("allow", "this looked like ordinary work for this teammate", "classifier")
     return Verdict("ask", decision.why, decision.source)
+
+
+def hard_floor(tool: str, args: Any) -> Optional[Verdict]:
+    """The one list nothing opens. Consulted before the ladder, not inside it.
+
+    Everything else here is an *exception layer*: a grant is the operator's own
+    instruction and overturns the risk table, ``CRITICAL_TOOLS`` overturns even
+    a ``deny`` grant, and the classifier can move a call to ``allow``. That is
+    the right shape for deciding how much of the operator's attention a call is
+    worth — and it leaves nowhere to write down "not this, ever". The nearest
+    thing today is a ``deny`` grant, which is per-tool and which
+    ``CRITICAL_TOOLS`` outranks.
+
+    Ported from open-instinct's blocked-merchant check
+    (``packages/core/src/policy.ts:227-232``), which runs ahead of its grant and
+    approval logic for exactly this reason — their note is the argument:
+    *"A blocked merchant is blocked for everyone; no tier, grant or approval
+    opens it."*
+
+    **Matching is over the serialised arguments, not over named keys**, and
+    that is the half most people get wrong. open-instinct also has a
+    key-sniffing ``merchantOf(args)`` that looks for ``merchant|vendor|store|…``
+    — and their own docs admit it never fired on the actual payment tool,
+    because that tool's argument is called ``merchantName``. A floor that
+    silently stops applying when somebody renames a parameter is not a floor.
+    So: serialise the whole call and look for the operator's string in it.
+
+    The cost is honest and worth stating: a short entry matches broadly
+    (``"ops"`` would also match ``"devops"``). Entries are meant to be specific
+    — an address, a domain, an account, a repository.
+    """
+    needles = _never_list()
+    if not needles:
+        return None
+    try:
+        haystack = f"{tool}\n{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}".lower()
+    except Exception:
+        # Not "fall through to the ladder". If the call cannot be rendered, we
+        # cannot tell whether the floor applies, and a floor that a teammate
+        # can step over by passing something unserialisable is decoration.
+        log.warning("crew: could not render a tool call to check it against crew.never; refusing")
+        return Verdict(
+            "deny",
+            "this call could not be checked against the list your operator said is never allowed",
+            "floor",
+        )
+    for needle in needles:
+        if needle in haystack:
+            # The needle is the operator's own words, so quoting it is safe.
+            # The haystack is not quoted: it holds the arguments, and those can
+            # hold a secret.
+            return Verdict(
+                "deny",
+                f"your operator put {needle!r} on the never list, and this call mentions it",
+                "floor",
+            )
+    return None
+
+
+def _never_list() -> tuple[str, ...]:
+    """``crew.never`` from config.yaml, lowercased, blanks dropped.
+
+    Read at call time like every other crew permission read: editing the list
+    has to bite on the next tool call, not the next restart.
+    """
+    try:
+        from crew import orchestrator
+
+        raw = orchestrator._crew_config().get("never")  # noqa: SLF001
+    except Exception:
+        log.debug("crew: no never-list available", exc_info=True)
+        return ()
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    return tuple(
+        text for text in (str(entry).strip().lower() for entry in raw) if text
+    )
 
 
 def _classify(tool: str, args: Any) -> str:
