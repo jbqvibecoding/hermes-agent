@@ -82,6 +82,22 @@ _RISK_RULES: tuple[tuple[re.Pattern[str], str, str], ...] = (
     (re.compile(r"^kanban_(create|complete|block|unblock|comment|link)$|"
                 r"feishu_.*(comment|reply)|^message_bot$"),
      "ask", "it writes somewhere your colleagues read"),
+    # A Space is shared by construction — that is the entire feature — so a
+    # write to one is the same category as the rule above, and these two rules
+    # have to sit here rather than below. The workspace-allow rule's
+    # `^(read|write|patch|search|glob|ls|edit)_?` matches `edit_space_page`,
+    # which would hand a teammate silent write access to a document the
+    # operator and its colleagues read, and file it in the ledger as "it stays
+    # inside this teammate's own computer". The reads are spelled out for the
+    # opposite reason: without a rule they fall to the unknown-tool default and
+    # a teammate would need an approval to find out which Spaces it may use.
+    #
+    # A teammate whose job *is* writing documents gets `edit_space_page: allow`
+    # as a grant. That is the designed way through, and it is per-teammate.
+    (re.compile(r"^(create|edit|delete)_space_page$"),
+     "ask", "it writes somewhere your colleagues read"),
+    (re.compile(r"^(read_space_page|list_space_pages|list_authorized_spaces)$"),
+     "allow", "it only reads a shared workspace you were invited into"),
     # ---- the teammate's own workspace --------------------------------------
     (re.compile(r"^(read|write|patch|search|glob|ls|edit)_?|^terminal$|^process$|"
                 r"^execute_code$|^close_terminal$|^read_terminal$"),

@@ -424,6 +424,7 @@ def _build_agent(bot: dict, thread_id: str, *, has_computer: bool, group: Option
         role=bot["role"],
         has_computer=has_computer,
         can_relay=_can_relay(bot["id"]),
+        has_spaces=_has_spaces(bot["id"]),
         group=group,
     )
 
@@ -470,6 +471,25 @@ def _can_relay(bot_id: str) -> bool:
     """
     rules = a2a_rules()
     return bot_id == rules.chief_id or any(frm == bot_id for frm, _ in rules.pairs)
+
+
+def _has_spaces(bot_id: str) -> bool:
+    """Whether this teammate has been invited into any shared document Space.
+
+    Decides only whether the Spaces block is worth showing, exactly as
+    :func:`_can_relay` does for relaying. It is a *prompt* question, never an
+    access one: every page tool re-reads ``bot_spaces`` on every call
+    (``crew.pages.resolve``), so a Space granted after this agent was built is
+    usable immediately — the teammate just has not been told about it until the
+    agent is rebuilt.
+    """
+    from crew import pages as crew_pages
+
+    try:
+        return bool(crew_pages.spaces_for(crew_db.connect(), bot_id))
+    except Exception:
+        log.debug("crew: could not read spaces for %s", bot_id, exc_info=True)
+        return False
 
 
 def _get_agent(bot: dict, thread_id: str, *, has_computer: bool, group: Optional[tuple]):

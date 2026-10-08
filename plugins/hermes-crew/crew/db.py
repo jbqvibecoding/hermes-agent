@@ -26,6 +26,7 @@ render unchanged), plus a ``sections`` table for the sidebar org chart.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -34,6 +35,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
+
+log = logging.getLogger(__name__)
 
 # The nine chip kinds the thread renderer knows how to draw. Kept as a plain
 # tuple (not an enum) because it crosses the wire to TypeScript, where it is
@@ -393,6 +396,79 @@ CREATE TABLE IF NOT EXISTS vault_secrets (
     bot_id     TEXT NOT NULL,
     ciphertext TEXT NOT NULL
 );
+
+-- A Space is a shared document workspace: the operator's, with teammates
+-- invited into it one at a time. It is the first thing in the crew that is
+-- neither a teammate's private workspace nor a thread — which is exactly why
+-- `bot_spaces` is a table and not a config key. "Who may read this document"
+-- has to be revocable while a turn is running.
+--
+-- `id` is a slug (`marketing`, `q3-launch`) rather than a UUID because a model
+-- has to pass it as a tool argument and read it back in a page link. See
+-- `crew.pages.new_space_id`.
+CREATE TABLE IF NOT EXISTS spaces (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+
+-- `revision` is an optimistic-concurrency token, not a changelog: every write
+-- carries the revision it was based on and the UPDATE matches on it, so two
+-- writers racing on one page produce one winner and one 409 instead of a
+-- silent overwrite. `crew.pages.update` is the only writer; nothing else may
+-- bump it.
+--
+-- `parent_id` is a tree edge within one space. It is never dereferenced
+-- without a cycle check (`crew.pages._check_parent`).
+CREATE TABLE IF NOT EXISTS pages (
+    id          TEXT PRIMARY KEY,
+    space_id    TEXT NOT NULL,
+    parent_id   TEXT,
+    title       TEXT NOT NULL,
+    content     TEXT NOT NULL DEFAULT '',
+    revision    INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    -- A teammate's bot_id, or '' when the operator wrote it.
+    created_by  TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_pages_space ON pages(space_id, parent_id, created_at);
+
+-- One row per teammate per space it may use. Checked on every call rather than
+-- resolved once per turn: a capability cached at the top of a turn survives the
+-- operator revoking it halfway through, which is the one moment revocation
+-- matters.
+CREATE TABLE IF NOT EXISTS bot_spaces (
+    bot_id     TEXT NOT NULL,
+    space_id   TEXT NOT NULL,
+    granted_at INTEGER NOT NULL,
+    PRIMARY KEY (bot_id, space_id)
+);
+"""
+
+# Full-text search over pages. Kept out of _SCHEMA deliberately: that script
+# runs on *every* connect, so a `CREATE VIRTUAL TABLE ... USING fts5` in it
+# would make the entire plugin unopenable on a Python built without FTS5
+# rather than merely costing it a search index. Applied separately, guarded,
+# and `crew.pages.search` falls back to LIKE when it did not take.
+#
+# Standalone rather than external-content: `pages.content` is rewritten in
+# place on every edit, and the delete+insert update trigger below is the shape
+# that keeps an edited page's index honest. Same pattern as
+# `hermes_state.FTS_SQL`.
+_FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(title, content);
+
+CREATE TRIGGER IF NOT EXISTS pages_fts_insert AFTER INSERT ON pages BEGIN
+    INSERT INTO pages_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS pages_fts_delete AFTER DELETE ON pages BEGIN
+    DELETE FROM pages_fts WHERE rowid = old.rowid;
+END;
+CREATE TRIGGER IF NOT EXISTS pages_fts_update AFTER UPDATE ON pages BEGIN
+    DELETE FROM pages_fts WHERE rowid = old.rowid;
+    INSERT INTO pages_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content);
+END;
 """
 
 # Additive column migrations, applied idempotently after _SCHEMA. Each entry is
@@ -496,9 +572,49 @@ def connect(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
     conn.executescript(_SCHEMA)
     _apply_migrations(conn)
     conn.executescript(_POST_MIGRATION_SCHEMA)
+    _apply_fts(conn, path)
     conn.commit()
     cache[key] = conn
     return conn
+
+
+#: Whether this process got a page search index. Read by `crew.pages.search`.
+_fts_enabled = True
+_fts_warned = False
+
+
+def fts_enabled() -> bool:
+    return _fts_enabled
+
+
+def _apply_fts(conn: sqlite3.Connection, path: Path) -> None:
+    """Build the page search index, or carry on without one.
+
+    A Python built without FTS5 is rare and entirely the user's business — it
+    should cost them ranked page search, not the crew. So this is the one part
+    of the schema allowed to fail.
+
+    The reverse case is worth naming because it is the nastier one: a database
+    created *with* FTS5 and later opened by a Python without it still carries
+    the triggers, and those fire on every page write. Nothing here can repair
+    that, and inventing a repair for a case this exotic would be guessing; the
+    warning says which half is broken so the message in the log matches what
+    the user sees.
+    """
+    global _fts_enabled, _fts_warned
+    try:
+        conn.executescript(_FTS_SCHEMA)
+        _fts_enabled = True
+    except sqlite3.OperationalError as exc:
+        _fts_enabled = False
+        if not _fts_warned:
+            _fts_warned = True
+            log.warning(
+                "crew: SQLite FTS5 is unavailable for %s, so page search falls back to a "
+                "substring scan. Run `hermes update` to rebuild the venv with a current "
+                "Python (managed uv guarantees FTS5). Underlying error: %s",
+                path, exc,
+            )
 
 
 def _apply_migrations(conn: sqlite3.Connection) -> None:

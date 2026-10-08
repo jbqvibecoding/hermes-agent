@@ -24,3 +24,8 @@ provides_tools:
   - message_bot
   - ask_for_login
   - set_plan
+  - list_authorized_spaces
+  - list_space_pages
+  - read_space_page
+  - create_space_page
+  - edit_space_page

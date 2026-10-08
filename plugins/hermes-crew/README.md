@@ -25,6 +25,7 @@ hermes dashboard        # open the Crew tab
 | **Hands work over, and comes back** | `message_bot` drops a scoped task into a colleague's thread and wakes them — and when they answer, the teammate you were talking to is asked again with that answer and tells you what it means, in its own thread and its own words. Peer-to-peer is off until you allowlist a direction; the chief is the default hub. One dispatch plus one reply is the whole budget. |
 | **Says when it has gone quiet** | A turn that runs with no output and no tool calls for ten minutes posts one line saying so. It is never stopped for you — a run waiting on a slow API is still working, and the point is that you get to decide. |
 | **Asks for the keyboard, never the password** | At a login wall it calls `ask_for_login`. You open its screen, sign in once in *its* browser, and the session persists in its profile. |
+| **Writes documents with you, not at you** | A Space is a shared document workspace you invite a teammate into. Every edit carries the revision it was based on, so you and it can both be writing and the loser is told to re-read rather than silently overwriting you. A page it reads arrives quoted: anyone with access can write anything into one. |
 
 ## Its computer
 
@@ -109,7 +110,8 @@ plugins/hermes-crew/
 │   ├── db.py            # crew.db — the roster, threads, chips, approvals (and the bus)
 │   ├── prompts.py       # the behavioural contract, ported verbatim
 │   ├── orchestrator.py  # a thread message → a Hermes AIAgent turn
-│   ├── tools.py         # the six tools a plain agent has no concept of
+│   ├── tools.py         # the tools a plain agent has no concept of
+│   ├── pages.py         # Spaces: shared documents, and the revision token
 │   ├── roster.py        # teammate ⇄ profile
 │   ├── computer.py      # the container, its screen, its browser
 │   ├── routines.py      # crew routines ⇄ Hermes cron
