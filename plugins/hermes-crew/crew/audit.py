@@ -65,6 +65,14 @@ EVENT_TYPES = (
     # itself said no. Worth a row of its own, because "it did not fill" and
     # "there was nothing to fill" send a reader looking in different places.
     "vault.declined",
+    # The operator invited a teammate into a shared document Space, or took
+    # the invitation back. Separate from `grant.changed` because it is not a
+    # tool moving between deny/ask/allow — it is which documents a teammate can
+    # see, and an operator auditing a leak looks for that question by name.
+    # Page edits themselves are deliberately *not* audited: the revision
+    # history is the record, and a row per autosave would bury everything else
+    # in this table.
+    "space.access_changed",
 )
 
 #: A digest is 12 hex chars: enough to match two calls against each other,

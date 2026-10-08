@@ -520,6 +520,154 @@ def test_the_prompt_block_is_not_what_grants_access(space):
     )
 
 
+# ---------------------------------------------------------------------------
+# The operator's side
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def api():
+    """The dashboard routes, loaded the way the dashboard loads them.
+
+    The `sys.modules` registration before `exec_module` is not tidiness: this
+    file uses `from __future__ import annotations`, so a body model's
+    annotations are strings and pydantic resolves them through
+    `sys.modules[cls.__module__]`. Without the registration the first
+    `PatchPageBody(...)` raises "is not fully defined" — which is exactly what
+    `_mount_plugin_api_routes` in `hermes_cli/web_server.py` registers early to
+    avoid, and this fixture has to match it or it is testing a different
+    module than production runs.
+    """
+    import importlib.util
+
+    name = "_crew_plugin_api_pages"
+    spec = importlib.util.spec_from_file_location(
+        name, _PLUGIN_ROOT / "dashboard" / "plugin_api.py"
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    yield module
+    sys.modules.pop(name, None)
+
+
+def test_a_stale_save_from_the_editor_comes_back_as_a_409(space, api):
+    """**The status the editor's autosave is built on.**
+
+    `autosave` treats a conflict as terminal and stops retrying; it can only do
+    that if the status says conflict. Flattened to a 400 it would retry a stale
+    write forever, and a 500 would look like the server being down.
+    """
+    from fastapi import HTTPException
+
+    conn, space_id = space
+    page = crew_pages.create_page(conn, space_id=space_id, title="Plan", content="first")
+    api.patch_space_page(
+        space_id, page["id"], api.PatchPageBody(expected_revision=1, content="second")
+    )
+
+    with pytest.raises(HTTPException) as caught:
+        api.patch_space_page(
+            space_id, page["id"], api.PatchPageBody(expected_revision=1, content="third")
+        )
+    assert caught.value.status_code == 409
+    assert crew_pages.get_page(conn, space_id=space_id, page_id=page["id"])["content"] == "second"
+
+    # …and a missing page is a 404, not the same 409.
+    with pytest.raises(HTTPException) as missing:
+        api.get_space_page(space_id, "pg_nope")
+    assert missing.value.status_code == 404
+
+
+def test_the_operator_gets_the_document_and_the_model_gets_it_quoted(space, api):
+    """The fence is for a model reading somebody else's writing mid-turn. A
+    person opening their own document in an editor needs the document."""
+    conn, space_id = space
+    page = crew_pages.create_page(conn, space_id=space_id, title="Plan", content="Ship on the 14th.")
+
+    assert api.get_space_page(space_id, page["id"])["content"] == "Ship on the 14th."
+    assert "from-space" in _call("read_space_page", {"id": page["id"], "space_id": space_id})["content"]
+
+
+def test_the_library_listing_does_not_ship_every_document(space, api):
+    conn, space_id = space
+    crew_pages.create_page(conn, space_id=space_id, title="Plan", content="a long body")
+    # `query` is passed explicitly: FastAPI resolves a `Query("")` default per
+    # request, and a direct call does not.
+    listing = api.list_space_pages(space_id, query="")
+    assert "content" not in listing["pages"][0]
+    assert listing["pages"][0]["title"] == "Plan"
+    assert api.list_space_pages(space_id, query="plan")["pages"][0]["title"] == "Plan"
+    assert api.list_space_pages(space_id, query="nothinghere")["pages"] == []
+
+
+def test_inviting_a_teammate_is_recorded_and_takes_effect_on_the_next_call(space, api):
+    conn, space_id = space
+    page = crew_pages.create_page(conn, space_id=space_id, title="Plan")
+    assert "error" in _call("read_space_page", {"id": page["id"], "space_id": space_id},
+                            bot_id="sorter")
+
+    api.add_space_member(space_id, "sorter")
+    assert "error" not in _call("read_space_page", {"id": page["id"], "space_id": space_id},
+                                bot_id="sorter")
+
+    api.remove_space_member(space_id, "sorter")
+    assert "error" in _call("read_space_page", {"id": page["id"], "space_id": space_id},
+                            bot_id="sorter")
+
+    rows = [
+        dict(r) for r in conn.execute(
+            "SELECT * FROM audit WHERE event_type='space.access_changed' ORDER BY id"
+        )
+    ]
+    assert [r["status"] for r in rows] == ["allow", "deny"]
+    assert all(r["bot_id"] == "sorter" for r in rows)
+
+
+def test_the_wire_can_say_move_to_root_without_saying_nothing(space, api):
+    """`null` over JSON cannot mean both "leave the parent alone" and "move to
+    the top level", so the body carries an explicit `move` flag. Without it a
+    title-only save would unparent the page."""
+    conn, space_id = space
+    parent = crew_pages.create_page(conn, space_id=space_id, title="Section")
+    child = crew_pages.create_page(conn, space_id=space_id, title="Draft", parent_id=parent["id"])
+
+    kept = api.patch_space_page(
+        space_id, child["id"], api.PatchPageBody(expected_revision=1, title="Second draft")
+    )
+    assert kept["parent_id"] == parent["id"]
+
+    lifted = api.patch_space_page(
+        space_id, child["id"],
+        api.PatchPageBody(expected_revision=2, move=True, parent_id=None),
+    )
+    assert lifted["parent_id"] is None
+
+
+def test_a_space_listing_says_who_is_in_it(space, api):
+    conn, space_id = space
+    listed = {s["id"]: s for s in api.list_spaces()["spaces"]}
+    assert listed[space_id]["bot_ids"] == ["scout"]
+
+    api.add_space_member(space_id, "sorter")
+    refreshed = {s["id"]: s for s in api.list_spaces()["spaces"]}
+    assert refreshed[space_id]["bot_ids"] == ["scout", "sorter"]
+
+
+def test_inviting_a_teammate_that_does_not_exist_is_a_404(space, api):
+    from fastapi import HTTPException
+
+    _conn, space_id = space
+    with pytest.raises(HTTPException) as caught:
+        api.add_space_member(space_id, "nobody")
+    assert caught.value.status_code == 404
+
+
 def test_every_page_tool_declines_outside_a_crew_thread(space):
     """A teammate's profile with the crew toolset enabled, talked to through
     the CLI. The honest answer is that there is no Space context — not a

@@ -73,6 +73,7 @@ from crew import computer as crew_computer  # noqa: E402
 from crew import contract  # noqa: E402
 from crew import db as crew_db  # noqa: E402
 from crew import grants as crew_grants  # noqa: E402
+from crew import pages as crew_pages  # noqa: E402
 from crew import tasks as crew_tasks  # noqa: E402
 from crew import orchestrator, roster, routines, sections  # noqa: E402
 
@@ -963,6 +964,179 @@ def post_seed(body: SeedBody):
     """
     seeded = roster.seed_from_disk(_conn(), create_profiles=body.create_profiles)
     return {"seeded": seeded}
+
+
+# ---------------------------------------------------------------------------
+# Spaces — shared documents
+#
+# The operator's side. These routes do no `bot_spaces` check: every Space is
+# the operator's, and the invitation table decides what *teammates* reach (see
+# `crew.pages.resolve`). What they do carry is the revision token, because the
+# whole point is that the person and the teammate can both be writing.
+# ---------------------------------------------------------------------------
+
+
+def _page_error(exc: Exception) -> HTTPException:
+    """A page failure as the status the editor needs.
+
+    409 in particular: `autosave` treats a conflict as a terminal state and
+    stops retrying, and it can only do that if the status says so. Flattening
+    these to 400 would have it retry a stale write forever.
+    """
+    status = getattr(exc, "status", 400)
+    return HTTPException(status_code=status, detail=str(exc))
+
+
+class SpaceBody(BaseModel):
+    name: str
+
+
+@router.get("/spaces")
+def list_spaces():
+    conn = _conn()
+    return {
+        "spaces": [
+            {**space, "bot_ids": _space_members(conn, space["id"])}
+            for space in crew_pages.list_spaces(conn)
+        ]
+    }
+
+
+def _space_members(conn, space_id: str) -> list[str]:
+    return [
+        row["bot_id"]
+        for row in conn.execute(
+            "SELECT bot_id FROM bot_spaces WHERE space_id=? ORDER BY bot_id", (space_id,)
+        )
+    ]
+
+
+@router.post("/spaces", status_code=201)
+def create_space(body: SpaceBody):
+    try:
+        return crew_pages.create_space(_conn(), name=body.name)
+    except crew_pages.PageError as exc:
+        raise _page_error(exc) from exc
+
+
+@router.delete("/spaces/{space_id}", status_code=204)
+def delete_space(space_id: str):
+    if not crew_pages.delete_space(_conn(), space_id):
+        raise HTTPException(status_code=404, detail="There is no Space with that id.")
+    return Response(status_code=204)
+
+
+@router.put("/spaces/{space_id}/members/{bot_id}", status_code=204)
+def add_space_member(space_id: str, bot_id: str):
+    """Invite a teammate into a Space."""
+    conn = _conn()
+    _bot_or_404(conn, bot_id)
+    try:
+        crew_pages.grant_space(conn, bot_id=bot_id, space_id=space_id)
+    except crew_pages.PageError as exc:
+        raise _page_error(exc) from exc
+    crew_audit.record(
+        conn, event_type="space.access_changed", bot_id=bot_id,
+        actor=crew_audit.ACTOR_OPERATOR,
+        subject=f"invited into the Space '{space_id}'", status="allow",
+    )
+    return Response(status_code=204)
+
+
+@router.delete("/spaces/{space_id}/members/{bot_id}", status_code=204)
+def remove_space_member(space_id: str, bot_id: str):
+    """Take the invitation back. In force on the teammate's next tool call,
+    not its next turn — see `crew.pages.resolve`."""
+    conn = _conn()
+    if crew_pages.revoke_space(conn, bot_id=bot_id, space_id=space_id):
+        crew_audit.record(
+            conn, event_type="space.access_changed", bot_id=bot_id,
+            actor=crew_audit.ACTOR_OPERATOR,
+            subject=f"removed from the Space '{space_id}'", status="deny",
+        )
+    return Response(status_code=204)
+
+
+@router.get("/spaces/{space_id}/pages")
+def list_space_pages(space_id: str, query: str = Query("")):
+    conn = _conn()
+    crew_pages.get_space(conn, space_id)
+    found = (
+        crew_pages.search(conn, space_id=space_id, query=query)
+        if query.strip()
+        else crew_pages.list_pages(conn, space_id)
+    )
+    # Bodies are dropped from a listing: the library view renders a tree of
+    # titles, and forty documents is a lot of bytes to send so one can be read.
+    return {
+        "pages": [
+            {k: v for k, v in page.items() if k != "content"} for page in found
+        ]
+    }
+
+
+@router.get("/spaces/{space_id}/pages/{page_id}")
+def get_space_page(space_id: str, page_id: str):
+    """The page with its body, unfenced.
+
+    The fence `read_space_page` adds is for a *model* reading somebody else's
+    writing mid-turn. A person opening their own document in an editor needs
+    the document.
+    """
+    try:
+        return crew_pages.get_page(_conn(), space_id=space_id, page_id=page_id)
+    except crew_pages.PageError as exc:
+        raise _page_error(exc) from exc
+
+
+class CreatePageBody(BaseModel):
+    title: str
+    content: str = ""
+    parent_id: Optional[str] = None
+
+
+@router.post("/spaces/{space_id}/pages", status_code=201)
+def create_space_page(space_id: str, body: CreatePageBody):
+    try:
+        return crew_pages.create_page(
+            _conn(), space_id=space_id, title=body.title,
+            content=body.content, parent_id=body.parent_id,
+        )
+    except crew_pages.PageError as exc:
+        raise _page_error(exc) from exc
+
+
+class PatchPageBody(BaseModel):
+    expected_revision: int
+    title: Optional[str] = None
+    content: Optional[str] = None
+    #: Sentinel-free on the wire: the editor sends `parent_id` only when it
+    #: means to move the page, and `"root"` is how it asks for the top level.
+    #: A bare `null` cannot carry that distinction through JSON.
+    parent_id: Optional[str] = None
+    move: bool = False
+
+
+@router.patch("/spaces/{space_id}/pages/{page_id}")
+def patch_space_page(space_id: str, page_id: str, body: PatchPageBody):
+    kwargs = {}
+    if body.move:
+        kwargs["parent_id"] = None if body.parent_id in (None, "", "root") else body.parent_id
+    try:
+        return crew_pages.update_page(
+            _conn(), space_id=space_id, page_id=page_id,
+            expected_revision=body.expected_revision,
+            title=body.title, content=body.content, **kwargs,
+        )
+    except crew_pages.PageError as exc:
+        raise _page_error(exc) from exc
+
+
+@router.delete("/spaces/{space_id}/pages/{page_id}", status_code=204)
+def delete_space_page(space_id: str, page_id: str):
+    if not crew_pages.delete_page(_conn(), space_id=space_id, page_id=page_id):
+        raise HTTPException(status_code=404, detail="That page is not in this Space.")
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
