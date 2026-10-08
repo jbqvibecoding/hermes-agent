@@ -17,6 +17,8 @@ export { PermissionsPanel } from "./ui/PermissionsPanel";
 export { AuditTimeline } from "./ui/AuditTimeline";
 export { FilesPanel } from "./ui/FilesPanel";
 export { PlanPanel } from "./ui/PlanPanel";
+export { SpacesPanel } from "./ui/SpacesPanel";
+export type { SpacesPanelProps } from "./ui/SpacesPanel";
 export { CommandPalette } from "./ui/CommandPalette";
 export { HireDialog } from "./ui/HireDialog";
 export { Select } from "./ui/Select";
@@ -27,6 +29,9 @@ export type { ChipHandlers } from "./ui/chips";
 
 export { useCrewController } from "./state/useCrewController";
 export type { CrewControllerOptions } from "./state/useCrewController";
+
+export { PageAutosave, MAX_TITLE, MAX_CONTENT } from "./state/pageAutosave";
+export type { SavePage, SaveState, SaveStatus } from "./state/pageAutosave";
 
 export { HermesCrewClient, defaultEventsUrl } from "./client/HermesCrewClient";
 export type { HermesCrewClientOptions } from "./client/HermesCrewClient";

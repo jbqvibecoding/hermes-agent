@@ -19,6 +19,7 @@ import { AgentList, type AgentAction } from "./AgentList";
 import { CommandPalette } from "./CommandPalette";
 import { Conversation } from "./Conversation";
 import { DetailPanel } from "./DetailPanel";
+import { SpacesPanel } from "./SpacesPanel";
 import { HireDialog, type HireDraft } from "./HireDialog";
 import type { ChipHandlers } from "./chips";
 
@@ -49,6 +50,9 @@ export function CrewWorkspace({ client, notify }: {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
+  // Threads or documents. Not persisted: a reload lands you back in the
+  // conversation, which is what the product is for.
+  const [view, setView] = useState<"chat" | "spaces">("chat");
   const [detailWidth, setDetailWidth] = useState(storedDetailWidth);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dialog, setDialog] = useState<{ editing?: Agent } | undefined>();
@@ -261,9 +265,15 @@ export function CrewWorkspace({ client, notify }: {
       onAction={onAction}
       onCreate={() => { setDialogError(undefined); setDialog({}); }}
       onToggleSection={toggleSection}
+      view={view}
+      onChangeView={setView}
     />
 
-    <Conversation
+    {/* Documents replace the thread rather than sitting beside it. A Space is
+        not about one teammate, so it has no business inside the per-teammate
+        detail panel, and a fourth column would leave the editor too narrow to
+        write in. */}
+    {view === "spaces" ? <SpacesPanel client={client} agents={agents} /> : <Conversation
       agent={selectedAgent}
       thread={thread}
       agentsById={agentsById}
@@ -275,7 +285,7 @@ export function CrewWorkspace({ client, notify }: {
       draft={composerDraft}
       onSend={(text) => crew.sendMessage(text).catch(() => undefined)}
       onToggleDetails={() => setDetailOpen((open) => !open)}
-    />
+    />}
 
     {detailOpen && selectedAgent && <DetailPanel
       open={detailOpen}

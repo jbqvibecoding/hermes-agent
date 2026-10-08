@@ -1264,3 +1264,304 @@ kbd {
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+
+/* ---------------------------------------------------------------------------
+   Spaces — shared documents
+
+   The conflict banner is the one piece of this that is not decoration. It has
+   to be impossible to miss and impossible to dismiss by accident: nothing
+   saves while it is up, and the two buttons are the only ways out.
+   --------------------------------------------------------------------------- */
+
+.spaces-panel { display: flex; min-height: 0; height: 100%; background: var(--crew-bg); }
+
+.spaces-library {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 15rem;
+  flex: 0 0 15rem;
+  min-height: 0;
+  padding: 0.6rem;
+  border-right: 1px solid var(--crew-line);
+  overflow-y: auto;
+}
+.spaces-library-head { display: flex; gap: 0.35rem; align-items: center; }
+.spaces-picker {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.3rem 0.4rem;
+  background: var(--crew-surface);
+  color: var(--crew-text);
+  border: 1px solid var(--crew-line);
+  border-radius: var(--crew-radius);
+  font-size: 0.78rem;
+}
+.spaces-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.28rem;
+  background: transparent;
+  color: var(--crew-dim);
+  border: 1px solid transparent;
+  border-radius: var(--crew-radius);
+  cursor: pointer;
+}
+.spaces-icon-button:hover { background: var(--crew-hover); color: var(--crew-text); }
+.spaces-icon-button[aria-pressed="true"] { background: var(--crew-selected); color: var(--crew-text); }
+
+.spaces-search {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.4rem;
+  background: var(--crew-surface);
+  border: 1px solid var(--crew-line);
+  border-radius: var(--crew-radius);
+  color: var(--crew-faint);
+}
+.spaces-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--crew-text);
+  font-size: 0.76rem;
+}
+
+.spaces-tree { display: flex; flex-direction: column; min-height: 0; }
+.spaces-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding-right: 0.2rem;
+  border-radius: var(--crew-radius);
+}
+.spaces-tree-row:hover { background: var(--crew-hover); }
+.spaces-tree-row.is-active { background: var(--crew-selected); }
+.spaces-tree-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.25rem 0.1rem;
+  background: none;
+  border: none;
+  color: var(--crew-text);
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spaces-twisty {
+  display: inline-flex;
+  padding: 0.15rem;
+  background: none;
+  border: none;
+  color: var(--crew-faint);
+  cursor: pointer;
+}
+.spaces-twisty.is-leaf { visibility: hidden; }
+.spaces-twisty-open { transform: rotate(90deg); }
+.spaces-row-delete { opacity: 0; }
+.spaces-tree-row:hover .spaces-row-delete { opacity: 1; }
+
+.spaces-new-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.35rem;
+  background: var(--crew-surface);
+  color: var(--crew-dim);
+  border: 1px dashed var(--crew-line);
+  border-radius: var(--crew-radius);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.spaces-new-page:hover:not(:disabled) { color: var(--crew-text); border-color: var(--crew-accent); }
+.spaces-new-page:disabled { opacity: 0.5; cursor: default; }
+
+.spaces-members { border-top: 1px solid var(--crew-line); padding-top: 0.5rem; }
+.spaces-members h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0 0 0.35rem;
+  color: var(--crew-faint);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.spaces-member {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0;
+  color: var(--crew-dim);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.spaces-note { margin: 0.4rem 0 0; color: var(--crew-faint); font-size: 0.66rem; line-height: 1.45; }
+.spaces-empty { margin: 0.4rem 0; color: var(--crew-faint); font-size: 0.73rem; }
+
+.spaces-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.7rem 0.9rem;
+  gap: 0.5rem;
+}
+.spaces-editor-head { display: flex; align-items: center; gap: 0.5rem; }
+.spaces-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.2rem 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--crew-text);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.spaces-editor-actions { display: flex; align-items: center; gap: 0.4rem; flex: 0 0 auto; }
+
+.spaces-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--crew-faint);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+.spaces-save-saved { color: var(--crew-green); }
+.spaces-save-dirty, .spaces-save-saving { color: var(--crew-dim); }
+.spaces-save-error, .spaces-save-conflict { color: var(--crew-amber); }
+.space-spin { animation: space-spin 1s linear infinite; }
+@keyframes space-spin { to { transform: rotate(360deg); } }
+
+.spaces-conflict {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--crew-raised);
+  border: 1px solid var(--crew-amber);
+  border-radius: var(--crew-radius);
+  color: var(--crew-text);
+  font-size: 0.78rem;
+}
+.spaces-conflict-error { border-color: var(--crew-red); }
+.spaces-conflict p { margin: 0.2rem 0 0; color: var(--crew-dim); font-size: 0.72rem; }
+.spaces-conflict-actions { display: flex; gap: 0.35rem; margin-left: auto; flex: 0 0 auto; }
+.spaces-conflict-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.28rem 0.55rem;
+  background: var(--crew-surface);
+  color: var(--crew-text);
+  border: 1px solid var(--crew-line);
+  border-radius: var(--crew-radius);
+  font-size: 0.74rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.spaces-conflict-actions .primary { border-color: var(--crew-accent); color: var(--crew-accent); }
+
+.spaces-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0.6rem;
+  background: var(--crew-surface);
+  border: 1px solid var(--crew-line);
+  border-radius: var(--crew-radius);
+  color: var(--crew-text);
+  font-family: var(--crew-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+.spaces-body:focus { border-color: var(--crew-accent); }
+
+.spaces-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.6rem;
+  background: var(--crew-surface);
+  border: 1px solid var(--crew-line);
+  border-radius: var(--crew-radius);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.spaces-editor-foot {
+  display: flex;
+  gap: 0.8rem;
+  color: var(--crew-faint);
+  font-size: 0.68rem;
+}
+.spaces-placeholder {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  color: var(--crew-faint);
+  font-size: 0.8rem;
+}
+.spaces-problem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--crew-raised);
+  border: 1px solid var(--crew-red);
+  border-radius: var(--crew-radius);
+  color: var(--crew-text);
+  font-size: 0.76rem;
+}
+.spaces-problem button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--crew-accent);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+/* The thread/document switch. Two destinations, not a mode nobody can find. */
+.sidebar-views {
+  display: flex;
+  gap: 0.2rem;
+  padding: 0 0.6rem 0.4rem;
+}
+.sidebar-views button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  flex: 1 1 0;
+  padding: 0.28rem 0.3rem;
+  background: transparent;
+  color: var(--crew-faint);
+  border: 1px solid transparent;
+  border-radius: var(--crew-radius);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.sidebar-views button:hover { color: var(--crew-text); background: var(--crew-hover); }
+.sidebar-views button.is-current {
+  background: var(--crew-selected);
+  color: var(--crew-text);
+  border-color: var(--crew-line);
+}

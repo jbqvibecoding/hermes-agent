@@ -24,6 +24,10 @@ import type {
   CreateAgentInput,
   Message,
   ModelProviderCatalog,
+  Page,
+  PageSummary,
+  PatchPageInput,
+  Space,
   Artifact,
   AuditPage,
   AuditQuery,
@@ -100,4 +104,30 @@ export interface CloudAgentsClient {
     agentId: string, ref: string, value: string, signal?: AbortSignal,
   ): Promise<{ filled: boolean }>;
   screenshotUrl(agentId: string, filename: string): string;
+
+  /**
+   * Shared documents. Ours, not Errand's — it has no surface that is not a
+   * conversation.
+   *
+   * `patchPage` must reject with a `conflict`-kind error on a 409 and must not
+   * retry: that rejection is the only thing standing between two writers and a
+   * silent overwrite, and `PageAutosave` keys its terminal state off it.
+   */
+  listSpaces(signal?: AbortSignal): Promise<Space[]>;
+  createSpace(name: string, signal?: AbortSignal): Promise<Space>;
+  deleteSpace(spaceId: string, signal?: AbortSignal): Promise<void>;
+  setSpaceMember(
+    spaceId: string, agentId: string, member: boolean, signal?: AbortSignal,
+  ): Promise<void>;
+  listPages(spaceId: string, query?: string, signal?: AbortSignal): Promise<PageSummary[]>;
+  getPage(spaceId: string, pageId: string, signal?: AbortSignal): Promise<Page>;
+  createPage(
+    spaceId: string,
+    input: { title: string; content?: string; parent_id?: string | null },
+    signal?: AbortSignal,
+  ): Promise<Page>;
+  patchPage(
+    spaceId: string, pageId: string, patch: PatchPageInput, signal?: AbortSignal,
+  ): Promise<Page>;
+  deletePage(spaceId: string, pageId: string, signal?: AbortSignal): Promise<void>;
 }

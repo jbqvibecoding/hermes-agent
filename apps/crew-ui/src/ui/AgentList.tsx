@@ -14,7 +14,10 @@
  *    inside Hermes, which is already signed in.
  */
 
-import { MoreHorizontal, Pencil, Plus, Search, Trash2, Copy, ChevronRight } from "lucide-react";
+import {
+  MoreHorizontal, Pencil, Plus, Search, Trash2, Copy, ChevronRight, MessageSquare,
+  BookText,
+} from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { Agent, Conversation, Section } from "../domain/types";
 import { AgentAvatar } from "./AgentAvatar";
@@ -33,6 +36,7 @@ const STATUS_LABEL: Record<Agent["status"], string> = {
 export function AgentList({
   agents, sections, rooms, selectedAgentId, selectedThreadId, search,
   onSearch, onSelectAgent, onSelectThread, onAction, onCreate, onToggleSection,
+  view = "chat", onChangeView,
 }: {
   agents: Agent[];
   sections: Section[];
@@ -46,6 +50,10 @@ export function AgentList({
   onAction(agent: Agent, action: AgentAction): void;
   onCreate(): void;
   onToggleSection(sectionId: string, collapsed: boolean): void;
+  /** Which surface the middle column is showing. Optional so a shell that has
+   *  no Spaces view renders exactly as before. */
+  view?: "chat" | "spaces";
+  onChangeView?(view: "chat" | "spaces"): void;
 }) {
   const [menuAgentId, setMenuAgentId] = useState<string>();
   useEffect(() => {
@@ -118,6 +126,16 @@ export function AgentList({
       <span className="sidebar-title">Crew</span>
       <button className="brand-add" aria-label="Hire a teammate" onClick={onCreate}><Plus size={18} /></button>
     </div>
+    {onChangeView && <div className="sidebar-views" role="tablist" aria-label="Workspace view">
+      <button
+        role="tab" aria-selected={view === "chat"} className={view === "chat" ? "is-current" : ""}
+        onClick={() => onChangeView("chat")}
+      ><MessageSquare size={13} /> Threads</button>
+      <button
+        role="tab" aria-selected={view === "spaces"} className={view === "spaces" ? "is-current" : ""}
+        onClick={() => onChangeView("spaces")}
+      ><BookText size={13} /> Documents</button>
+    </div>}
     <label className="search">
       <Search size={15} />
       <input aria-label="Search the crew" placeholder="Search your crew" value={search} onChange={(event) => onSearch(event.target.value)} />

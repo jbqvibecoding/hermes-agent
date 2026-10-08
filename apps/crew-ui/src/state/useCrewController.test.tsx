@@ -72,6 +72,20 @@ function stubClient(overrides: Partial<CloudAgentsClient> = {}): CloudAgentsClie
     // signed in when nothing happened.
     submitSecret: async () => ({ filled: false }),
     screenshotUrl: (a, f) => `/screenshots/${a}/${f}`,
+    // Spaces. `useCrewController` does not touch them — the editor owns its
+    // own state — so these exist to satisfy the interface. They throw rather
+    // than returning plausible emptiness: if the controller ever starts
+    // calling one, that should show up as a failure here and not as a quietly
+    // empty library.
+    listSpaces: async () => [],
+    createSpace: async () => { throw new Error("unused"); },
+    deleteSpace: async () => { throw new Error("unused"); },
+    setSpaceMember: async () => { throw new Error("unused"); },
+    listPages: async () => [],
+    getPage: async () => { throw new Error("unused"); },
+    createPage: async () => { throw new Error("unused"); },
+    patchPage: async () => { throw new Error("unused"); },
+    deletePage: async () => { throw new Error("unused"); },
     ...overrides,
   };
 }

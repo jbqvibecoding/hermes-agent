@@ -124,6 +124,12 @@ plugins/hermes-crew/
 └── dashboard/           # the /crew tab (manifest + FastAPI routes + IIFE bundle)
 ```
 
+The React surface lives in `apps/crew-ui` and is mounted twice — by this
+plugin's bundle and by `apps/desktop`. `SpacesPanel` + `state/pageAutosave.ts`
+are the document editor; the autosave is the piece worth reading before
+changing anything there, because every rule in it exists to stop one writer
+silently overwriting another.
+
 Tests: `pytest tests/plugins/test_crew_logic.py tests/plugins/test_crew_flow.py`
 — no model, no container, no network.
 

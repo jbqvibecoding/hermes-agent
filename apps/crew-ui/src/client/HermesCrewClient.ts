@@ -24,7 +24,11 @@ import {
   type CreateAgentInput,
   type Message,
   type ModelProviderCatalog,
+  type Page,
+  type PageSummary,
+  type PatchPageInput,
   type RespondApprovalInput,
+  type Space,
   type SetGrantInput,
   type Task,
   type Routine,
@@ -160,6 +164,74 @@ export class HermesCrewClient implements CloudAgentsClient {
     return this.request<{ filled: boolean }>(
       `/bots/${encodeURIComponent(agentId)}/secret`,
       { method: "POST", body: JSON.stringify({ ref, value }), signal },
+    );
+  }
+
+  // -- Spaces ---------------------------------------------------------------
+  //
+  // `request` already turns a 409 into `CrewError{kind:"conflict"}`, which is
+  // what `PageAutosave` keys its terminal conflict state off. Nothing here may
+  // swallow it.
+
+  listSpaces(signal?: AbortSignal) {
+    return this.request<{ spaces: Space[] }>("/spaces", { signal }).then((r) => r.spaces);
+  }
+
+  createSpace(name: string, signal?: AbortSignal) {
+    return this.request<Space>("/spaces", {
+      method: "POST", body: JSON.stringify({ name }), signal,
+    });
+  }
+
+  async deleteSpace(spaceId: string, signal?: AbortSignal) {
+    await this.request<void>(`/spaces/${encodeURIComponent(spaceId)}`, {
+      method: "DELETE", signal,
+    });
+  }
+
+  async setSpaceMember(spaceId: string, agentId: string, member: boolean, signal?: AbortSignal) {
+    await this.request<void>(
+      `/spaces/${encodeURIComponent(spaceId)}/members/${encodeURIComponent(agentId)}`,
+      { method: member ? "PUT" : "DELETE", signal },
+    );
+  }
+
+  listPages(spaceId: string, query = "", signal?: AbortSignal) {
+    const search = query.trim() ? `?query=${encodeURIComponent(query.trim())}` : "";
+    return this.request<{ pages: PageSummary[] }>(
+      `/spaces/${encodeURIComponent(spaceId)}/pages${search}`,
+      { signal },
+    ).then((r) => r.pages);
+  }
+
+  getPage(spaceId: string, pageId: string, signal?: AbortSignal) {
+    return this.request<Page>(
+      `/spaces/${encodeURIComponent(spaceId)}/pages/${encodeURIComponent(pageId)}`,
+      { signal },
+    );
+  }
+
+  createPage(
+    spaceId: string,
+    input: { title: string; content?: string; parent_id?: string | null },
+    signal?: AbortSignal,
+  ) {
+    return this.request<Page>(`/spaces/${encodeURIComponent(spaceId)}/pages`, {
+      method: "POST", body: JSON.stringify(input), signal,
+    });
+  }
+
+  patchPage(spaceId: string, pageId: string, patch: PatchPageInput, signal?: AbortSignal) {
+    return this.request<Page>(
+      `/spaces/${encodeURIComponent(spaceId)}/pages/${encodeURIComponent(pageId)}`,
+      { method: "PATCH", body: JSON.stringify(patch), signal },
+    );
+  }
+
+  async deletePage(spaceId: string, pageId: string, signal?: AbortSignal) {
+    await this.request<void>(
+      `/spaces/${encodeURIComponent(spaceId)}/pages/${encodeURIComponent(pageId)}`,
+      { method: "DELETE", signal },
     );
   }
 

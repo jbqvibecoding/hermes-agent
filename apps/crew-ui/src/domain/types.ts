@@ -296,6 +296,49 @@ export interface Routine { id: string; name: string; schedule: string; descripti
 /** The sidebar org chart. `__agents__` is the bucket nothing can be filed out of. */
 export interface Section { id: string; name: string; bot_ids: string[]; collapsed?: boolean }
 
+/**
+ * A Space is a shared document workspace. `bot_ids` are the teammates invited
+ * into it; the operator is always in.
+ */
+export interface Space { id: string; name: string; created_at: number; bot_ids: string[] }
+
+/**
+ * One page. `revision` is an optimistic-concurrency token, not a version
+ * label: a save carries the revision it was based on and the server refuses
+ * one that has moved on. Nothing in the UI may invent or increment it.
+ */
+export interface Page {
+  id: string;
+  space_id: string;
+  parent_id: string | null;
+  title: string;
+  content: string;
+  revision: number;
+  created_at: number;
+  updated_at: number;
+  /** A teammate's id, or `""` when the operator wrote it. */
+  created_by: string;
+}
+
+/** What a listing returns: the tree without forty documents' worth of bytes. */
+export type PageSummary = Omit<Page, "content">;
+
+/** The three fields an editor owns. */
+export type PageDraft = Pick<Page, "title" | "content" | "parent_id">;
+
+/**
+ * `move` exists because `parent_id: null` cannot mean both "leave the parent
+ * alone" and "move to the top level" over JSON. The server reads `parent_id`
+ * only when `move` is set.
+ */
+export interface PatchPageInput {
+  expected_revision: number;
+  title?: string;
+  content?: string;
+  parent_id?: string | null;
+  move?: boolean;
+}
+
 export interface CreateAgentInput {
   name: string;
   role?: string;
