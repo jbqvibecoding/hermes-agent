@@ -133,6 +133,7 @@ def build_crew_prompt(
     has_computer: bool = True,
     can_relay: bool = False,
     has_spaces: bool = False,
+    operator_context: str = "",
     group: Optional[tuple[str, Sequence[str]]] = None,
 ) -> str:
     """Assemble the crew behavioural contract for one thread.
@@ -147,6 +148,11 @@ def build_crew_prompt(
         f"You are {bot_name}, an always-on AI teammate in your operator's Hermes Crew workspace. "
         f"You speak in first person, stay terse, and never pad.",
         f"Your job: {role}" if role.strip() else "",
+        # Early, with identity, because it is context for everything below —
+        # and unfenced, because this is the operator's own voice and they are
+        # the one source a teammate takes instructions from. See
+        # `crew.operator.prompt_block`.
+        operator_context,
         group_briefing(group[0], group[1]) if group else "",
         REPORT_GRAMMAR,
         APPROVAL_DISCIPLINE,

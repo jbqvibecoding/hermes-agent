@@ -967,6 +967,57 @@ def post_seed(body: SeedBody):
 
 
 # ---------------------------------------------------------------------------
+# The operator's shared context
+#
+# One file every teammate reads. Operator-only by design: no crew tool reaches
+# it, so this route and a text editor are the whole write surface.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/operator-context")
+def get_operator_context():
+    """The file, plus why it is or is not in use.
+
+    `problem` carries the honest answer an operator otherwise has to guess at:
+    a file over the cap is not being sent at all, and an untouched template is
+    not worth sending. Reporting "saved" while the crew ignores it would be the
+    silent-failure mode this file exists to avoid.
+    """
+    from crew import operator as crew_operator
+
+    path = crew_operator.ensure_template()
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        content = ""
+    return {"content": content, **crew_operator.status()}
+
+
+class OperatorContextBody(BaseModel):
+    content: str
+
+
+@router.put("/operator-context")
+def put_operator_context(body: OperatorContextBody):
+    from crew import operator as crew_operator
+
+    try:
+        status = crew_operator.write(body.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not save: {exc}") from exc
+    crew_audit.record(
+        _conn(), event_type="operator.context_changed", bot_id="",
+        actor=crew_audit.ACTOR_OPERATOR,
+        subject="updated the context every teammate reads",
+        detail=("in use" if status.get("in_use") else status.get("problem", "")),
+        status="ok",
+    )
+    return {"content": body.content, **status}
+
+
+# ---------------------------------------------------------------------------
 # Spaces — shared documents
 #
 # The operator's side. These routes do no `bot_spaces` check: every Space is

@@ -470,6 +470,7 @@ def _build_agent(bot: dict, thread_id: str, *, has_computer: bool, group: Option
         has_computer=has_computer,
         can_relay=_can_relay(bot["id"]),
         has_spaces=_has_spaces(bot["id"]),
+        operator_context=_operator_context(),
         group=group,
     )
 
@@ -516,6 +517,24 @@ def _can_relay(bot_id: str) -> bool:
     """
     rules = a2a_rules()
     return bot_id == rules.chief_id or any(frm == bot_id for frm, _ in rules.pairs)
+
+
+def _operator_context() -> str:
+    """The operator's shared context, or "".
+
+    Read once per agent build, like every other block in the prompt, so the
+    cached prefix stays byte-stable for the life of the conversation. Editing
+    `OPERATOR.md` takes effect on the next rebuild, not mid-turn — which is the
+    same contract `has_computer` and `can_relay` have, and the reason prompt
+    caching survives it.
+    """
+    try:
+        from crew import operator as crew_operator
+
+        return crew_operator.prompt_block() or ""
+    except Exception:
+        log.debug("crew: could not read the operator context", exc_info=True)
+        return ""
 
 
 def _has_spaces(bot_id: str) -> bool:

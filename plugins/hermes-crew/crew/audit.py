@@ -77,6 +77,11 @@ EVENT_TYPES = (
     # outward action was later held or refused is otherwise invisible: the
     # refusal row says "tainted", and this is the row that says by what.
     "turn.tainted",
+    # The operator rewrote the context every teammate reads. Not a permission
+    # change, but it changes how the whole crew behaves from the next turn on,
+    # and "why did they all start doing that on Tuesday" is a question this row
+    # answers.
+    "operator.context_changed",
 )
 
 #: A digest is 12 hex chars: enough to match two calls against each other,

@@ -25,6 +25,8 @@ hermes dashboard        # open the Crew tab
 | **Hands work over, and comes back** | `message_bot` drops a scoped task into a colleague's thread and wakes them — and when they answer, the teammate you were talking to is asked again with that answer and tells you what it means, in its own thread and its own words. Peer-to-peer is off until you allowlist a direction; the chief is the default hub. One dispatch plus one reply is the whole budget. |
 | **Says when it has gone quiet** | A turn that runs with no output and no tool calls for ten minutes posts one line saying so. It is never stopped for you — a run waiting on a slow API is still working, and the point is that you get to decide. |
 | **Asks for the keyboard, never the password** | At a login wall it calls `ask_for_login`. You open its screen, sign in once in *its* browser, and the session persists in its profile. |
+| **Knows who you are, once** | One `OPERATOR.md` every teammate reads: who you are, what you're trying to get done, the people and accounts that come up. "The Q3 launch" and "Dana" stop needing an explanation per teammate, and one hired next week starts knowing them. |
+| **Stops when it has been talked into something** | A turn that reads a web page, an MCP response or a Space page is marked. If it then reaches for something outward — sending, publishing, writing where colleagues read — the call is held for you *with what tainted it named on the card*, or refused outright in an unattended routine. A grant you gave the teammate is not a grant to the page it just read. |
 | **Writes documents with you, not at you** | A Space is a shared document workspace you invite a teammate into. Every edit carries the revision it was based on, so you and it can both be writing and the loser is told to re-read rather than silently overwriting you. A page it reads arrives quoted: anyone with access can write anything into one. |
 
 ## Its computer
@@ -94,7 +96,11 @@ Scout deal with this".
 ## Security
 
 - Credentials live in the teammate's browser profile, inside its container.
-  The gateway never sees a password and neither does your config.
+  The gateway never sees a password and neither does your config. The vault's
+  key and `crew.db` are refused to every teammate at the tool boundary — not
+  with a grant, not through the shell.
+- A turn that has read anything from outside the crew cannot quietly take an
+  outward action. Reading is not the boundary; what can leave is.
 - Outward actions are held, not sent, until you approve them.
 - Teammate-to-teammate messaging is off until you allowlist a direction.
 - Screens bind to loopback only.
@@ -112,6 +118,9 @@ plugins/hermes-crew/
 │   ├── orchestrator.py  # a thread message → a Hermes AIAgent turn
 │   ├── tools.py         # the tools a plain agent has no concept of
 │   ├── pages.py         # Spaces: shared documents, and the revision token
+│   ├── provenance.py    # what a turn has read decides what it may do
+│   ├── sensitive.py     # the crew's own control plane, and credential material
+│   ├── operator.py      # the context every teammate reads
 │   ├── roster.py        # teammate ⇄ profile
 │   ├── computer.py      # the container, its screen, its browser
 │   ├── routines.py      # crew routines ⇄ Hermes cron
