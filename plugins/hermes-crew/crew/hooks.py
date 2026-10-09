@@ -433,6 +433,41 @@ def on_post_tool_call(
         conn = crew_db.connect()
         thread_id, turn = _where(conn, bot_id, turn_id)
         failed = status == "error" or crew_activity.looks_failed(result)
+
+        # Before anything else reads this result: if it is text from outside
+        # the crew, the turn is now tainted. The core already wrapped it in
+        # `<untrusted_tool_result>` delimiters — this is the half the core has
+        # no concept of, and `crew.policy.taint_floor` is what acts on it.
+        # A failed call still taints: an error body is attacker-shaped too.
+        try:
+            from crew import provenance
+
+            # `provenance.turn_id_for`, not `turn` from `_where`: that one falls
+            # back to the *host's* turn id, and the floor reads the crew turn.
+            # Writing under one key and reading another is how a control ends up
+            # passing its own tests while never firing in production.
+            if provenance.note_result(
+                conn,
+                turn_id=provenance.turn_id_for(bot_id),
+                bot_id=bot_id,
+                tool=tool_name,
+                result=result,
+            ):
+                shapes = provenance.count_shapes(result)
+                crew_audit.record(
+                    conn,
+                    event_type="turn.tainted", bot_id=bot_id, thread_id=thread_id,
+                    turn_id=turn, tool=tool_name, tool_call_id=tool_call_id,
+                    subject=f"read content from outside the crew via {tool_name}",
+                    detail=(f"{shapes} injection shape(s) matched" if shapes else ""),
+                    status="tainted",
+                )
+        except Exception:
+            log.warning(
+                "crew: could not record provenance for %s; the taint floor will not "
+                "see this result", tool_name, exc_info=True,
+            )
+
         _settle_released_approval(conn, tool_call_id, failed=failed)
         if not failed:
             _record_evidence(bot_id, tool_name, args, result)

@@ -73,6 +73,10 @@ EVENT_TYPES = (
     # history is the record, and a row per autosave would bury everything else
     # in this table.
     "space.access_changed",
+    # A turn read text from outside this crew. Recorded because the reason an
+    # outward action was later held or refused is otherwise invisible: the
+    # refusal row says "tainted", and this is the row that says by what.
+    "turn.tainted",
 )
 
 #: A digest is 12 hex chars: enough to match two calls against each other,

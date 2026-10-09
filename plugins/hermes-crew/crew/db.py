@@ -444,6 +444,30 @@ CREATE TABLE IF NOT EXISTS bot_spaces (
     granted_at INTEGER NOT NULL,
     PRIMARY KEY (bot_id, space_id)
 );
+
+-- One row per time a turn consumed text somebody outside this crew wrote: a
+-- fetched page, an MCP response, a Space page, a colleague's handoff. See
+-- `crew/provenance.py` for what is done with it.
+--
+-- A table rather than process memory for one reason: a routine runs in the
+-- gateway's cron worker, a DM runs in the dashboard's, and a handoff crosses
+-- from one to the other. Taint that lived in a module global would be clean on
+-- the other side of every one of those boundaries — which is exactly the
+-- laundering this is meant to stop.
+--
+-- `shapes` is a count, not the matched text. The text is the attacker's and
+-- there is no reason to keep it; the count is what an operator reading an
+-- approval card needs.
+CREATE TABLE IF NOT EXISTS turn_taint (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    turn_id    TEXT NOT NULL,
+    bot_id     TEXT NOT NULL DEFAULT '',
+    source     TEXT NOT NULL DEFAULT '',
+    why        TEXT NOT NULL DEFAULT '',
+    shapes     INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_turn_taint_turn ON turn_taint(turn_id, id);
 """
 
 # Full-text search over pages. Kept out of _SCHEMA deliberately: that script

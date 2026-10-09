@@ -121,7 +121,7 @@ class ScriptedModel:
             if isinstance(step, str):
                 final = step
                 continue
-            name, args = step
+            name, args, canned = (step + (None,))[:3] if len(step) < 3 else step
             self.calls.append((name, args))
             call_id = f"eval-{self._bot_id}-{index}"
 
@@ -138,7 +138,17 @@ class ScriptedModel:
                 )
                 continue
 
-            result = handlers[name](args)
+            # A crew tool runs for real. Anything else is a *host* tool — the
+            # crew does not implement `web_extract`, but the hooks fire for it
+            # just the same, and an eval about reading a poisoned page needs to
+            # be able to script one. A third element in the step is that tool's
+            # result; `None` stands in for a bland success.
+            if name in handlers:
+                result = handlers[name](args)
+            else:
+                result = canned if canned is not None else json.dumps(
+                    {"ok": True, "note": f"{name} ran"}, ensure_ascii=False
+                )
             self.tool_results.append(result)
             crew_hooks.on_post_tool_call(
                 tool_name=name, args=args, result=result, task_id=task,

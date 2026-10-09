@@ -78,6 +78,51 @@ _turn_context: contextvars.ContextVar[Optional[TurnContext]] = contextvars.Conte
 )
 
 
+#: Which turn each teammate is running right now, as a stack per teammate.
+#:
+#: The contextvar above is the precise answer and is always preferred. This
+#: exists for the one case it cannot reach: **a subagent runs in a
+#: ``ThreadPoolExecutor`` worker, and an executor does not copy contextvars**,
+#: so `current_turn()` is None inside anything `delegate_task` spawned. That is
+#: not cosmetic — it is the difference between the taint floor applying to a
+#: delegated outward call and not applying, which is exactly the laundering
+#: LifeOS found on its own install.
+#:
+#: A stack rather than a single slot so a nested turn restores its parent on
+#: exit. When a teammate somehow has two turns live at once the top is the most
+#: recent, which is approximate — and approximate in the safe direction, since
+#: the only consumer is a security floor where tainting too much costs a held
+#: call and tainting too little costs the whole control.
+_live_turns: dict[str, list[str]] = {}
+_live_turns_lock = threading.Lock()
+
+
+def live_turn_id(bot_id: str) -> str:
+    """The turn this teammate is running, readable from any thread."""
+    with _live_turns_lock:
+        stack = _live_turns.get(bot_id) or []
+        return stack[-1] if stack else ""
+
+
+def _push_live_turn(bot_id: str, turn_id: str) -> None:
+    with _live_turns_lock:
+        _live_turns.setdefault(bot_id, []).append(turn_id)
+
+
+def _pop_live_turn(bot_id: str, turn_id: str) -> None:
+    with _live_turns_lock:
+        stack = _live_turns.get(bot_id) or []
+        # Remove this turn specifically rather than popping the top: turns can
+        # settle out of order, and popping somebody else's would leave a dead
+        # id as the answer for the rest of the process.
+        for index in range(len(stack) - 1, -1, -1):
+            if stack[index] == turn_id:
+                del stack[index]
+                break
+        if not stack:
+            _live_turns.pop(bot_id, None)
+
+
 def current_turn() -> Optional[TurnContext]:
     """The context this orchestrator set, or ``None`` outside a crew turn."""
     return _turn_context.get()
@@ -597,6 +642,7 @@ def start_turn(
     turn_id: Optional[str] = None,
     hop: int = 0,
     group: Optional[tuple[str, Sequence[str]]] = None,
+    taint_from: str = "",
 ) -> dict:
     """Run one turn for one teammate and return ``AIAgent``'s result dict.
 
@@ -619,6 +665,24 @@ def start_turn(
 
     turn_id = turn_id or new_turn_id()
 
+    # Carry the asking turn's taint onto this one. Done here, after the id is
+    # minted, because the caller cannot know it: `start_turn_async` hands off to
+    # a worker that mints its own. Without this, `message_bot` launders taint —
+    # a poisoned teammate delegates and its colleague acts with a clean ledger,
+    # which is the attack LifeOS found on its own install.
+    if taint_from:
+        try:
+            from crew import provenance
+
+            carried = provenance.inherit(
+                conn, from_turn=taint_from, to_turn=turn_id,
+                how="through a teammate that handed you this",
+            )
+            if carried:
+                log.info("crew: carried %d taint row(s) into %s's turn", carried, bot_id)
+        except Exception:
+            log.warning("crew: could not carry taint into this turn", exc_info=True)
+
     if persist_user_message:
         crew_db.insert_message(
             conn,
@@ -638,6 +702,8 @@ def start_turn(
         group_title=group[0] if group else None,
     )
     token = _turn_context.set(context)
+    # Readable from a thread the contextvar cannot reach — see `_live_turns`.
+    _push_live_turn(bot_id, turn_id)
     _mark_working(
         bot_id, +1,
         # A label, not a state. "working" is what the badge already says; what
@@ -698,6 +764,7 @@ def start_turn(
         for stale in crew_activity.interrupt_running(conn, turn_id):
             emit_event({"type": "activity.updated", "activity": stale})
         _turn_context.reset(token)
+        _pop_live_turn(bot_id, turn_id)
         _mark_working(bot_id, -1)
         # Not a hardcoded "idle": a teammate that ended its turn by holding an
         # action is waiting for a *person*, and announcing idle here would
@@ -1035,6 +1102,11 @@ def relay(from_bot_id: str, to_bot_id: str, content: str, hop: int) -> dict:
         prompts.handoff_seed(from_name, from_bot_id, content),
         persist_user_message=False,
         hop=hop + 1,
+        # The content being handed over was composed by a turn that may have
+        # read a poisoned page. The fence tells the colleague whose words these
+        # are; this is what stops the colleague being the clean pair of hands
+        # the injection needed.
+        taint_from=getattr(current_turn(), "turn_id", "") or "",
     )
     return {"delivered": True, "to_name": target["name"]}
 
@@ -1096,6 +1168,10 @@ def _answer_handoff(conn, bot: dict, context: TurnContext, final: str, verdict) 
             prompts.handoff_return_seed(bot["name"], context.bot_id, owed["ask"], answer),
             persist_user_message=False,
             hop=int(owed["hop"]) + 1,
+            # The return path taints too, and it is the easier direction to
+            # forget: the answer coming back was written by a turn that may
+            # itself have read a poisoned page on the colleague's behalf.
+            taint_from=context.turn_id or "",
         )
     except Exception:
         log.debug("crew: could not carry an answer back to the asker", exc_info=True)
