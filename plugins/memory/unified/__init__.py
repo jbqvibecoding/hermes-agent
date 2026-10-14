@@ -199,6 +199,8 @@ class UnifiedMemoryProvider(MemoryProvider):
         self._bank = "default"
         self._sidecar_available = False
         self._initialized = False
+        # Whether this agent may write to memory at all (see initialize()).
+        self._write_enabled = True
 
         # Background sync threads (bounded, tracked for shutdown joins).
         self._sync_lock = threading.Lock()
@@ -395,6 +397,17 @@ class UnifiedMemoryProvider(MemoryProvider):
         agent startup)."""
         self._session_id = session_id
         self._user_id = kwargs.get("user_id", "") or "default"
+        # The MemoryProvider contract: "Providers should skip writes for
+        # non-primary contexts (cron system prompts would corrupt user
+        # representations)". Hermes currently isolates cron, subagents and
+        # background review one level up (skip_memory=True), so this guard is
+        # not what keeps them out today - it is what keeps them out if that
+        # ever changes, or if this provider runs under a host that relies on
+        # the contract alone. Recall stays enabled either way.
+        agent_context = str(kwargs.get("agent_context", "") or "primary")
+        self._write_enabled = agent_context == "primary"
+        if not self._write_enabled:
+            logger.info("unified memory: read-only for agent_context=%s", agent_context)
         # Bank = stable per-identity namespace, NOT per-session: memory must
         # accumulate across sessions. agent_identity (profile) wins, then
         # workspace, then user.
@@ -475,7 +488,12 @@ class UnifiedMemoryProvider(MemoryProvider):
         try:
             result = self._client.recall(
                 query=query,
-                session_key=self._bank,
+                bank=self._bank,
+                # The conversation, not the bank: the sidecar folds this
+                # session's last turns into the query to resolve follow-ups
+                # like "and the other one?". Keyed by bank, that was the
+                # bank's last turns from whichever conversation wrote them.
+                session_key=session_id or self._session_id,
                 user_id=self._user_id,
             )
             context = result.get("context", "")
@@ -502,6 +520,8 @@ class UnifiedMemoryProvider(MemoryProvider):
         messages: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """Capture the turn (non-blocking, bounded background threads)."""
+        if not self._write_enabled:
+            return
         if not self._ensure_alive_for_request() or not self._client:
             return
 
@@ -515,7 +535,8 @@ class UnifiedMemoryProvider(MemoryProvider):
                 client.capture(
                     user_content=user_content,
                     assistant_content=assistant_content,
-                    session_key=bank,
+                    bank=bank,
+                    session_key=effective_session,
                     user_id=user_id,
                 )
                 self._record_success()
@@ -565,7 +586,7 @@ class UnifiedMemoryProvider(MemoryProvider):
 
         if self._client and self._sidecar_available:
             try:
-                self._client.end_session(session_key=self._bank, user_id=self._user_id)
+                self._client.end_session(bank=self._bank, user_id=self._user_id)
             except Exception as e:
                 logger.debug("unified-memory session end failed: %s", e)
 
@@ -605,7 +626,7 @@ class UnifiedMemoryProvider(MemoryProvider):
                     return json.dumps({"error": "Missing required parameter: query"})
                 result = self._client.search_memories(
                     query=query,
-                    session_key=self._bank,
+                    bank=self._bank,
                     limit=_coerce_limit(args.get("limit")),
                     type_filter=args.get("type", ""),
                 )
@@ -618,7 +639,7 @@ class UnifiedMemoryProvider(MemoryProvider):
                     return json.dumps({"error": "Missing required parameter: query"})
                 result = self._client.search_conversations(
                     query=query,
-                    session_key=self._bank,
+                    bank=self._bank,
                     limit=_coerce_limit(args.get("limit")),
                 )
                 self._record_success()
@@ -628,7 +649,7 @@ class UnifiedMemoryProvider(MemoryProvider):
                 query = args.get("query", "")
                 if not query:
                     return json.dumps({"error": "Missing required parameter: query"})
-                result = self._client.reflect(query=query, session_key=self._bank)
+                result = self._client.reflect(query=query, bank=self._bank)
                 self._record_success()
                 return json.dumps(result, ensure_ascii=False)
 
@@ -645,9 +666,29 @@ class UnifiedMemoryProvider(MemoryProvider):
         """Trigger L2 consolidation on the sidecar."""
         if self._client and self._sidecar_available:
             try:
-                self._client.end_session(session_key=self._bank, user_id=self._user_id)
+                self._client.end_session(bank=self._bank, user_id=self._user_id)
             except Exception as e:
                 logger.debug("unified-memory on_session_end failed: %s", e)
+
+    def on_session_switch(
+        self,
+        new_session_id: str,
+        *,
+        parent_session_id: str = "",
+        reset: bool = False,
+        rewound: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        """Follow /resume, /branch, /reset, /new and compression to the new id.
+
+        The contract asks providers that cache a session id in initialize() to
+        update it here. Turns synced with an explicit session_id are already
+        attributed correctly; this keeps every path that falls back to the
+        cached id - memory-write mirroring, a prefetch issued without one -
+        from filing the new conversation under the old one.
+        """
+        if new_session_id:
+            self._session_id = str(new_session_id)
 
     def on_pre_compress(self, messages: List[Dict[str, Any]]) -> str:
         """Capture the span about to be discarded by context compression.
@@ -675,7 +716,8 @@ class UnifiedMemoryProvider(MemoryProvider):
             self._client.capture(
                 user_content="\n".join(user_parts)[:16000],
                 assistant_content="\n".join(assistant_parts)[:16000],
-                session_key=self._bank,
+                bank=self._bank,
+                session_key=self._session_id,
                 user_id=self._user_id,
             )
         except Exception as e:
@@ -690,6 +732,8 @@ class UnifiedMemoryProvider(MemoryProvider):
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Mirror built-in MEMORY.md/USER.md writes into unified memory."""
+        if not self._write_enabled:
+            return
         if not (self._client and self._sidecar_available) or not content:
             return
         if action == "remove":
@@ -698,7 +742,8 @@ class UnifiedMemoryProvider(MemoryProvider):
             self._client.capture(
                 user_content="",
                 assistant_content=f"[builtin-memory:{target}:{action}] {content}",
-                session_key=self._bank,
+                bank=self._bank,
+                session_key=self._session_id,
                 user_id=self._user_id,
             )
         except Exception as e:
