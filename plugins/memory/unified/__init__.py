@@ -26,7 +26,10 @@ import logging
 import os
 import threading
 import time
-from typing import Any, Dict, List, Optional
+import uuid
+from collections import deque
+from dataclasses import dataclass
+from typing import Any, Deque, Dict, List, Optional
 
 from agent.memory_provider import MemoryProvider
 
@@ -49,6 +52,13 @@ _RECOVER_COOLDOWN_SECS = 15
 _MAX_INFLIGHT_SYNCS = 4
 _SYNC_JOIN_TIMEOUT_SECS = 5.0
 _SHUTDOWN_JOIN_TIMEOUT_SECS = 5.0
+
+# Turns that could not be delivered wait here and are retried in order. Each
+# carries the idempotency key it was first sent with, so a retry of a request
+# that in fact landed (it timed out client-side after the sidecar wrote it) is
+# recognised and not written twice. Bounded, so a sidecar that stays down
+# cannot grow the agent's memory without limit.
+_MAX_PENDING_TURNS = 256
 
 # Watchdog cadence — the only mechanism that recovers from "sidecar died while
 # no requests were in flight" and the stuck-unavailable state.
@@ -184,6 +194,16 @@ REFLECT_SCHEMA = {
 }
 
 
+@dataclass(frozen=True)
+class _PendingTurn:
+    """One turn awaiting delivery, with the key that makes its retry safe."""
+
+    user: str
+    assistant: str
+    session_key: str
+    idempotency_key: str
+
+
 # ---------------------------------------------------------------------------
 # MemoryProvider implementation
 # ---------------------------------------------------------------------------
@@ -205,6 +225,13 @@ class UnifiedMemoryProvider(MemoryProvider):
         # Background sync threads (bounded, tracked for shutdown joins).
         self._sync_lock = threading.Lock()
         self._active_syncs: List[threading.Thread] = []
+
+        # Undelivered turns, oldest first, and a lock so only one thread
+        # drains them at a time (a drain must not reorder or double-send).
+        self._pending: Deque[_PendingTurn] = deque()
+        self._pending_lock = threading.Lock()
+        self._drain_lock = threading.Lock()
+        self._dropped_turns = 0
 
         # Circuit breaker.
         self._consecutive_failures = 0
@@ -335,6 +362,7 @@ class UnifiedMemoryProvider(MemoryProvider):
                 if supervisor is None:
                     break
                 if self._sidecar_available and supervisor.is_process_alive():
+                    self._drain_if_pending()
                     continue
                 healthy = False
                 try:
@@ -350,6 +378,8 @@ class UnifiedMemoryProvider(MemoryProvider):
                         self._sidecar_available = True
                         self._consecutive_failures = 0
                         self._breaker_open_until = 0.0
+                    # Turns held while it was away go out now, in order.
+                    self._drain_if_pending()
                     continue
                 logger.warning("unified-memory watchdog: sidecar unreachable; attempting resurrect.")
                 self._try_recover_sidecar(bypass_cooldown=True)
@@ -519,31 +549,29 @@ class UnifiedMemoryProvider(MemoryProvider):
         session_id: str = "",
         messages: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        """Capture the turn (non-blocking, bounded background threads)."""
+        """Capture the turn (non-blocking, bounded background threads).
+
+        A turn that cannot be delivered now is held and retried, never
+        dropped. It used to be dropped whenever the sidecar was down or the
+        breaker open - the real way turns went missing, and the reason
+        on_pre_compress once re-captured whole spans to compensate.
+        """
         if not self._write_enabled:
             return
+        turn = _PendingTurn(
+            user=user_content,
+            assistant=assistant_content,
+            session_key=session_id or self._session_id,
+            # Minted once per turn and kept across retries: that is what lets
+            # the sidecar recognise a retry of a request that already landed.
+            idempotency_key=uuid.uuid4().hex,
+        )
         if not self._ensure_alive_for_request() or not self._client:
+            self._hold(turn)
             return
 
-        effective_session = session_id or self._session_id
-        client = self._client
-        bank = self._bank
-        user_id = self._user_id
-
         def _sync():
-            try:
-                client.capture(
-                    user_content=user_content,
-                    assistant_content=assistant_content,
-                    bank=bank,
-                    session_key=effective_session,
-                    user_id=user_id,
-                )
-                self._record_success()
-            except Exception as e:
-                self._record_failure()
-                logger.warning("unified-memory sync failed: %s", e)
-                self._try_recover_sidecar()
+            self._deliver(turn)
 
         # Bounded backpressure: cap in-flight syncs; wait briefly on the oldest
         # before spawning a new one so a hung sidecar can't grow threads.
@@ -567,6 +595,72 @@ class UnifiedMemoryProvider(MemoryProvider):
             self._active_syncs.append(thread)
         thread.start()
 
+    def _send(self, turn: _PendingTurn) -> bool:
+        """One delivery attempt. True only when the sidecar accepted it."""
+        client = self._client
+        if client is None:
+            return False
+        try:
+            client.capture(
+                user_content=turn.user,
+                assistant_content=turn.assistant,
+                bank=self._bank,
+                session_key=turn.session_key,
+                user_id=self._user_id,
+                idempotency_key=turn.idempotency_key,
+            )
+            self._record_success()
+            return True
+        except Exception as e:
+            self._record_failure()
+            logger.warning("unified-memory sync failed (will retry): %s", e)
+            self._try_recover_sidecar()
+            return False
+
+    def _hold(self, turn: _PendingTurn) -> None:
+        """Queue a turn for retry, dropping the oldest - loudly - if full."""
+        with self._pending_lock:
+            if len(self._pending) >= _MAX_PENDING_TURNS:
+                self._pending.popleft()
+                self._dropped_turns += 1
+                logger.warning(
+                    "unified-memory: retry buffer full (%d); dropped the oldest "
+                    "undelivered turn (%d dropped this process).",
+                    _MAX_PENDING_TURNS, self._dropped_turns,
+                )
+            self._pending.append(turn)
+
+    def _drain_pending(self) -> bool:
+        """Deliver held turns oldest-first. True when none remain.
+
+        Stops at the first failure so order is kept: a later turn must never
+        land before an earlier one that is still waiting. A turn leaves the
+        queue only after the sidecar has accepted it.
+        """
+        with self._drain_lock:
+            while True:
+                with self._pending_lock:
+                    if not self._pending:
+                        return True
+                    turn = self._pending[0]
+                if not self._send(turn):
+                    return False
+                with self._pending_lock:
+                    if self._pending and self._pending[0] is turn:
+                        self._pending.popleft()
+
+    def _deliver(self, turn: _PendingTurn) -> None:
+        """Send a new turn behind any that are still waiting."""
+        if self._drain_pending() and self._send(turn):
+            return
+        self._hold(turn)
+
+    def _drain_if_pending(self) -> None:
+        with self._pending_lock:
+            waiting = bool(self._pending)
+        if waiting:
+            self._drain_pending()
+
     def shutdown(self) -> None:
         """Clean shutdown — flush and release resources."""
         self._stop_watchdog()
@@ -585,6 +679,14 @@ class UnifiedMemoryProvider(MemoryProvider):
                 )
 
         if self._client and self._sidecar_available:
+            # Last chance for held turns. Whatever still cannot be delivered is
+            # reported, since it is about to be lost with the process.
+            if not self._drain_pending():
+                with self._pending_lock:
+                    lost = len(self._pending)
+                logger.warning(
+                    "unified-memory shutdown: %d turn(s) could not be delivered.", lost
+                )
             try:
                 self._client.end_session(bank=self._bank, user_id=self._user_id)
             except Exception as e:
@@ -691,37 +793,18 @@ class UnifiedMemoryProvider(MemoryProvider):
             self._session_id = str(new_session_id)
 
     def on_pre_compress(self, messages: List[Dict[str, Any]]) -> str:
-        """Capture the span about to be discarded by context compression.
+        """Before compression: deliver any held turns. Writes nothing new.
 
-        Ensures nothing said in the compressed window is lost to long-term
-        memory, even if per-turn sync missed it (verbatim substrate dedups
-        nothing, but the fused recall path dedups by text).
+        This used to re-capture the whole span about to be compressed, as one
+        entry. Every turn in it had already been captured by sync_turn, so
+        each compression wrote a duplicate - and a merged one, all user text
+        then all assistant text, up to 32k characters. Measured, it ranked
+        first for a query about one of its fifteen turns and took 40% of the
+        context. Its rationale was turns lost while the sidecar was down; those
+        are now held and retried instead, so the span is already covered.
         """
-        if not (self._client and self._sidecar_available) or not messages:
-            return ""
-        try:
-            user_parts: List[str] = []
-            assistant_parts: List[str] = []
-            for m in messages:
-                role = m.get("role", "")
-                content = m.get("content", "")
-                if not isinstance(content, str) or not content.strip():
-                    continue
-                if role == "user":
-                    user_parts.append(content)
-                elif role == "assistant":
-                    assistant_parts.append(content)
-            if not user_parts and not assistant_parts:
-                return ""
-            self._client.capture(
-                user_content="\n".join(user_parts)[:16000],
-                assistant_content="\n".join(assistant_parts)[:16000],
-                bank=self._bank,
-                session_key=self._session_id,
-                user_id=self._user_id,
-            )
-        except Exception as e:
-            logger.debug("unified-memory on_pre_compress capture failed: %s", e)
+        if self._client and self._sidecar_available:
+            self._drain_if_pending()
         return ""
 
     def on_memory_write(

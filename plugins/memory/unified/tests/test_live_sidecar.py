@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import tempfile
 import threading
+import time
 import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -146,6 +147,85 @@ class LiveSidecarTests(unittest.TestCase):
         self._sync(p, "cron system prompt: summarize the inbox", "done", session_id="sess-A")
         p.on_memory_write("add", "user", "anything")
         self.assertEqual(self._entries(), [])
+
+
+    # -- delivery: held, retried, exactly once ------------------------------
+
+    def _drain_syncs(self, p: UnifiedMemoryProvider) -> None:
+        with p._sync_lock:
+            pending = list(p._active_syncs)
+        for t in pending:
+            t.join(timeout=5)
+
+    def test_compression_writes_no_second_copy(self) -> None:
+        """Every compressed turn was already captured by sync_turn. Re-capturing
+        the span wrote one merged duplicate per compression, which measurably
+        outranked the turns it duplicated."""
+        p = self._provider("sess-A")
+        turns = [(f"note {i}: the staging db listens on 65{i:02d}", "Okay.") for i in range(6)]
+        for user, assistant in turns:
+            self._sync(p, user, assistant, session_id="sess-A")
+        before = len(self._entries())
+        messages = []
+        for user, assistant in turns:
+            messages += [{"role": "user", "content": user}, {"role": "assistant", "content": assistant}]
+        self.assertEqual(p.on_pre_compress(messages), "")
+        self.assertEqual(len(self._entries()), before)
+
+    def test_a_turn_is_held_not_dropped_while_the_sidecar_is_down(self) -> None:
+        """Previously an open breaker meant the turn was simply lost."""
+        p = self._provider("sess-A")
+        # Down as the provider sees it: marked unavailable, breaker open, so
+        # the request path will not even try to reach the sidecar.
+        p._sidecar_available = False
+        p._consecutive_failures = 5
+        p._breaker_open_until = time.monotonic() + 60
+        p.sync_turn("first, said while memory was down", "Okay.", session_id="sess-A")
+        self.assertEqual(self._entries(), [])
+        self.assertEqual(len(p._pending), 1)
+
+        # Back: what the watchdog does when the health probe succeeds.
+        p._sidecar_available = True
+        p._consecutive_failures = 0
+        p._breaker_open_until = 0.0
+        self._sync(p, "second, said after it came back", "Ack.", session_id="sess-A")
+        # Both delivered, and in the order they were said.
+        self.assertEqual(
+            [e.user for e in self._entries()],
+            ["first, said while memory was down", "second, said after it came back"],
+        )
+        self.assertEqual(len(p._pending), 0)
+
+    def test_retrying_a_request_that_landed_writes_it_once(self) -> None:
+        """The case the idempotency key exists for: the sidecar wrote the turn,
+        but the response never reached the provider, so it looks failed."""
+        p = self._provider("sess-A")
+        real_capture = p._client.capture
+        calls = {"n": 0}
+
+        def lands_then_times_out(**kwargs):
+            calls["n"] += 1
+            result = real_capture(**kwargs)
+            if calls["n"] == 1:
+                raise TimeoutError("response lost after the write")
+            return result
+
+        with mock.patch.object(p._client, "capture", side_effect=lands_then_times_out):
+            self._sync(p, "the reaper job trims old blobs", "Got it.", session_id="sess-A")
+            self.assertEqual(len(p._pending), 1)  # looked failed, so it is held
+            self.assertTrue(p._drain_pending())
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual([e.user for e in self._entries()], ["the reaper job trims old blobs"])
+
+    def test_the_retry_buffer_is_bounded(self) -> None:
+        from plugins.memory.unified import _MAX_PENDING_TURNS, _PendingTurn
+
+        p = self._provider("sess-A")
+        for i in range(_MAX_PENDING_TURNS + 10):
+            p._hold(_PendingTurn(f"u{i}", "a", "sess-A", f"k{i}"))
+        self.assertEqual(len(p._pending), _MAX_PENDING_TURNS)
+        self.assertEqual(p._dropped_turns, 10)
+        self.assertEqual(p._pending[0].user, "u10")  # the oldest went first
 
 
 if __name__ == "__main__":
