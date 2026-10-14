@@ -203,6 +203,38 @@ class _PendingTurn:
     session_key: str
     idempotency_key: str
 
+FORGET_SCHEMA = {
+    "name": "unified_memory_forget",
+    "description": (
+        "Stop a memory from being recalled, when the user asks you to forget "
+        "something. Two steps, always: first call with `query` to list the "
+        "matching memories - this forgets NOTHING. Show the candidates to the "
+        "user and confirm which ones they mean. Then call with those "
+        "`entry_ids`. A forgotten memory is no longer recalled but its text "
+        "stays on disk, so never tell the user it was erased or deleted."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "What to look for. Returns candidates only; forgets nothing.",
+            },
+            "entry_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Ids from a previous `query` call, confirmed with the user.",
+            },
+            "reason": {
+                "type": "string",
+                "description": "Why, in a few words (recorded with the forget).",
+            },
+        },
+    },
+}
+
+_TOOL_SCHEMAS = [MEMORY_SEARCH_SCHEMA, CONVERSATION_SEARCH_SCHEMA, REFLECT_SCHEMA, FORGET_SCHEMA]
+
 
 # ---------------------------------------------------------------------------
 # MemoryProvider implementation
@@ -494,7 +526,8 @@ class UnifiedMemoryProvider(MemoryProvider):
             "fact/entity/temporal extraction, consolidation, and persona reflection, "
             "fused from semantic + keyword + graph + temporal retrieval.\n"
             "Tools: unified_memory_search (facts), unified_conversation_search "
-            "(exact past words), unified_memory_reflect (synthesized reasoning)."
+            "(exact past words), unified_memory_reflect (synthesized reasoning), "
+            "unified_memory_forget (preview by query, then forget by id)."
         )
 
     # One line, injected only when memory could not be consulted at all, so the
@@ -706,9 +739,9 @@ class UnifiedMemoryProvider(MemoryProvider):
         # table BEFORE initialize(), so returning [] here would make the tools
         # unroutable even after a successful start.
         if self._sidecar_available or self._initialized:
-            return [MEMORY_SEARCH_SCHEMA, CONVERSATION_SEARCH_SCHEMA, REFLECT_SCHEMA]
+            return list(_TOOL_SCHEMAS)
         if os.environ.get("UNIFIED_MEMORY_SIDECAR_CMD") or os.environ.get("UNIFIED_MEMORY_GATEWAY_PORT"):
-            return [MEMORY_SEARCH_SCHEMA, CONVERSATION_SEARCH_SCHEMA, REFLECT_SCHEMA]
+            return list(_TOOL_SCHEMAS)
         return []
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
@@ -755,12 +788,49 @@ class UnifiedMemoryProvider(MemoryProvider):
                 self._record_success()
                 return json.dumps(result, ensure_ascii=False)
 
+            if tool_name == "unified_memory_forget":
+                return self._tool_forget(args)
+
             return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
         except Exception as e:
             self._record_failure()
             self._try_recover_sidecar()
             return json.dumps({"error": f"Tool call failed: {e}"})
+
+    def _tool_forget(self, args: Dict[str, Any]) -> str:
+        """Preview by query, forget by id - never forget a best match unseen.
+
+        Supermemory's own docs insist on this ("Always dryRun first ... a
+        too-broad query can select more than you intend") while its Hermes
+        provider forgets the top search hit directly, so asked to forget an old
+        address it forgets whichever address ranked first. A query here can
+        only ever return candidates.
+        """
+        if not self._write_enabled:
+            return json.dumps({"error": "memory is read-only in this agent context."})
+        raw_ids = args.get("entry_ids") or []
+        if isinstance(raw_ids, str):
+            raw_ids = [raw_ids]
+        entry_ids = [str(i).strip() for i in raw_ids if str(i).strip()]
+        if entry_ids:
+            result = self._client.forget(
+                entry_ids, bank=self._bank, reason=str(args.get("reason", "") or "")
+            )
+            self._record_success()
+            return json.dumps(result, ensure_ascii=False)
+
+        query = str(args.get("query", "") or "").strip()
+        if not query:
+            return json.dumps({"error": "Provide `query` to find candidates, or `entry_ids` to forget."})
+        result = self._client.forget_preview(query, bank=self._bank, limit=_coerce_limit(args.get("limit")))
+        self._record_success()
+        result["forgotten"] = []
+        result["next_step"] = (
+            "Nothing was forgotten. Confirm with the user which of these they "
+            "mean, then call again with those entry_ids."
+        )
+        return json.dumps(result, ensure_ascii=False)
 
     # -- Optional hooks ----------------------------------------------------------
 

@@ -105,7 +105,12 @@ class OfflineBehaviourTests(unittest.TestCase):
         names = [s["name"] for s in p.get_tool_schemas()]
         self.assertEqual(
             names,
-            ["unified_memory_search", "unified_conversation_search", "unified_memory_reflect"],
+            [
+                "unified_memory_search",
+                "unified_conversation_search",
+                "unified_memory_reflect",
+                "unified_memory_forget",
+            ],
         )
 
     def test_shutdown_idempotent_without_init(self):

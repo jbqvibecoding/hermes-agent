@@ -9,6 +9,7 @@ importable (point PYTHONPATH at the hindsight/hindsight-unified checkout).
 
 from __future__ import annotations
 
+import json
 import tempfile
 import threading
 import time
@@ -226,6 +227,51 @@ class LiveSidecarTests(unittest.TestCase):
         self.assertEqual(len(p._pending), _MAX_PENDING_TURNS)
         self.assertEqual(p._dropped_turns, 10)
         self.assertEqual(p._pending[0].user, "u10")  # the oldest went first
+
+
+    # -- the forget tool ----------------------------------------------------
+
+    def _seed_secret(self, p: UnifiedMemoryProvider) -> None:
+        self._sync(p, "My old home address is 12 Elm Street.", "Okay.", session_id="sess-A")
+        self._sync(p, "My current home address is 9 Oak Lane.", "Okay.", session_id="sess-A")
+
+    def test_a_query_alone_forgets_nothing(self) -> None:
+        """The tool supermemory's provider ships forgets the top hit unseen.
+
+        Asked to forget the *old* address, whichever address ranks first goes.
+        Here a query is only ever a preview.
+        """
+        p = self._provider("sess-A")
+        self._seed_secret(p)
+        out = json.loads(p.handle_tool_call("unified_memory_forget", {"query": "home address"}))
+        self.assertEqual(out["forgotten"], [])
+        self.assertIn("Nothing was forgotten", out["next_step"])
+        self.assertGreaterEqual(len(out["candidates"]), 2)
+        # Both addresses are still recalled.
+        context = p.prefetch("what is my home address?", session_id="sess-A")
+        self.assertIn("Elm Street", context)
+        self.assertIn("Oak Lane", context)
+
+    def test_forgetting_by_id_removes_exactly_that_memory(self) -> None:
+        p = self._provider("sess-A")
+        self._seed_secret(p)
+        preview = json.loads(p.handle_tool_call("unified_memory_forget", {"query": "home address"}))
+        old = [c["entry_id"] for c in preview["candidates"] if "Elm Street" in c["text"]]
+        out = json.loads(
+            p.handle_tool_call(
+                "unified_memory_forget", {"entry_ids": old, "reason": "moved house"}
+            )
+        )
+        self.assertEqual(out["forgotten"], old)
+        self.assertTrue(out["still_on_disk"])  # the agent must not call it erasure
+        context = p.prefetch("what is my home address?", session_id="sess-A")
+        self.assertNotIn("Elm Street", context)
+        self.assertIn("Oak Lane", context)
+
+    def test_forget_is_refused_in_a_read_only_context(self) -> None:
+        p = self._provider("sess-A", agent_context="cron")
+        out = json.loads(p.handle_tool_call("unified_memory_forget", {"entry_ids": ["x"]}))
+        self.assertIn("read-only", out["error"])
 
 
 if __name__ == "__main__":
