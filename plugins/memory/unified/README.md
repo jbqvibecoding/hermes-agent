@@ -61,5 +61,31 @@ memory:
 ## Tools exposed to the model
 
 - `unified_memory_search` — fused fact recall (semantic+keyword+graph+temporal)
-- `unified_conversation_search` — verbatim past dialogue (exact words)
+- `unified_conversation_search` — verbatim past dialogue (exact words), across every conversation
 - `unified_memory_reflect` — synthesized reasoning over all memories
+- `unified_memory_forget` — two steps: `query` lists candidates and forgets
+  nothing; `entry_ids` (confirmed with the user) forgets exactly those. A
+  forgotten memory is no longer recalled, but its text stays on disk — it is
+  not erasure, and the agent is told never to call it that.
+
+## What gets written, and when
+
+- **One bank per identity, one session key per conversation.** Memory
+  accumulates across conversations, while each turn keeps the conversation it
+  came from, so follow-up questions resolve against *this* conversation's last
+  turns rather than whichever conversation wrote last.
+- **Turns are held, not dropped, while memory is unreachable.** A turn that
+  cannot be delivered (sidecar down, breaker open, request failed) is held and
+  retried in order on the next turn, when the watchdog sees the sidecar
+  return, before a compression, and at shutdown. Each turn keeps one
+  idempotency key across retries, so a request that landed but whose response
+  was lost is not written twice. The hold is in memory and bounded: beyond 256
+  turns the oldest is dropped with a warning, and turns still held when the
+  process exits are lost (shutdown logs how many).
+- **Compression writes nothing.** Every compressed turn was already captured;
+  `on_pre_compress` only delivers held turns.
+- **Read-only outside the primary agent.** Per the MemoryProvider contract,
+  writes (captures, memory-write mirroring, forget) are skipped for any
+  `agent_context` other than `primary`; recall still works. Hermes already
+  keeps cron, subagent and background-review agents away from memory
+  providers, so this is a second line rather than the first.
