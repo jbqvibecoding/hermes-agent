@@ -200,14 +200,30 @@ def on_pre_tool_call(
         subject = _subject(tool_name, args)
 
         def refuse(why: str) -> dict:
-            crew_audit.record(
-                conn, event_type="tool.refused", bot_id=bot_id, thread_id=thread_id,
-                turn_id=turn, tool_call_id=tool_call_id, tool=tool_name, args=args,
-                subject=subject, detail=why, status="blocked",
-            )
-            _record_blocked_activity(conn, thread_id, turn, tool_call_id, tool_name, args,
-                                     f"Refused: {why}")
-            return {"action": "block", "message": _REFUSED_TEMPLATE.format(why=why)}
+            """Block first, write it down second.
+
+            The order is the whole point. This used to record and then return
+            the block, so a failing audit write raised out of here into the
+            outer handler — which allowed the call. The never-list, the
+            credential floor and the taint floor all refuse through this
+            function, so one locked database turned every one of them into a
+            yes. The paper trail is worth having; it is not worth the decision.
+            """
+            block = {"action": "block", "message": _REFUSED_TEMPLATE.format(why=why)}
+            try:
+                crew_audit.record(
+                    conn, event_type="tool.refused", bot_id=bot_id, thread_id=thread_id,
+                    turn_id=turn, tool_call_id=tool_call_id, tool=tool_name, args=args,
+                    subject=subject, detail=why, status="blocked",
+                )
+                _record_blocked_activity(conn, thread_id, turn, tool_call_id, tool_name,
+                                         args, f"Refused: {why}")
+            except Exception:
+                log.error(
+                    "crew: refused %s but could not record it; the refusal stands and "
+                    "the ledger is missing a row", tool_name, exc_info=True,
+                )
+            return block
 
         if verdict.mode == "deny":
             return refuse(verdict.why)
@@ -260,9 +276,73 @@ def on_pre_tool_call(
             idem_key=key,
         )
     except Exception:
-        # A guard that breaks the turn is worse than the risk it was added for.
-        log.warning("crew: permission check failed; allowing the call", exc_info=True)
+        return _guard_failed(tool_name)
+
+
+def _guard_failed(tool_name: str) -> Optional[dict]:
+    """What to do when the guard itself broke.
+
+    The old answer was "allow", with a defensible reason: a guard that breaks
+    every turn is worse than the risk it was added for. The trouble is that it
+    applied to *everything* — the never-list, the credential floor, the taint
+    floor and draft-and-hold all run inside this try, so one exception made the
+    product's strongest promise ("the one list nothing opens, not with a grant,
+    not rephrased") a yes. A guard that silently stops guarding is worse than no
+    guard, because the risk table was *widened* on the assumption it works:
+    `read_file`, `terminal` and `edit_file` are allowed by default precisely
+    because the floors sit above them.
+
+    So it is graduated, on the same axis the taint floor uses:
+
+    * a call that cannot leave this teammate's own workspace keeps failing
+      open, because bricking the whole crew over a transient lock is the wrong
+      trade and those calls are what a teammate's day is made of;
+    * anything the risk table does not call `allow` — reaching a person, money,
+      a calendar, something physical, somewhere colleagues read — is refused.
+
+    The test is `crew.grants.default_mode`, which is a regex table and touches
+    no database. That matters here more than anywhere: the usual reason this
+    handler runs is that the database is unavailable, and a fallback that
+    needed the database would fail with it.
+
+    **The residual, stated rather than hidden.** An operator who pinned `ask`
+    or `deny` on a tool the risk table calls `allow` — say `read_file` — does
+    not get that honoured here, because the grant lives in the database that
+    just became unreadable. No DB-free signal can know about it. A teammate's
+    own-workspace reads therefore still go through while the guard is down;
+    everything that leaves the room does not.
+    """
+    try:
+        from crew import provenance
+
+        privileged, _why = provenance.is_privileged(tool_name)
+    except Exception:
+        # Cannot even tell what kind of call this is. Treat it as outward.
+        privileged = True
+
+    if not privileged:
+        log.warning(
+            "crew: permission check failed on %s; allowing it, because it cannot act "
+            "outside this teammate's own workspace", tool_name, exc_info=True,
+        )
         return None
+
+    log.error(
+        "crew: permission check failed on %s; refusing it, because it can act outside "
+        "this conversation and an unchecked outward call is not a safe default",
+        tool_name, exc_info=True,
+    )
+    return {
+        "action": "block",
+        "message": _REFUSED_TEMPLATE.format(
+            why=(
+                "the permission check could not run, and this call can act outside "
+                "this conversation. It is refused rather than allowed unchecked. Tell "
+                "your operator the check is broken — do not retry, and do not look for "
+                "another way to do the same thing"
+            )
+        ),
+    }
 
 
 def _record_blocked_activity(

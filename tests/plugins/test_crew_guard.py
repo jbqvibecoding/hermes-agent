@@ -412,16 +412,38 @@ def test_the_guard_ignores_a_tool_call_that_is_not_a_teammates(conn, offline, mo
     assert crew_approvals.list_approvals(conn) == []
 
 
-def test_a_broken_guard_allows_the_call_rather_than_breaking_the_turn(conn, monkeypatch):
-    """Fail-open here is a deliberate, narrow choice: a teammate whose every
-    tool fails because a grant row is malformed is broken in a way the operator
-    cannot diagnose, while the risk it is failing open on is one the host's own
-    approval gate still covers for genuinely dangerous commands."""
+def test_a_broken_guard_refuses_an_outward_call_and_allows_an_inert_one(conn, monkeypatch):
+    """The posture when the guard itself breaks — graduated, not uniform.
+
+    This test used to assert plain fail-open, on a rationale that was half
+    right: a teammate whose every tool fails because of a malformed grant row
+    is broken in a way nobody can diagnose, and the host's own approval gate
+    still covers genuinely dangerous *commands*. The half that was wrong is the
+    scope. `send_email`, `message_bot`, `message_user` and the never-list are
+    crew concepts the host knows nothing about, so fail-open there meant the
+    product's strongest promise — "the one list nothing opens, not with a
+    grant, not rephrased" — became a yes whenever a write failed. And the risk
+    table is *widened* on the assumption these floors work: `read_file` and
+    `terminal` are allowed by default precisely because they sit above them.
+
+    So the availability argument keeps the ground it actually earned — a call
+    that cannot leave this teammate's own workspace still goes through — and
+    anything that reaches a person, money, a calendar or a colleague is
+    refused. See `crew.hooks._guard_failed`.
+    """
     def boom(*a, **k):
         raise RuntimeError("grants table is on fire")
 
     monkeypatch.setattr(crew_policy, "evaluate", boom)
-    assert crew_hooks.on_pre_tool_call(**_send()) is None
+
+    outward = crew_hooks.on_pre_tool_call(**_send())
+    assert outward is not None and outward["action"] == "block"
+    assert "could not run" in outward["message"]
+
+    # …and the teammate can still do its own work.
+    assert crew_hooks.on_pre_tool_call(**_send(
+        tool_name="read_file", args={"path": "/workspace/notes.md"}
+    )) is None
 
 
 def test_a_denied_tool_is_refused_without_bothering_the_operator(conn, offline):

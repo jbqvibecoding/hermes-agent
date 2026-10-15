@@ -50,6 +50,7 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
+import threading
 from typing import Any, Optional
 
 from crew import db as crew_db
@@ -138,6 +139,45 @@ def count_shapes(text: Any) -> int:
     return sum(1 for pattern in _INJECTION_SHAPES if pattern.search(body))
 
 
+#: Turns whose taint row failed to land, so the table under-reports them.
+#:
+#: The idea is useAgent's capture-loss ledger (AGPL-3.0 — read for its design,
+#: nothing copied): a frame the provider emitted but we failed to persist leaves
+#: the record claiming something untrue, so the loss is tracked and the thing
+#: that reads the record is told. Ours has a sharper consequence than a wrong
+#: label: a taint row that does not land means :func:`crew.policy.taint_floor`
+#: sees a *clean* turn, and the whole control silently stops existing. One
+#: "database is locked" used to be enough, and the warning in `crew.hooks` said
+#: so out loud while allowing the call anyway.
+#:
+#: Process-local, and that is sufficient here rather than a compromise: the hook
+#: that writes and the floor that reads run in the same process for the same
+#: turn. The residual, stated rather than hidden (as theirs is): a process that
+#: dies between the failed write and the floor's read loses the marker — and
+#: loses the turn with it, so there is nothing left to protect.
+_LOST_TAINT: set[str] = set()
+_LOST_LOCK = threading.Lock()
+
+
+def record_loss(turn_id: str) -> None:
+    """Remember that this turn's taint could not be written down."""
+    if not turn_id:
+        return
+    with _LOST_LOCK:
+        _LOST_TAINT.add(turn_id)
+    log.error(
+        "crew: a taint row for turn %s could not be written. The turn is being treated "
+        "as tainted from memory so the floor still holds; the ledger is incomplete.",
+        turn_id,
+    )
+
+
+def forget_losses() -> None:
+    """Drop the in-memory markers. For tests."""
+    with _LOST_LOCK:
+        _LOST_TAINT.clear()
+
+
 def record(
     conn: sqlite3.Connection,
     *,
@@ -147,17 +187,26 @@ def record(
     why: str,
     shapes: int = 0,
 ) -> None:
-    """Mark this turn as having consumed somebody else's text."""
+    """Mark this turn as having consumed somebody else's text.
+
+    A write failure is recorded in memory and then re-raised: the caller gets
+    to log it, and the floor still refuses. Swallowing it here would be the
+    fail-open this function exists to prevent.
+    """
     if not turn_id:
         # No turn to attribute it to. Recording it under "" would taint an
         # unrelated bucket, which is worse than not recording it.
         return
-    with conn:
-        conn.execute(
-            "INSERT INTO turn_taint (turn_id, bot_id, source, why, shapes, created_at) "
-            "VALUES (?,?,?,?,?,?)",
-            (turn_id, bot_id, source, why, int(shapes), crew_db.now_ms()),
-        )
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO turn_taint (turn_id, bot_id, source, why, shapes, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (turn_id, bot_id, source, why, int(shapes), crew_db.now_ms()),
+            )
+    except Exception:
+        record_loss(turn_id)
+        raise
 
 
 def note_result(
@@ -170,14 +219,21 @@ def note_result(
     """
     if not is_untrusted_tool(tool):
         return False
-    record(
-        conn,
-        turn_id=turn_id,
-        bot_id=bot_id,
-        source=tool,
-        why=f"the result of {tool} is content from outside this crew",
-        shapes=count_shapes(result),
-    )
+    try:
+        record(
+            conn,
+            turn_id=turn_id,
+            bot_id=bot_id,
+            source=tool,
+            why=f"the result of {tool} is content from outside this crew",
+            shapes=count_shapes(result),
+        )
+    except Exception:
+        # `record` has already left the in-memory marker, so the floor still
+        # holds. Reporting True is the honest answer: the turn *is* tainted,
+        # and only the ledger entry is missing.
+        log.warning("crew: taint for %s was not written down; the marker stands",
+                    tool, exc_info=True)
     return True
 
 
@@ -214,12 +270,35 @@ def taint_of(conn: sqlite3.Connection, turn_id: str) -> Optional[dict]:
     """What tainted this turn, or None. Newest source first."""
     if not turn_id:
         return None
-    rows = [
-        dict(r)
-        for r in conn.execute(
-            "SELECT * FROM turn_taint WHERE turn_id=? ORDER BY id DESC", (turn_id,)
-        )
-    ]
+    try:
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT * FROM turn_taint WHERE turn_id=? ORDER BY id DESC", (turn_id,)
+            )
+        ]
+    except Exception:
+        # The table cannot be read. A turn we cannot clear is not a clean turn.
+        log.error("crew: could not read the taint ledger for %s; treating it as tainted",
+                  turn_id, exc_info=True)
+        return {
+            "sources": ["unknown"],
+            "why": "the record of what this turn read could not be read back",
+            "shapes": 0,
+            "count": 1,
+        }
+
+    with _LOST_LOCK:
+        lost = turn_id in _LOST_TAINT
+    if not rows and lost:
+        # The write failed; the marker is all that is left of it. See _LOST_TAINT.
+        return {
+            "sources": ["unknown"],
+            "why": "this turn read content from outside the crew, and the record of "
+                   "what it was could not be written down",
+            "shapes": 0,
+            "count": 1,
+        }
     if not rows:
         return None
     return {
