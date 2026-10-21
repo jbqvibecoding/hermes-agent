@@ -66,7 +66,32 @@ export type ChipKind =
 
 export interface TextPart { type: "text"; text: string }
 export interface ActivityPart { type: "activity"; activityId: string }
-export interface ChipPart { type: "chip"; kind: ChipKind; payload: unknown }
+export interface ChipPart { type: "chip"; kind: ChipKind; payload: unknown; turnId?: string }
+
+/**
+ * One thing a turn changed outside the chat, from `crew/effects.py` — after
+ * conch-agent's `ActivityEffect`. This is the *record*; the report chip above
+ * it is the teammate's own account, and the operator is meant to read them
+ * together.
+ *
+ * `undoable` is the server's answer to "may this be put back", and it is the
+ * only thing the button should key off: it means we hold an inverse AND have
+ * not already run it. `unrecorded` marks the stand-in row for a change whose
+ * write failed — the list says so rather than being quietly one short.
+ */
+export type EffectKind =
+  | "file" | "commit" | "push" | "install"
+  | "send" | "schedule" | "delete" | "publish" | "other";
+
+export interface TurnEffect {
+  id: string;
+  kind: EffectKind;
+  text: string;
+  target: string;
+  undoable: boolean;
+  undone_at?: number;
+  unrecorded?: boolean;
+}
 export type MessagePart = TextPart | ActivityPart | ChipPart;
 
 export interface Message {

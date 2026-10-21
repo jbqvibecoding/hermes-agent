@@ -40,6 +40,7 @@ import type {
   SendMessageInput,
   Subscription,
   UpdateAgentInput,
+  TurnEffect,
 } from "./types";
 
 export interface ConversationSnapshot {
@@ -130,4 +131,9 @@ export interface CloudAgentsClient {
     spaceId: string, pageId: string, patch: PatchPageInput, signal?: AbortSignal,
   ): Promise<Page>;
   deletePage(spaceId: string, pageId: string, signal?: AbortSignal): Promise<void>;
+
+  /** What the record says one turn changed outside the chat. */
+  listTurnEffects(turnId: string, signal?: AbortSignal): Promise<{ effects: TurnEffect[] }>;
+  /** Put one of those changes back; 409 when there is no inverse for it. */
+  undoEffect(effectId: string, signal?: AbortSignal): Promise<{ ok: boolean; detail: string }>;
 }

@@ -16,13 +16,20 @@ const handlers = (over: Partial<ChipHandlers> = {}): ChipHandlers => ({
   onDecide: vi.fn(),
   onOpenScreen: vi.fn(),
   onSubmitSecret: vi.fn(async () => undefined),
+  loadEffects: vi.fn(async () => []),
+  undoEffect: vi.fn(async () => undefined),
   screenshotUrl: (agentId, file) => `/api/plugins/hermes-crew/screenshots/${agentId}/${file}`,
   ...over,
 });
 
-const show = (kind: ChipKind, payload: unknown, over?: Partial<ChipHandlers>) => {
+const show = (
+  kind: ChipKind, payload: unknown, over?: Partial<ChipHandlers>, turnId?: string,
+) => {
   const h = handlers(over);
-  return { ...render(<ChipView kind={kind} payload={payload} handlers={h} />), handlers: h };
+  return {
+    ...render(<ChipView kind={kind} payload={payload} turnId={turnId} handlers={h} />),
+    handlers: h,
+  };
 };
 
 it("renders a report as scannable lines rather than a paragraph", () => {
@@ -147,4 +154,92 @@ it("still asks when the server has not recorded an answer", () => {
     why: "the queue is behind a login",
   });
   expect(screen.getByPlaceholderText("password")).toBeInTheDocument();
+});
+
+/**
+ * "What changed" — the record, under the teammate's account of it.
+ *
+ * The report above it is prose the model typed, so these two can disagree, and
+ * the panel exists so the operator sees both. The tests below are mostly about
+ * the ways the panel could quietly agree with the report when it shouldn't: by
+ * not loading, by not saying it failed to load, or by offering an undo it
+ * cannot honour.
+ */
+
+const REPORT = { lines: [{ system: "mail", result: "sent the launch note" }] };
+
+it("says nothing about changes until asked, and nothing at all without a turn", () => {
+  const { handlers: h } = show("report", REPORT);
+  expect(screen.queryByRole("button", { name: "What changed" })).not.toBeInTheDocument();
+  expect(h.loadEffects).not.toHaveBeenCalled();
+});
+
+it("loads the record only on expand, so a quiet turn costs no request", async () => {
+  const loadEffects = vi.fn(async () => [
+    { id: "e1", kind: "send" as const, text: "Sent to dana@henley.example", target: "", undoable: false },
+  ]);
+  show("report", REPORT, { loadEffects }, "turn-1");
+  expect(loadEffects).not.toHaveBeenCalled();
+
+  await userEvent.click(screen.getByRole("button", { name: "What changed" }));
+  expect(loadEffects).toHaveBeenCalledWith("turn-1");
+  expect(await screen.findByText("Sent to dana@henley.example")).toBeInTheDocument();
+});
+
+it("offers undo on exactly the changes the server says can be put back", async () => {
+  const loadEffects = vi.fn(async () => [
+    { id: "e1", kind: "publish" as const, text: "Created the page “Q3”", target: "Q3", undoable: true },
+    { id: "e2", kind: "send" as const, text: "Sent to dana@henley.example", target: "", undoable: false },
+  ]);
+  show("report", REPORT, { loadEffects }, "turn-1");
+  await userEvent.click(screen.getByRole("button", { name: "What changed" }));
+  await screen.findByText("Created the page “Q3”");
+
+  // One button, not two: an undo offered for the email would be a button that
+  // cannot honour itself, which is worse than no button at all.
+  expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1);
+});
+
+it("puts a change back and re-reads the record rather than guessing the new state", async () => {
+  const undoEffect = vi.fn(async () => undefined);
+  let pass = 0;
+  const loadEffects = vi.fn(async () => {
+    pass += 1;
+    return [{
+      id: "e1", kind: "publish" as const, text: "Created the page “Q3”", target: "Q3",
+      undoable: pass === 1, undone_at: pass === 1 ? 0 : 1_700_000_000,
+    }];
+  });
+  show("report", REPORT, { loadEffects, undoEffect }, "turn-1");
+  await userEvent.click(screen.getByRole("button", { name: "What changed" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Undo" }));
+
+  expect(undoEffect).toHaveBeenCalledWith("e1");
+  expect(await screen.findByText("undone")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  expect(loadEffects).toHaveBeenCalledTimes(2);
+});
+
+it("distinguishes a turn that changed nothing from one it could not ask about", async () => {
+  show("report", REPORT, { loadEffects: vi.fn(async () => []) }, "turn-1");
+  await userEvent.click(screen.getByRole("button", { name: "What changed" }));
+  expect(await screen.findByText("Nothing outside this conversation.")).toBeInTheDocument();
+
+  show("report", REPORT, {
+    loadEffects: vi.fn(async () => { throw new Error("offline"); }),
+  }, "turn-2");
+  await userEvent.click(screen.getAllByRole("button", { name: "What changed" })[1]);
+  expect(await screen.findByText("Could not load what changed.")).toBeInTheDocument();
+});
+
+it("shows a change whose record was lost rather than leaving the list short", async () => {
+  const loadEffects = vi.fn(async () => [
+    { id: "", kind: "other" as const, text: "A change could not be recorded",
+      target: "", undoable: false, unrecorded: true },
+    { id: "e2", kind: "file" as const, text: "Wrote /workspace/a.md", target: "", undoable: false },
+  ]);
+  show("report", REPORT, { loadEffects }, "turn-1");
+  await userEvent.click(screen.getByRole("button", { name: "What changed" }));
+  expect(await screen.findByText("A change could not be recorded")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
 });

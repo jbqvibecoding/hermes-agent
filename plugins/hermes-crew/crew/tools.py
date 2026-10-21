@@ -127,7 +127,14 @@ def handle_message_user(args: dict, **_kw: Any) -> str:
 
     conn = crew_db.connect()
     crew_db.insert_message(
-        conn, thread_id=turn.thread_id, sender=turn.bot_id, kind="report", payload=payload
+        conn, thread_id=turn.thread_id, sender=turn.bot_id, kind="report",
+        payload=payload,
+        # The report is the teammate's account of this turn; the effects ledger
+        # is the record of it. The operator is meant to read them together, so
+        # the chip has to carry the key that finds the other half. Without this
+        # the "What changed" route is addressable only by a turn id nothing on
+        # the client holds.
+        turn_id=turn.turn_id,
     )
     return json.dumps({"delivered": True, "lines": len(payload["lines"])}, ensure_ascii=False)
 

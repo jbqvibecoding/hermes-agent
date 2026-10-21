@@ -187,7 +187,14 @@ def message(row: dict) -> dict:
         role = "agent"
 
     if kind in _CHIP_KINDS:
-        parts: list[dict] = [{"type": "chip", "kind": kind, "payload": row.get("payload")}]
+        # `turnId` rides along so a report chip can fetch the turn's effects —
+        # what the record says changed, next to what the teammate says it did.
+        # It is the message's own turn id, so a chip written outside a turn
+        # simply carries "" and the client asks for nothing.
+        parts: list[dict] = [{
+            "type": "chip", "kind": kind, "payload": row.get("payload"),
+            "turnId": row.get("turn_id") or "",
+        }]
     else:
         parts = [{"type": "text", "text": row.get("content") or ""}]
 

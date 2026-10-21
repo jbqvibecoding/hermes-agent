@@ -123,6 +123,43 @@ def test_a_teammates_own_file_work_is_listed_though_nothing_asked_permission(
     assert all("q3-" in line for line in changed)
 
 
+def test_the_report_and_its_changes_can_actually_be_put_side_by_side(crew, monkeypatch):
+    """**The key check, and the one most likely to be wrong.**
+
+    The whole feature is the operator reading the claim next to the record, so
+    the chip has to carry a key that finds the record. The two are written by
+    different code on different turn accessors — `crew.tools` resolves a turn
+    with `resolve_turn()`, the effects write goes through `hooks._where()`,
+    which uses `current_turn()` — and a route keyed by an id nothing on the
+    client holds is a feature that silently does not exist. Round-tripping it
+    is the only way to know they agree.
+    """
+    from crew import effects
+
+    _allow(crew, monkeypatch, "message_user", "send_email")
+
+    crew.script(
+        "scout",
+        ("send_email", {"to": "dana@henley.example", "subject": "Launch"},
+         '{"sent": true}'),
+        ("message_user", {"kind": "report", "payload": {"lines": [
+            {"system": "mail", "result": "sent the launch note"}
+        ]}}),
+        "done",
+    )
+    crew.run("scout", "send the launch note")
+
+    reports = [m for m in crew.messages("dm:scout") if m["kind"] == "report"]
+    assert len(reports) == 1
+    turn_id = reports[0]["turn_id"]
+    assert turn_id, "a report with no turn id cannot find its own changes"
+
+    listed = effects.for_turn(crew.conn, turn_id)
+    assert [row["text"] for row in listed] == ["Sent to dana@henley.example: Launch"], (
+        "the chip's turn id has to be the key the effects were written under"
+    )
+
+
 class _EffectWriteFails:
     """A real connection that refuses exactly the effects insert.
 

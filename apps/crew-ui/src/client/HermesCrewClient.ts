@@ -35,6 +35,7 @@ import {
   type Section,
   type SendMessageInput,
   type Subscription,
+  type TurnEffect,
   type UpdateAgentInput,
 } from "../domain/types";
 
@@ -225,6 +226,21 @@ export class HermesCrewClient implements CloudAgentsClient {
     return this.request<Page>(
       `/spaces/${encodeURIComponent(spaceId)}/pages/${encodeURIComponent(pageId)}`,
       { method: "PATCH", body: JSON.stringify(patch), signal },
+    );
+  }
+
+  listTurnEffects(turnId: string, signal?: AbortSignal) {
+    return this.request<{ effects: TurnEffect[] }>(
+      `/turns/${encodeURIComponent(turnId)}/effects`,
+      { signal },
+    );
+  }
+
+  /** Put one change back. 409 means there is no inverse for it. */
+  undoEffect(effectId: string, signal?: AbortSignal) {
+    return this.request<{ ok: boolean; detail: string }>(
+      `/effects/${encodeURIComponent(effectId)}/undo`,
+      { method: "POST", signal },
     );
   }
 

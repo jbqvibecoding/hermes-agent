@@ -223,6 +223,11 @@ export function CrewWorkspace({ client, notify }: {
       await client.submitSecret(selectedAgent.id, ref, value);
     },
     screenshotUrl: (agentId, filename) => client.screenshotUrl(agentId, filename),
+    // Not caught here: `WhatChanged` has to tell "nothing changed" apart from
+    // "we could not find out", and swallowing the rejection would collapse the
+    // second into the first — the exact silence the panel exists to remove.
+    loadEffects: async (turnId) => (await client.listTurnEffects(turnId)).effects,
+    undoEffect: async (effectId) => { await client.undoEffect(effectId); },
   }), [client, crew]);
 
   if (crew.loading) {

@@ -86,6 +86,8 @@ function stubClient(overrides: Partial<CloudAgentsClient> = {}): CloudAgentsClie
     createPage: async () => { throw new Error("unused"); },
     patchPage: async () => { throw new Error("unused"); },
     deletePage: async () => { throw new Error("unused"); },
+    listTurnEffects: async () => ({ effects: [] }),
+    undoEffect: async () => ({ ok: true, detail: "" }),
     ...overrides,
   };
 }

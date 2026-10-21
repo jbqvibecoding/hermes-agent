@@ -217,8 +217,22 @@ def test_a_chip_becomes_a_chip_part_not_prose(conn):
             "type": "chip",
             "kind": "report",
             "payload": {"lines": [{"system": "Salesforce", "result": "pulled"}], "closing": "done"},
+            "turnId": "",
         }
     ]
+
+
+def test_a_chip_carries_the_turn_it_belongs_to(conn):
+    """A report chip is the teammate's account of a turn, and the client needs
+    the key that finds the other half — what the effects ledger recorded that
+    same turn actually changed. Without this the "What changed" route is
+    addressable only by an id nothing on the client holds."""
+    row = crew_db.insert_message(
+        conn, thread_id="dm:scout", sender="scout", kind="report",
+        payload={"lines": [{"system": "mail", "result": "sent"}]},
+        turn_id="turn-77",
+    )
+    assert contract.message(row)["parts"][0]["turnId"] == "turn-77"
 
 
 def test_a_decision_echo_is_system_even_though_the_operator_made_it(conn):

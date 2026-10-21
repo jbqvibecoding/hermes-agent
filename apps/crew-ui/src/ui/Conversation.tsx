@@ -160,7 +160,8 @@ export function MessageView({
     {agentWorking && <WorkingActivity
       agent={agent} label={workingLabel} activities={conversationActivities} startedAt={message.createdAt} />}
     {chipParts.map((part, index) => <ChipView
-      key={`${message.id}:${index}`} kind={part.kind} payload={part.payload} handlers={chips} />)}
+      key={`${message.id}:${index}`} kind={part.kind} payload={part.payload}
+      turnId={part.turnId} handlers={chips} />)}
   </div>;
 }
 

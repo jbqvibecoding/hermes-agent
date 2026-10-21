@@ -12,7 +12,7 @@
 
 import { Check, Clock, CornerDownRight, KeyRound, ShieldAlert } from "lucide-react";
 import { useState } from "react";
-import type { ChipKind } from "../../domain/types";
+import type { ChipKind, TurnEffect } from "../../domain/types";
 
 interface ReportLine { system?: string; result?: string; count?: string }
 
@@ -23,7 +23,83 @@ function Chip({ label, kind = "", children }: { label?: string; kind?: string; c
   </div>;
 }
 
-function ReportChip({ payload }: { payload: { lines?: ReportLine[]; closing?: string } }) {
+/**
+ * What the turn actually changed outside the chat, under what the teammate
+ * says it did.
+ *
+ * The report above this is prose the model typed — `crew/report.py` checks its
+ * shape and not its truth — so for a turn nobody watched it was the only
+ * account of the turn and also the only part that can be wrong about it. These
+ * lines come from `crew/effects.py`, which derives them from the tool record.
+ * They are deliberately rendered *beside* the claim rather than replacing it:
+ * reconciling the two is the operator's job and the point of the panel.
+ *
+ * Fetched lazily on expand. Most turns change nothing, and a request per
+ * report on every thread load would be a lot of traffic for a mostly empty
+ * list.
+ */
+function WhatChanged({ turnId, handlers }: { turnId: string; handlers: ChipHandlers }) {
+  const [open, setOpen] = useState(false);
+  const [effects, setEffects] = useState<TurnEffect[] | null>(null);
+  const [problem, setProblem] = useState("");
+  const [busy, setBusy] = useState("");
+
+  async function expand() {
+    setOpen((was) => !was);
+    if (effects !== null) return;
+    try {
+      setEffects(await handlers.loadEffects(turnId));
+    } catch {
+      // The list failing to load must not be mistaken for a turn that changed
+      // nothing — that is the same silence the feature exists to remove.
+      setProblem("Could not load what changed.");
+    }
+  }
+
+  async function undo(effect: TurnEffect) {
+    setBusy(effect.id);
+    try {
+      await handlers.undoEffect(effect.id);
+      setEffects(await handlers.loadEffects(turnId));
+    } catch {
+      setProblem("Could not undo that.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  if (!turnId) return null;
+  return <div className="crew-changed">
+    <button type="button" className="crew-changed-toggle" onClick={() => void expand()}>
+      What changed
+    </button>
+    {open && <div className="crew-changed-list">
+      {problem && <div className="crew-changed-problem">{problem}</div>}
+      {effects?.length === 0 && !problem && <div className="crew-changed-empty">
+        Nothing outside this conversation.
+      </div>}
+      {(effects ?? []).map((effect) => <div
+        className={`crew-changed-line${effect.undone_at ? " is-undone" : ""}`}
+        key={effect.id || effect.text}
+      >
+        <span className="crew-changed-kind">{effect.kind}</span>
+        <span className="crew-changed-text">{effect.text}</span>
+        {effect.undoable && <button
+          type="button" className="crew-changed-undo"
+          disabled={busy === effect.id}
+          onClick={() => void undo(effect)}
+        >{busy === effect.id ? "Undoing…" : "Undo"}</button>}
+        {effect.undone_at ? <span className="crew-changed-undone">undone</span> : null}
+      </div>)}
+    </div>}
+  </div>;
+}
+
+function ReportChip({ payload, turnId, handlers }: {
+  payload: { lines?: ReportLine[]; closing?: string };
+  turnId?: string;
+  handlers: ChipHandlers;
+}) {
   return <Chip kind="report">
     {(payload.lines ?? []).map((line, index) => <div className="crew-report-line" key={index}>
       <span className="crew-report-check"><Check size={13} /></span>
@@ -32,6 +108,7 @@ function ReportChip({ payload }: { payload: { lines?: ReportLine[]; closing?: st
       <span>{line.result}{line.count && <span className="crew-report-count"> · {line.count}</span>}</span>
     </div>)}
     {payload.closing && <div className="crew-report-closing">{payload.closing}</div>}
+    {turnId && <WhatChanged turnId={turnId} handlers={handlers} />}
   </Chip>;
 }
 
@@ -209,14 +286,19 @@ function ScreenshotChip({ payload, screenshotUrl }: {
 
 export interface ChipHandlers {
   onDecide(approvalId: string, decision: "allow" | "deny"): void;
+  /** What the record says this turn changed. See `WhatChanged`. */
+  loadEffects(turnId: string): Promise<TurnEffect[]>;
+  /** Put one of those changes back. Only ever called for `undoable` rows. */
+  undoEffect(effectId: string): Promise<void>;
   onOpenScreen(): void;
   onSubmitSecret(ref: string, value: string): Promise<void>;
   screenshotUrl(agentId: string, filename: string): string;
 }
 
-export function ChipView({ kind, payload, handlers }: {
+export function ChipView({ kind, payload, turnId, handlers }: {
   kind: ChipKind;
   payload: unknown;
+  turnId?: string;
   handlers: ChipHandlers;
 }) {
   // Payloads come from the model by way of `crew/tools.py`, which validates
@@ -224,7 +306,7 @@ export function ChipView({ kind, payload, handlers }: {
   // letting one missing key blank the thread.
   const data = (payload ?? {}) as Record<string, never>;
   switch (kind) {
-    case "report": return <ReportChip payload={data} />;
+    case "report": return <ReportChip payload={data} turnId={turnId} handlers={handlers} />;
     case "approval_request": return <ApprovalChip payload={data} onDecide={handlers.onDecide} />;
     case "approval_resolved": return <ResolvedChip payload={data} />;
     case "memory_updated": return <MemoryChip payload={data} />;

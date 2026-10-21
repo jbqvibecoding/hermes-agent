@@ -573,6 +573,33 @@
 .crew-report-count { color: var(--crew-dim); }
 .crew-report-closing { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--crew-line); color: var(--crew-dim); }
 
+/* "What changed" — the record, under the teammate's account of it. Quieter
+   than the report it sits beneath on purpose: the report is what the teammate
+   wants to tell you, this is what you check it against. */
+.crew-changed { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--crew-line); }
+.crew-changed-toggle {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--crew-dim); font: inherit; font-size: 0.75rem;
+}
+.crew-changed-toggle:hover { color: var(--crew-text); }
+.crew-changed-list { margin-top: 0.4rem; }
+.crew-changed-line { display: flex; align-items: baseline; gap: 0.4rem; padding: 0.18rem 0; line-height: 1.5; }
+.crew-changed-line.is-undone { color: var(--crew-faint); text-decoration: line-through; }
+.crew-changed-kind {
+  flex: none; min-width: 4.5rem; color: var(--crew-faint);
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.crew-changed-text { flex: 1; }
+.crew-changed-undo {
+  flex: none; padding: 0.1rem 0.45rem; border: 1px solid var(--crew-line);
+  border-radius: calc(var(--crew-radius) * 0.8); background: none; cursor: pointer;
+  color: var(--crew-dim); font: inherit; font-size: 0.7rem;
+}
+.crew-changed-undo:hover:not(:disabled) { color: var(--crew-text); }
+.crew-changed-undo:disabled { cursor: default; opacity: 0.6; }
+.crew-changed-undone { flex: none; color: var(--crew-faint); font-size: 0.7rem; text-decoration: none; }
+.crew-changed-empty, .crew-changed-problem { color: var(--crew-dim); font-size: 0.78rem; }
+
 .crew-approval-action { font-weight: 600; }
 .crew-approval-detail { margin-top: 0.25rem; color: var(--crew-dim); line-height: 1.5; }
 .crew-approval-outcome { margin-top: 0.5rem; color: var(--crew-dim); font-size: 0.75rem; }
