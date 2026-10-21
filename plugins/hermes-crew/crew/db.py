@@ -358,8 +358,10 @@ CREATE INDEX IF NOT EXISTS idx_activities_turn ON activities(turn_id, status);
 -- `ActivityEffect`. Deliberately not the table above: `activities` is one row
 -- per tool call so a spinner can resolve, and most tool calls change nothing.
 -- This one is what the operator reads afterwards to check the teammate's own
--- report against, so it is append-only and never upserted — an effect that
--- happened stays happened, even once it is undone.
+-- report against. Rows are never rewritten and never deleted: an effect that
+-- happened stays happened. Undoing one sets `undone_at` and leaves the rest of
+-- the row alone, because "it created the page and I removed it again" and "it
+-- never created the page" are different histories and the second one is false.
 --
 -- `undo` is JSON naming the inverse, and NULL whenever there is not one we can
 -- actually execute. The renderer offers a button on exactly the non-NULL rows:
@@ -373,6 +375,7 @@ CREATE TABLE IF NOT EXISTS effects (
     text        TEXT NOT NULL DEFAULT '',
     target      TEXT NOT NULL DEFAULT '',
     undo        TEXT,
+    undone_at   INTEGER NOT NULL DEFAULT 0,
     created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_effects_turn ON effects(turn_id, created_at);
@@ -533,6 +536,7 @@ _MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("bots", "proactive", "ALTER TABLE bots ADD COLUMN proactive INTEGER NOT NULL DEFAULT 1"),
     ("bots", "next_speak_at", "ALTER TABLE bots ADD COLUMN next_speak_at INTEGER NOT NULL DEFAULT 0"),
     ("bots", "gardened_at", "ALTER TABLE bots ADD COLUMN gardened_at INTEGER NOT NULL DEFAULT 0"),
+    ("effects", "undone_at", "ALTER TABLE effects ADD COLUMN undone_at INTEGER NOT NULL DEFAULT 0"),
     ("approvals", "ref", "ALTER TABLE approvals ADD COLUMN ref TEXT"),
     ("approvals", "scope", "ALTER TABLE approvals ADD COLUMN scope TEXT"),
     ("approvals", "tool", "ALTER TABLE approvals ADD COLUMN tool TEXT NOT NULL DEFAULT ''"),

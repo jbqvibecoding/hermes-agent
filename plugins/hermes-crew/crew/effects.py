@@ -162,15 +162,28 @@ def effect_from_call(tool_name: str, args: Any, result: Any) -> Optional[dict]:
     # exactly what the call meant.
     if name == "create_space_page":
         title = _clean(data.get("title"), TARGET_LIMIT)
-        return _effect("publish", f"Created the page {_quoted(title)}".strip(), title)
+        undo = None
+        if out.get("id") and out.get("space_id"):
+            undo = {"op": "delete_page", "page_id": out["id"], "space_id": out["space_id"]}
+        return _effect(
+            "publish", f"Created the page {_quoted(title)}".strip(), title, undo,
+        )
     if name == "edit_space_page":
+        # No undo: putting a page back needs the body as it was before the
+        # edit, and nothing stores it — `pages.revision` is an
+        # optimistic-concurrency token, not a changelog. An undo built from
+        # the page's *current* previous state would restore whatever was there
+        # last, which after an operator's own edit is the teammate's text. A
+        # button that does the opposite of what it says is worse than no
+        # button, so this records the change and offers nothing.
         title = _clean(out.get("title") or data.get("title"), TARGET_LIMIT)
         return _effect("publish", f"Edited the page {_quoted(title)}".strip(), title)
     if name == "create_routine":
         rname = _clean(data.get("name"), TARGET_LIMIT)
         cron = _clean(data.get("cron"), 60)
         text = f"Scheduled {_quoted(rname)}" + (f" ({cron})" if cron else "")
-        return _effect("schedule", text.strip(), rname)
+        undo = {"op": "delete_routine", "job_id": out["id"]} if out.get("id") else None
+        return _effect("schedule", text.strip(), rname, undo)
     if name == "save_memory_rule":
         rule = _clean(data.get("rule"), TEXT_LIMIT)
         return _effect("other", f"Saved a standing rule: {rule}", rule)
@@ -281,6 +294,33 @@ def record(conn, *, turn_id: str, thread_id: str, bot_id: str, effect: dict) -> 
         )
 
 
+def get(conn, effect_id: str) -> Optional[dict]:
+    """One effect by id, with its ``undo`` parsed, or ``None``."""
+    row = conn.execute(
+        "SELECT id, turn_id, thread_id, bot_id, kind, text, target, undo, "
+        "undone_at, created_at FROM effects WHERE id = ?",
+        (str(effect_id),),
+    ).fetchone()
+    if row is None:
+        return None
+    item = dict(row)
+    item["undo"] = json.loads(item["undo"]) if item.get("undo") else None
+    return item
+
+
+def mark_undone(conn, effect_id: str) -> None:
+    """Note that the inverse ran. The row itself is left as it was: the change
+    did happen, and a history that says otherwise is a different lie from the
+    one this module set out to fix."""
+    import time
+
+    with conn:
+        conn.execute(
+            "UPDATE effects SET undone_at = ? WHERE id = ?",
+            (int(time.time()), str(effect_id)),
+        )
+
+
 #: What the reader shows for a row that could not be written. It names the one
 #: thing it knows — that something happened — and does not pretend to know what.
 UNRECORDED = {
@@ -289,6 +329,7 @@ UNRECORDED = {
     "text": "A change could not be recorded",
     "target": "",
     "undo": None,
+    "undoable": False,
     "unrecorded": True,
 }
 
@@ -303,14 +344,18 @@ def for_turn(conn, turn_id: str) -> list[dict]:
     rows: list[dict] = []
     try:
         cursor = conn.execute(
-            "SELECT id, kind, text, target, undo, created_at FROM effects "
-            "WHERE turn_id = ? ORDER BY created_at, rowid",
+            "SELECT id, bot_id, kind, text, target, undo, undone_at, created_at "
+            "FROM effects WHERE turn_id = ? ORDER BY created_at, rowid",
             (str(turn_id),),
         )
         for row in cursor:
             item = dict(row)
             raw = item.get("undo")
             item["undo"] = json.loads(raw) if raw else None
+            # What the renderer draws a button from: an inverse we hold *and*
+            # have not already run. Both halves, so a second click cannot ask
+            # for something that is already gone.
+            item["undoable"] = bool(item["undo"]) and not item.get("undone_at")
             rows.append(item)
     except Exception:
         log.warning("crew: the effects ledger could not be read back", exc_info=True)

@@ -82,6 +82,12 @@ EVENT_TYPES = (
     # and "why did they all start doing that on Tuesday" is a question this row
     # answers.
     "operator.context_changed",
+    # The operator put one of a turn's changes back. Recorded because an undo
+    # is itself an action on the world — a page really is deleted, a routine
+    # really is cancelled — and because "who removed that page" is otherwise a
+    # question with no row behind it: the effects ledger says the teammate
+    # created it, and nothing would say who took it away.
+    "effect.undone",
 )
 
 #: A digest is 12 hex chars: enough to match two calls against each other,

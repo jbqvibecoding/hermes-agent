@@ -1018,6 +1018,42 @@ def put_operator_context(body: OperatorContextBody):
 
 
 # ---------------------------------------------------------------------------
+# What changed — a turn's effects on the world outside the chat
+#
+# The operator's side of `crew/effects.py`. This is read *next to* the turn's
+# report, not instead of it: the report is what the teammate says it did, this
+# is what the record says it did, and the whole point is that the operator
+# sees both. No live tail — these are reviewed after the fact, and a
+# subscription for a list nobody is watching in real time would be
+# infrastructure with no reader.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/turns/{turn_id}/effects")
+def get_turn_effects(turn_id: str):
+    from crew import effects as crew_effects
+
+    return {"effects": crew_effects.for_turn(_conn(), turn_id)}
+
+
+@router.post("/effects/{effect_id}/undo")
+def undo_effect(effect_id: str):
+    """Put one change back.
+
+    Deliberately a route and not a tool: a teammate that could undo its own
+    effects could erase the record this feature exists to produce. The only
+    caller is the operator, which is why `crew.undo` writes the audit row
+    under their name.
+    """
+    from crew import undo as crew_undo
+
+    try:
+        return crew_undo.apply(_conn(), effect_id)
+    except crew_undo.UndoError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
 # Spaces — shared documents
 #
 # The operator's side. These routes do no `bot_spaces` check: every Space is
