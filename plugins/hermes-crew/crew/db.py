@@ -354,6 +354,30 @@ CREATE INDEX IF NOT EXISTS idx_activities_thread ON activities(thread_id, create
 CREATE INDEX IF NOT EXISTS idx_activities_seq ON activities(seq);
 CREATE INDEX IF NOT EXISTS idx_activities_turn ON activities(turn_id, status);
 
+-- What a turn changed *outside the chat* (see crew/effects.py), after conch's
+-- `ActivityEffect`. Deliberately not the table above: `activities` is one row
+-- per tool call so a spinner can resolve, and most tool calls change nothing.
+-- This one is what the operator reads afterwards to check the teammate's own
+-- report against, so it is append-only and never upserted — an effect that
+-- happened stays happened, even once it is undone.
+--
+-- `undo` is JSON naming the inverse, and NULL whenever there is not one we can
+-- actually execute. The renderer offers a button on exactly the non-NULL rows:
+-- an undo that cannot honour itself is worse than none.
+CREATE TABLE IF NOT EXISTS effects (
+    id          TEXT PRIMARY KEY,
+    turn_id     TEXT NOT NULL DEFAULT '',
+    thread_id   TEXT NOT NULL DEFAULT '',
+    bot_id      TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL DEFAULT 'other',
+    text        TEXT NOT NULL DEFAULT '',
+    target      TEXT NOT NULL DEFAULT '',
+    undo        TEXT,
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_effects_turn ON effects(turn_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_effects_thread ON effects(thread_id, created_at);
+
 -- A single monotonic counter shared by every tailable table. The messages tail
 -- can use AUTOINCREMENT rowids, but activities are upserted — an update has to
 -- move the row to the *end* of the stream so subscribers see the change, which

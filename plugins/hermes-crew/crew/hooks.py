@@ -551,6 +551,7 @@ def on_post_tool_call(
         _settle_released_approval(conn, tool_call_id, failed=failed)
         if not failed:
             _record_evidence(bot_id, tool_name, args, result)
+            _record_effect(conn, bot_id, thread_id, turn, tool_name, args, result)
         crew_audit.record(
             conn,
             event_type="tool.failed" if failed else "tool.allowed",
@@ -828,6 +829,45 @@ def _record_evidence(bot_id: str, tool: str, args: Any, result: Any) -> None:
         # Losing a line of evidence must never take down the tool call that
         # produced it — least of all by raising a LostLease into the agent loop.
         log.debug("crew: evidence not recorded for %s", tool, exc_info=True)
+
+
+def _record_effect(
+    conn: sqlite3.Connection, bot_id: str, thread_id: str, turn_id: str,
+    tool: str, args: Any, result: Any,
+) -> None:
+    """Note what this call changed outside the chat, if anything.
+
+    Written under the same turn id as `activities` and `audit` — the one
+    `_where` resolves — because this is a display surface and that is the key
+    the dashboard already correlates a turn by. Writing under the crew turn id
+    that `provenance` uses would put the list where nothing reads it.
+
+    A failure here must not take down the tool call, so it is swallowed like
+    the evidence write above. Unlike that one it cannot be swallowed *quietly*:
+    a short "What changed" list with nothing to say it is short would mislead
+    exactly the person this feature reports to, so the loss is marked and the
+    reader renders a row for it.
+    """
+    try:
+        from crew import effects as crew_effects
+
+        effect = crew_effects.effect_from_call(tool, args, result)
+        if effect is None:
+            return
+        crew_effects.record(
+            conn, turn_id=turn_id, thread_id=thread_id, bot_id=bot_id, effect=effect,
+        )
+    except Exception:
+        try:
+            from crew import effects as crew_effects
+
+            crew_effects.record_loss(turn_id)
+        except Exception:  # pragma: no cover - defensive
+            pass
+        log.warning(
+            "crew: could not record what %s changed; the turn's What-changed "
+            "list will say so", tool, exc_info=True,
+        )
 
 
 def _record_completed_activity(
