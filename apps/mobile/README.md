@@ -61,9 +61,28 @@ container. What is actually verified:
 | Verified | How |
 |---|---|
 | The shared half works without a DOM | `apps/crew-ui/src/state/portability.test.ts`, under `@vitest-environment node` |
-| The connect-screen logic | `src/connection.test.ts`, 13 tests, 5 mutations confirmed |
+| The connect-screen logic | `src/connection.test.ts` — 13 tests, 5 mutations confirmed |
+| The markdown tokeniser | `src/markdown.test.ts` — including that unsupported constructs survive as literal text |
+| Approvals always send `contentHash` | `src/approvals.test.ts` — the one claim of this design that code can check |
 | Everything typechecks together | `tsc -p . --noEmit`, including the shared imports |
-| **Layout, keyboard, navigation, WebView** | **not verified — needs a device** |
+| **Layout, keyboard, navigation, the WebView** | **not verified — needs a device** |
+
+### Markdown: what renders and what does not
+
+Fenced code (monospace, horizontally scrollable), bullet lists, bold and inline
+code. Tables, headings, links and blockquotes are **shown as their own literal
+characters** rather than rendered — a renderer that silently eats a table is
+worse than one that shows the pipes.
+
+### Approvals: two decisions, and always the hash
+
+Discard and Approve plus an optional note, matching the desktop exactly. There
+is no "always allow" — adding one would make the phone, which is the weaker
+context, the more permissive one. Every decision carries
+`ApprovalRequest.contentHash`, so a card rewritten between reading and tapping
+is refused by the server rather than silently consented to. The in-thread
+`approval_request` chip has no buttons for that reason: its payload has no hash,
+so it navigates to the approvals screen instead.
 
 `npm test` covers `src/**` only. The screens under `app/` need jest-expo and a
 native mock layer; a suite that rendered them against mocks would prove the
@@ -77,3 +96,4 @@ parts nobody was worried about.
   shoulder.
 - Spaces editing, and the teammate's screen via `react-native-webview` (the
   noVNC library is DOM-only and cannot be ported).
+- Markdown tables, headings, links and blockquotes as anything but literal text.

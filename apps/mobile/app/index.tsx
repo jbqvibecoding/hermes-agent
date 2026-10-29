@@ -1,64 +1,64 @@
 /**
  * The roster — the desktop's left column, now the stack's root.
  *
- * It carries the thing a phone is actually for: the count of what needs the
- * operator. On the desktop that lives in a panel they already have open; here
- * it has to be visible on the first screen, because the reason to pick the
- * phone up at all is usually that something is waiting.
+ * It carries the thing a phone is actually for, at the top where it cannot be
+ * missed: how many held actions are waiting across the whole crew. On a desk
+ * that lives in a panel the operator already has open; here the reason to pick
+ * the phone up at all is usually that something is waiting.
  */
 
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { Redirect, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCrewController } from "@hermes/crew-ui/state";
-import { createPlatformBridge } from "../src/platform";
-import { createClient, loadCredentials, type Credentials } from "../src/session";
+import type { ApprovalRequest } from "@hermes/crew-ui/domain";
+import { pendingByAgent } from "../src/approvals";
+import { useCrew, useCredentials } from "../src/crew";
 
-export default function Roster() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const [credentials, setCredentials] = useState<Credentials | null>(null);
-  const [checked, setChecked] = useState(false);
-
-  useEffect(() => {
-    void loadCredentials().then((found) => {
-      setCredentials(found);
-      setChecked(true);
-      if (!found) router.replace("/connect");
-    });
-  }, [router]);
-
-  // Both memoised on the credentials: a new client every render would open a
-  // new websocket every render.
-  const client = useMemo(() => (credentials ? createClient(credentials) : null), [credentials]);
-  const platform = useMemo(() => createPlatformBridge(), []);
-
-  if (!checked || !client) {
+export default function Index() {
+  const credentials = useCredentials();
+  if (credentials === null) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#0f1115" }}>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator color="#e9e9e9" />
       </View>
     );
   }
-  return <RosterList client={client} platform={platform} bottomInset={insets.bottom} />;
+  if (credentials === "unpaired") return <Redirect href="/connect" />;
+  return <Roster />;
 }
 
-function RosterList({
-  client, platform, bottomInset,
-}: {
-  client: NonNullable<ReturnType<typeof createClient>>;
-  platform: ReturnType<typeof createPlatformBridge>;
-  bottomInset: number;
-}) {
+function Roster() {
   const router = useRouter();
-  // The same controller the dashboard and the desktop app run. The only thing
-  // mobile hands it that they do not is the bridge.
-  const crew = useCrewController(client, { platform });
+  const insets = useSafeAreaInsets();
+  const { crew, client } = useCrew();
+  const [pending, setPending] = useState<ApprovalRequest[]>([]);
+
+  // Across every teammate, which the controller cannot do — it is scoped to
+  // the selected one. `listApprovalRequests()` with no agent already returns
+  // the lot (plugin_api.py passes `agentId or None` straight through), so this
+  // needs no new route and no fan-out.
+  useEffect(() => {
+    let alive = true;
+    const read = () => {
+      void client.listApprovalRequests()
+        .then((all) => { if (alive) setPending(all); })
+        .catch(() => undefined);
+    };
+    read();
+    // Polled rather than pushed: the event stream is per-conversation, so a
+    // hold taken in a thread this screen is not looking at would otherwise
+    // never appear. Thirty seconds matches the controller's own safety net.
+    const timer = setInterval(read, 30_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [client, crew.agents.length]);
+
+  const waiting = pendingByAgent(pending, crew.agents)
+    .reduce((count, group) => count + group.items.length, 0);
 
   if (crew.loading) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#0f1115" }}>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator color="#e9e9e9" />
       </View>
     );
@@ -66,8 +66,8 @@ function RosterList({
 
   if (crew.error) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 12, backgroundColor: "#0f1115" }}>
-        <Text style={{ color: "#ef9a9a", fontSize: 15 }}>{crew.error}</Text>
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 12 }}>
+        <Text style={{ color: "#ef9a9a", fontSize: 15, lineHeight: 22 }}>{crew.error}</Text>
         <Pressable onPress={() => router.push("/connect")}>
           <Text style={{ color: "#8ab4f8", fontSize: 15 }}>Change the address or token</Text>
         </Pressable>
@@ -77,10 +77,29 @@ function RosterList({
 
   return (
     <FlatList
-      style={{ flex: 1, backgroundColor: "#0f1115" }}
-      contentContainerStyle={{ paddingBottom: bottomInset + 16 }}
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
       data={crew.agents}
       keyExtractor={(agent) => agent.id}
+      ListHeaderComponent={
+        waiting > 0 ? (
+          <Pressable
+            onPress={() => router.push("/approvals")}
+            style={{
+              margin: 12, padding: 14, borderRadius: 10,
+              backgroundColor: "rgba(138,180,248,0.12)",
+              borderWidth: 1, borderColor: "rgba(138,180,248,0.35)",
+            }}
+          >
+            <Text style={{ color: "#8ab4f8", fontSize: 15, fontWeight: "600" }}>
+              {waiting} {waiting === 1 ? "thing needs" : "things need"} you
+            </Text>
+            <Text style={{ color: "#9aa0a6", fontSize: 13, marginTop: 2 }}>
+              Held until you decide
+            </Text>
+          </Pressable>
+        ) : undefined
+      }
       ListEmptyComponent={
         <Text style={{ color: "#9aa0a6", padding: 24, fontSize: 15 }}>
           No teammates yet. Hire one from the dashboard.
@@ -89,8 +108,8 @@ function RosterList({
       renderItem={({ item }) => (
         <Pressable
           onPress={() => router.push(`/agent/${item.id}`)}
-          // 56 is the smallest row that is comfortably tappable; the desktop's
-          // 32px list row is a mouse target, not a thumb one.
+          // 56 is the smallest comfortably tappable row; the desktop's 32px
+          // list row is a mouse target, not a thumb one.
           style={{
             minHeight: 56, paddingHorizontal: 16, paddingVertical: 10,
             flexDirection: "row", alignItems: "center", gap: 12,
