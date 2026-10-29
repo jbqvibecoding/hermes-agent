@@ -1,4 +1,4 @@
-import { C as f } from "./chunk-workspace-6Vm5SKkd.js";
+import { C as f } from "./chunk-workspace-BqNob2IL.js";
 export {
   f as default
 };
