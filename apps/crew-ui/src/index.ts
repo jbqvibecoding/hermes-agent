@@ -28,6 +28,8 @@ export { ChipView } from "./ui/chips";
 export type { ChipHandlers } from "./ui/chips";
 
 export { useCrewController } from "./state/useCrewController";
+export { webPlatform, alwaysActivePlatform, detectPlatform } from "./state/platform";
+export type { PlatformBridge, WakeReason } from "./state/platform";
 export type { CrewControllerOptions } from "./state/useCrewController";
 
 export { PageAutosave, MAX_TITLE, MAX_CONTENT } from "./state/pageAutosave";

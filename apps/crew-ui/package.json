@@ -6,7 +6,10 @@
   "description": "The Crew workspace: one React surface shared by the dashboard plugin and the desktop app.",
   "exports": {
     ".": "./src/index.ts",
-    "./styles.css": "./src/ui/styles.css"
+    "./styles.css": "./src/ui/styles.css",
+    "./client": "./src/client/HermesCrewClient.ts",
+    "./domain": "./src/domain/index.ts",
+    "./state": "./src/state/index.ts"
   },
   "types": "./src/index.ts",
   "scripts": {

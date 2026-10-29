@@ -26,6 +26,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CloudAgentsClient } from "../domain/CloudAgentsClient";
+import { detectPlatform, type PlatformBridge } from "./platform";
 import {
   CrewError,
   type ActivityEvent,
@@ -75,10 +76,16 @@ export interface CrewControllerOptions {
   enabled?: boolean;
   /** CREW(3): told when a teammate finishes or needs a decision. */
   notify?(notification: { title: string; body: string }): void;
+  /**
+   * How this surface answers "am I in front of the person, and am I online".
+   * Defaults to the browser, so the dashboard plugin and the desktop app pass
+   * nothing; React Native passes its own. See `state/platform.ts`.
+   */
+  platform?: PlatformBridge;
 }
 
 export function useCrewController(client: CloudAgentsClient, options: CrewControllerOptions = {}) {
-  const { enabled = true, notify } = options;
+  const { enabled = true, notify, platform = detectPlatform() } = options;
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   // CREW(1): the thread the operator is looking at. Empty means "the selected
@@ -175,28 +182,26 @@ export function useCrewController(client: CloudAgentsClient, options: CrewContro
   }, [enabled, refreshAgents, refreshModelProviders]);
 
   // The roster arrives over the event stream, so this is a safety net rather
-  // than the mechanism — it catches a socket that died quietly and a tab that
-  // was asleep while the crew worked.
+  // than the mechanism — it catches a socket that died quietly and a surface
+  // that was asleep while the crew worked.
+  //
+  // The three browser events this used to bind are now `platform.subscribe`,
+  // because they are the only platform-specific lines in this file and a phone
+  // spells them `AppState` and NetInfo. The interval stays here: `setInterval`
+  // is the same everywhere.
   useEffect(() => {
     if (!enabled) return;
     const refreshWhenActive = () => {
-      if (document.visibilityState === "hidden" || !navigator.onLine) return;
+      if (!platform.isActive() || !platform.isOnline()) return;
       void refreshAgents().catch(() => undefined);
     };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") refreshWhenActive();
-    };
-    const timer = window.setInterval(refreshWhenActive, AGENT_FALLBACK_REFRESH_MS);
-    window.addEventListener("focus", refreshWhenActive);
-    window.addEventListener("online", refreshWhenActive);
-    document.addEventListener("visibilitychange", onVisibilityChange);
+    const timer = setInterval(refreshWhenActive, AGENT_FALLBACK_REFRESH_MS);
+    const unsubscribe = platform.subscribe(refreshWhenActive);
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refreshWhenActive);
-      window.removeEventListener("online", refreshWhenActive);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearInterval(timer);
+      unsubscribe();
     };
-  }, [enabled, refreshAgents]);
+  }, [enabled, refreshAgents, platform]);
 
   // Switching teammates resets the thread to their DM. Picking a room is an
   // explicit act; inheriting the last one would put the operator in a
@@ -219,8 +224,8 @@ export function useCrewController(client: CloudAgentsClient, options: CrewContro
     const cacheAge = cached ? Date.now() - cached.cachedAt : Number.POSITIVE_INFINITY;
     if (cached && cacheAge < SNAPSHOT_TTL_MS && !selectedThreadId) {
       if (cached.messages.some((message) => message.streaming)) setLiveAgentId(selectedAgentId);
-      const timer = window.setTimeout(() => setRevalidateVersion((v) => v + 1), SNAPSHOT_TTL_MS - cacheAge);
-      return () => window.clearTimeout(timer);
+      const timer = setTimeout(() => setRevalidateVersion((v) => v + 1), SNAPSHOT_TTL_MS - cacheAge);
+      return () => clearTimeout(timer);
     }
 
     const controller = new AbortController();
@@ -289,9 +294,9 @@ export function useCrewController(client: CloudAgentsClient, options: CrewContro
         if (snapshot) snapshots.current.set(selectedAgentId, { ...snapshot, computer: nextComputer });
       } catch { /* Availability shows through the connection state, not an alert. */ }
     };
-    const timer = window.setInterval(() => { void refreshComputer(); }, 2_000);
+    const timer = setInterval(() => { void refreshComputer(); }, 2_000);
     void refreshComputer();
-    return () => { active = false; window.clearInterval(timer); };
+    return () => { active = false; clearInterval(timer); };
   }, [client, computer?.status, enabled, selectedAgentId]);
 
   useEffect(() => {

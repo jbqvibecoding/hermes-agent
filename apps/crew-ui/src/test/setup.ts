@@ -15,5 +15,11 @@ import { afterEach, expect } from "vitest";
 
 expect.extend(matchers);
 
-afterEach(() => cleanup());
-Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
+// Guarded because `state/portability.test.ts` runs under
+// `@vitest-environment node` on purpose — it proves the shared modules survive
+// React Native's missing DOM, and it cannot do that if the setup file itself
+// reaches for `window` before the first test runs.
+if (typeof window !== "undefined") {
+  afterEach(() => cleanup());
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
+}

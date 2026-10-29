@@ -349,3 +349,54 @@ describe("useCrewController", () => {
     expect(result.current.selectedThreadId).toBe("group:standup");
   });
 });
+
+/**
+ * The controller's own use of the platform bridge.
+ *
+ * `platform.test.ts` proves the web bridge fires on the right events, and that
+ * was not enough: with the controller's `isActive() || isOnline()` guard
+ * deleted, every test here and there stayed green. Nothing exercised the
+ * controller's *use* of the bridge, only the bridge. These two do.
+ */
+describe("the roster safety net", () => {
+  function bridge(state: { active: boolean; online: boolean }) {
+    let wake: (() => void) | undefined;
+    return {
+      platform: {
+        isActive: () => state.active,
+        isOnline: () => state.online,
+        subscribe: (onWake: () => void) => { wake = onWake; return () => { wake = undefined; }; },
+      },
+      fire: () => act(() => { wake?.(); }),
+    };
+  }
+
+  it("re-reads the roster when the surface wakes", async () => {
+    const listAgents = vi.fn(async () => [agent("scout", "Scout")]);
+    const client = stubClient({ listAgents });
+    const { platform, fire } = bridge({ active: true, online: true });
+
+    renderHook(() => useCrewController(client, { platform }));
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+    const before = listAgents.mock.calls.length;
+
+    fire();
+    await waitFor(() => expect(listAgents.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it("does not poll a surface that is hidden or offline", async () => {
+    const listAgents = vi.fn(async () => [agent("scout", "Scout")]);
+    const client = stubClient({ listAgents });
+    // Backgrounded phone, no network: a refresh costs battery and tells
+    // nobody anything, and offline it just fails.
+    const { platform, fire } = bridge({ active: false, online: false });
+
+    renderHook(() => useCrewController(client, { platform }));
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+    const before = listAgents.mock.calls.length;
+
+    fire();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(listAgents.mock.calls.length).toBe(before);
+  });
+});
