@@ -1,0 +1,16 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "paths": {
+      "@hermes/crew-ui/client": ["../crew-ui/src/client/HermesCrewClient.ts"],
+      "@hermes/crew-ui/domain": ["../crew-ui/src/domain/index.ts"],
+      "@hermes/crew-ui/state": ["../crew-ui/src/state/index.ts"]
+    }
+  },
+  "include": ["app/**/*", "src/**/*", "*.ts", "*.tsx"],
+  "exclude": ["node_modules"]
+}

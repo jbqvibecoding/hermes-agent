@@ -1,0 +1,31 @@
+{
+  "name": "@hermes/crew-mobile",
+  "private": true,
+  "version": "0.0.0",
+  "main": "expo-router/entry",
+  "description": "The Crew workspace on a phone: the roster, a thread, and approvals away from the desk.",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@react-native-community/netinfo": ">=12.0.1 <13",
+    "expo": "~58.0.0",
+    "expo-constants": ">=58.0.0 <59",
+    "expo-router": ">=58.0.0 <59",
+    "expo-secure-store": ">=58.0.0 <59",
+    "expo-status-bar": ">=58.0.0 <59",
+    "react": ">=19.2.3 <20",
+    "react-native": ">=0.86.0 <0.87",
+    "react-native-safe-area-context": ">=5.6.2 <6",
+    "react-native-screens": ">=4.23.0 <5",
+    "react-native-webview": ">=14.0.1 <15"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.0",
+    "typescript": "~5.9.3"
+  }
+}
