@@ -227,6 +227,13 @@ export function CrewWorkspace({ client, notify }: {
     // "we could not find out", and swallowing the rejection would collapse the
     // second into the first — the exact silence the panel exists to remove.
     loadEffects: async (turnId) => (await client.listTurnEffects(turnId)).effects,
+    // Not caught: the chip has to tell "resumed" from "the route refused",
+    // and a 409 (a one-shot whose time has passed) is a real answer.
+    onResumeRoutine: async (routineId) => {
+      if (!selectedAgent) return;
+      await client.setRoutineEnabled(selectedAgent.id, routineId, true);
+    },
+    onOpenDetails: () => setDetailOpen(true),
     undoEffect: async (effectId) => { await client.undoEffect(effectId); },
   }), [client, crew]);
 

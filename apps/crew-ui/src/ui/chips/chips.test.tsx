@@ -18,6 +18,8 @@ const handlers = (over: Partial<ChipHandlers> = {}): ChipHandlers => ({
   onSubmitSecret: vi.fn(async () => undefined),
   loadEffects: vi.fn(async () => []),
   undoEffect: vi.fn(async () => undefined),
+  onResumeRoutine: vi.fn(async () => undefined),
+  onOpenDetails: vi.fn(),
   screenshotUrl: (agentId, file) => `/api/plugins/hermes-crew/screenshots/${agentId}/${file}`,
   ...over,
 });
@@ -242,4 +244,123 @@ it("shows a change whose record was lost rather than leaving the list short", as
   await userEvent.click(screen.getByRole("button", { name: "What changed" }));
   expect(await screen.findByText("A change could not be recorded")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+});
+
+/**
+ * "Still waiting" — the unprompted chip.
+ *
+ * The thing it replaced was forty words of model prose posted as plain text,
+ * so most of these tests are about the structure surviving: the age the picker
+ * measured, the source it could not read, and the admission that it could not
+ * word any of it. Plus the one button, which exists only where it can be
+ * honoured.
+ */
+
+const STUCK = {
+  items: [{
+    subject: "routine:scout:digest", kind: "routine_suspended" as const,
+    summary: "one of my routines is still paused after 5 failures",
+    stuck_for_hours: 50, ref: { kind: "routine" as const, id: "scout:digest" },
+  }],
+  could_not: [],
+  spoke: true,
+};
+
+it("shows what is stuck with the age the picker measured", () => {
+  show("standstill", STUCK);
+  expect(screen.getByText("2d")).toBeInTheDocument();
+  expect(screen.getByText(/still paused after 5 failures/)).toBeInTheDocument();
+});
+
+it("renders hours under a day as hours, and a fresh item as just now", () => {
+  show("standstill", {
+    ...STUCK,
+    items: [
+      { ...STUCK.items[0], subject: "a", stuck_for_hours: 4 },
+      { ...STUCK.items[0], subject: "b", stuck_for_hours: 0 },
+    ],
+  });
+  expect(screen.getByText("4h")).toBeInTheDocument();
+  expect(screen.getByText("just now")).toBeInTheDocument();
+});
+
+it("offers Resume only on a suspended routine", async () => {
+  const onResumeRoutine = vi.fn(async () => undefined);
+  show("standstill", {
+    ...STUCK,
+    items: [
+      STUCK.items[0],
+      { subject: "task:t1", kind: "task_failed" as const, summary: "“Digest” failed",
+        stuck_for_hours: 3, ref: { kind: "task" as const, id: "t1" } },
+      { subject: "approval:7", kind: "approval_expired" as const, summary: "“Send it” expired",
+        stuck_for_hours: 9, ref: { kind: "approval" as const, id: "7" } },
+    ],
+  }, { onResumeRoutine });
+
+  // One Resume, for the routine. The failed task and the expired approval
+  // cannot be unstuck by a button, so they do not get one.
+  expect(screen.getAllByRole("button", { name: "Resume" })).toHaveLength(1);
+  await userEvent.click(screen.getByRole("button", { name: "Resume" }));
+  expect(onResumeRoutine).toHaveBeenCalledWith("scout:digest");
+  expect(await screen.findByText("resumed")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Resume" })).not.toBeInTheDocument();
+});
+
+it("opens the details panel for the things that are listed there, and not for a task", () => {
+  const onOpenDetails = vi.fn();
+  show("standstill", {
+    ...STUCK,
+    items: [
+      { subject: "approval:7", kind: "approval_expired" as const, summary: "“Send it” expired",
+        stuck_for_hours: 9, ref: { kind: "approval" as const, id: "7" } },
+      { subject: "task:t1", kind: "task_failed" as const, summary: "“Digest” failed",
+        stuck_for_hours: 3, ref: { kind: "task" as const, id: "t1" } },
+    ],
+  }, { onOpenDetails });
+
+  // Approvals and routines are in the details panel; a task has no per-item
+  // view, so a link for it would go nowhere.
+  expect(screen.getAllByRole("button", { name: "Open" })).toHaveLength(1);
+  screen.getByRole("button", { name: "Open" }).click();
+  expect(onOpenDetails).toHaveBeenCalled();
+});
+
+it("says a refused resume was refused rather than looking like it worked", async () => {
+  show("standstill", STUCK, {
+    onResumeRoutine: vi.fn(async () => {
+      throw new Error("That routine's one-shot time has passed.");
+    }),
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Resume" }));
+  expect(await screen.findByText(/one-shot time has passed/)).toBeInTheDocument();
+  expect(screen.queryByText("resumed")).not.toBeInTheDocument();
+});
+
+it("names a source it could not read instead of being quietly one short", () => {
+  show("standstill", {
+    ...STUCK,
+    could_not: [{ source: "routines", why: "no such table: routine_health" }],
+  });
+  expect(screen.getByText(/Could not check routines/)).toBeInTheDocument();
+  expect(screen.getByText(/no such table: routine_health/)).toBeInTheDocument();
+});
+
+it("admits when it could not word any of it", () => {
+  show("standstill", { ...STUCK, spoke: false });
+  expect(screen.getByText(/could not write this up/)).toBeInTheDocument();
+  // …and the structure is still all there, which is the entire point.
+  expect(screen.getByText(/still paused after 5 failures/)).toBeInTheDocument();
+});
+
+it("says nothing extra when the teammate did write it up", () => {
+  show("standstill", STUCK);
+  expect(screen.queryByText(/could not write this up/)).not.toBeInTheDocument();
+});
+
+it("renders an item with no resolvable reference as plain text", () => {
+  show("standstill", {
+    ...STUCK,
+    items: [{ ...STUCK.items[0], kind: "task_waiting" as const, ref: null }],
+  });
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });

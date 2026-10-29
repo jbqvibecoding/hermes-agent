@@ -53,7 +53,7 @@ export interface Agent {
   proactive?: boolean;
 }
 
-/** The nine chip kinds `crew/db.py::MESSAGE_KINDS` knows how to store. */
+/** The chip kinds `crew/db.py::MESSAGE_KINDS` knows how to store. */
 export type ChipKind =
   | "report"
   | "screenshot"
@@ -62,7 +62,8 @@ export type ChipKind =
   | "memory_updated"
   | "routine_created"
   | "bot_ref"
-  | "login_request";
+  | "login_request"
+  | "standstill";
 
 export interface TextPart { type: "text"; text: string }
 export interface ActivityPart { type: "activity"; activityId: string }
@@ -82,6 +83,40 @@ export interface ChipPart { type: "chip"; kind: ChipKind; payload: unknown; turn
 export type EffectKind =
   | "file" | "commit" | "push" | "install"
   | "send" | "schedule" | "delete" | "publish" | "other";
+
+/**
+ * What a teammate raised unprompted, from `crew/proactive/digest.py` — after
+ * openduet's `MorningBrief`.
+ *
+ * The one chip the model does not author. Its items are the picker's own
+ * reading of crew.db, and the teammate's sentence travels as a separate text
+ * part of the same message. `spoke` is false when that sentence could not be
+ * written at all, which used to mean the whole push was dropped.
+ */
+export type StandstillKind =
+  | "approval_outcome_unknown" | "approval_expired" | "routine_suspended"
+  | "task_failed" | "task_waiting" | "task_delivered";
+
+export interface StandstillRef {
+  kind: "approval" | "task" | "routine";
+  id: string;
+}
+
+export interface StandstillItem {
+  subject: string;
+  kind: StandstillKind;
+  summary: string;
+  stuck_for_hours: number;
+  /** Null when the subject names nothing we can resolve — then no link. */
+  ref: StandstillRef | null;
+}
+
+export interface Standstill {
+  items: StandstillItem[];
+  /** A source the picker could not read: openduet's `couldNotCheck`. */
+  could_not: { source: string; why: string }[];
+  spoke: boolean;
+}
 
 export interface TurnEffect {
   id: string;

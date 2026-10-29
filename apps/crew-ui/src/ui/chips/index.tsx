@@ -12,7 +12,7 @@
 
 import { Check, Clock, CornerDownRight, KeyRound, ShieldAlert } from "lucide-react";
 import { useState } from "react";
-import type { ChipKind, TurnEffect } from "../../domain/types";
+import type { ChipKind, StandstillItem, TurnEffect } from "../../domain/types";
 
 interface ReportLine { system?: string; result?: string; count?: string }
 
@@ -93,6 +93,94 @@ function WhatChanged({ turnId, handlers }: { turnId: string; handlers: ChipHandl
       </div>)}
     </div>}
   </div>;
+}
+
+/** "3d" / "4h" / "just now" — an age a person reads, from whole hours. */
+function age(hours: number): string {
+  if (!Number.isFinite(hours) || hours < 1) return "just now";
+  if (hours < 24) return `${Math.floor(hours)}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+/**
+ * What the teammate raised unprompted, as the structure it actually found.
+ *
+ * Until `crew/proactive/digest.py` existed this was forty words of model prose
+ * posted as plain text — everything the picker knew about *which* approval and
+ * *how long* was thrown away, and when the small model was unavailable nothing
+ * was posted at all. So this chip is the message and the teammate's sentence
+ * (a separate text part, rendered above by `Conversation`) is its voice.
+ *
+ * Following openduet's `offers.ts` — "nothing happens here" — the card never
+ * acts on its own. Resume is the only button, it appears only on a suspended
+ * routine, and it is the operator who presses it.
+ */
+function StandstillChip({ payload, handlers }: {
+  payload: {
+    items?: StandstillItem[];
+    could_not?: { source: string; why: string }[];
+    spoke?: boolean;
+  };
+  handlers: ChipHandlers;
+}) {
+  const [busy, setBusy] = useState("");
+  const [problem, setProblem] = useState("");
+  const [resumed, setResumed] = useState<string[]>([]);
+
+  const items = payload.items ?? [];
+  const couldNot = payload.could_not ?? [];
+
+  async function resume(item: StandstillItem) {
+    if (!item.ref) return;
+    setBusy(item.subject);
+    setProblem("");
+    try {
+      await handlers.onResumeRoutine(item.ref.id);
+      setResumed((was) => [...was, item.subject]);
+    } catch (reason) {
+      // 409 means the route refused for a real reason — a one-shot whose time
+      // has passed cannot be resumed — and saying so beats a button that looks
+      // like it worked.
+      setProblem(reason instanceof Error ? reason.message : "Could not resume that.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return <Chip kind="standstill" label="Still waiting">
+    {items.map((item) => <div className="crew-stuck-line" key={item.subject}>
+      <span className="crew-stuck-age">{age(item.stuck_for_hours)}</span>
+      <span className="crew-stuck-summary">{item.summary}</span>
+      {item.kind === "routine_suspended" && item.ref && (
+        resumed.includes(item.subject)
+          ? <span className="crew-stuck-done">resumed</span>
+          : <button
+              type="button" className="crew-stuck-action"
+              disabled={busy === item.subject}
+              onClick={() => void resume(item)}
+            >{busy === item.subject ? "Resuming…" : "Resume"}</button>
+      )}
+      {/* Approvals and routines are both listed in the details panel, so this
+          opens something that exists. A task has no per-item view to open, so
+          it gets no link rather than one that goes nowhere. */}
+      {item.ref && item.ref.kind !== "task" && item.kind !== "routine_suspended" && (
+        <button
+          type="button" className="crew-stuck-open"
+          onClick={handlers.onOpenDetails}
+        >Open</button>
+      )}
+    </div>)}
+
+    {problem && <div className="crew-stuck-gap">{problem}</div>}
+
+    {couldNot.map((entry) => <div className="crew-stuck-gap" key={entry.source}>
+      Could not check {entry.source} — {entry.why}
+    </div>)}
+
+    {payload.spoke === false && <div className="crew-stuck-quiet">
+      I could not write this up, so here it is as I found it.
+    </div>}
+  </Chip>;
 }
 
 function ReportChip({ payload, turnId, handlers }: {
@@ -290,6 +378,15 @@ export interface ChipHandlers {
   loadEffects(turnId: string): Promise<TurnEffect[]>;
   /** Put one of those changes back. Only ever called for `undoable` rows. */
   undoEffect(effectId: string): Promise<void>;
+  /**
+   * Resume a routine this teammate suspended. The teammate is the selected
+   * agent: a standstill chip only ever lands in that teammate's own DM thread
+   * (`crew/proactive/service.py` posts to `dm:<bot_id>`), so there is no
+   * ambiguity to pass through.
+   */
+  onResumeRoutine(routineId: string): Promise<void>;
+  /** Show the details panel, where approvals and routines are listed. */
+  onOpenDetails(): void;
   onOpenScreen(): void;
   onSubmitSecret(ref: string, value: string): Promise<void>;
   screenshotUrl(agentId: string, filename: string): string;
@@ -307,6 +404,7 @@ export function ChipView({ kind, payload, turnId, handlers }: {
   const data = (payload ?? {}) as Record<string, never>;
   switch (kind) {
     case "report": return <ReportChip payload={data} turnId={turnId} handlers={handlers} />;
+    case "standstill": return <StandstillChip payload={data} handlers={handlers} />;
     case "approval_request": return <ApprovalChip payload={data} onDecide={handlers.onDecide} />;
     case "approval_resolved": return <ResolvedChip payload={data} />;
     case "memory_updated": return <MemoryChip payload={data} />;

@@ -361,6 +361,23 @@ export class HermesCrewClient implements CloudAgentsClient {
     ).then((r) => r.routines);
   }
 
+  /**
+   * Pause or resume a routine.
+   *
+   * The route has existed since the first crew commit with no caller anywhere,
+   * so "always-on" meant "on, with no off switch" — the standstill chip's
+   * Resume button is its first consumer. 409 is a real answer, not a failure
+   * to look: it means resuming a one-shot whose time has passed.
+   */
+  setRoutineEnabled(
+    agentId: string, routineId: string, enabled: boolean, signal?: AbortSignal,
+  ) {
+    return this.request<{ ok: boolean; enabled: boolean }>(
+      `/bots/${encodeURIComponent(agentId)}/routines/${encodeURIComponent(routineId)}`,
+      { method: "PATCH", body: JSON.stringify({ enabled }), signal },
+    );
+  }
+
   async deleteRoutine(agentId: string, routineId: string, signal?: AbortSignal) {
     await this.request<void>(
       `/bots/${encodeURIComponent(agentId)}/routines/${encodeURIComponent(routineId)}`,

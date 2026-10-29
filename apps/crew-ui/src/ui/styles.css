@@ -573,6 +573,28 @@
 .crew-report-count { color: var(--crew-dim); }
 .crew-report-closing { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--crew-line); color: var(--crew-dim); }
 
+/* "Still waiting" — what the teammate raised unprompted, as the structure it
+   found rather than a paragraph about it. The age column is fixed-width so a
+   list of three scans down rather than having to be read. */
+.crew-stuck-line { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.22rem 0; line-height: 1.5; }
+.crew-stuck-age {
+  flex: none; min-width: 3rem; color: var(--crew-faint);
+  font-size: 0.72rem; font-variant-numeric: tabular-nums; text-align: right;
+}
+.crew-stuck-summary { flex: 1; }
+.crew-stuck-action, .crew-stuck-open {
+  flex: none; padding: 0.1rem 0.45rem; border: 1px solid var(--crew-line);
+  border-radius: calc(var(--crew-radius) * 0.8); background: none; cursor: pointer;
+  color: var(--crew-dim); font: inherit; font-size: 0.7rem;
+}
+.crew-stuck-action:hover:not(:disabled), .crew-stuck-open:hover { color: var(--crew-text); }
+.crew-stuck-action:disabled { cursor: default; opacity: 0.6; }
+.crew-stuck-done { flex: none; color: var(--crew-green); font-size: 0.7rem; }
+.crew-stuck-gap, .crew-stuck-quiet {
+  margin-top: 0.4rem; color: var(--crew-dim); font-size: 0.76rem; line-height: 1.5;
+}
+.crew-stuck-quiet { padding-top: 0.4rem; border-top: 1px dashed var(--crew-line); }
+
 /* "What changed" — the record, under the teammate's account of it. Quieter
    than the report it sits beneath on purpose: the report is what the teammate
    wants to tell you, this is what you check it against. */

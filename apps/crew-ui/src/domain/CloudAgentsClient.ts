@@ -132,6 +132,11 @@ export interface CloudAgentsClient {
   ): Promise<Page>;
   deletePage(spaceId: string, pageId: string, signal?: AbortSignal): Promise<void>;
 
+  /** Pause or resume a routine. */
+  setRoutineEnabled(
+    agentId: string, routineId: string, enabled: boolean, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; enabled: boolean }>;
+
   /** What the record says one turn changed outside the chat. */
   listTurnEffects(turnId: string, signal?: AbortSignal): Promise<{ effects: TurnEffect[] }>;
   /** Put one of those changes back; 409 when there is no inverse for it. */
