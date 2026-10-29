@@ -2,7 +2,11 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "noUncheckedIndexedAccess": true,
+    // Deliberately NOT noUncheckedIndexedAccess. @hermes/crew-ui is `strict`
+    // without it, and those sources are typechecked here through the path
+    // aliases below — so turning it on holds shared code to a bar a consumer
+    // invented, and the fix would be edits to crew-ui (and a dashboard-bundle
+    // rebuild) for this app's preference. Match the shared package.
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "paths": {
