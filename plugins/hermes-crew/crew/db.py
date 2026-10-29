@@ -51,6 +51,11 @@ MESSAGE_KINDS = (
     "routine_created",
     "bot_ref",
     "login_request",
+    # A teammate raising unprompted what is stuck and nobody knows it (see
+    # crew/proactive/digest.py). The one chip the model does not author: the
+    # items come off the picker's own reading of crew.db, and the model's words
+    # travel in `content` beside them.
+    "standstill",
 )
 
 # Sidebar section that holds every teammate the operator has not filed into a

@@ -36,8 +36,11 @@ mention the same broken routine three times. Same intent, different noun.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Optional
+import logging
+from dataclasses import dataclass, field
+from typing import Any, Optional
+
+log = logging.getLogger(__name__)
 
 DAY_MS = 86_400_000
 
@@ -178,16 +181,24 @@ def _summary(text: str, limit: int = 140) -> str:
     return text[:limit]
 
 
-def candidates_for(conn, bot_id: str, *, now_ms: int, days: int = FALLBACK_DAYS) -> list[Candidate]:
-    """Everything this teammate could reasonably bring up.
+@dataclass(frozen=True)
+class Material:
+    """What there was to say, and what could not be looked at.
 
-    One query per source rather than a union, because the sources do not share
-    a shape and pretending they do would mean a SELECT nobody can read six
-    months from now. The widest window is read once; :func:`pick` narrows.
+    ``could_not`` is openduet's ``MorningBrief.couldNotCheck``, and it exists
+    because the three reads below are independent: one unreadable table used to
+    raise out of here, the sweep swallowed it (``crew/worker.py``), and the
+    teammate simply said nothing — indistinguishable from having nothing to say.
+    Now the others still get raised and the note says which source it could not
+    check.
     """
-    cutoff = now_ms - days * DAY_MS
-    found: list[Candidate] = []
 
+    candidates: list[Candidate] = field(default_factory=list)
+    could_not: list[dict] = field(default_factory=list)
+
+
+def _read_approvals(conn, bot_id: str, cutoff: int) -> list[Candidate]:
+    found: list[Candidate] = []
     for row in conn.execute(
         "SELECT id, action, status, created_at FROM approvals "
         "WHERE bot_id = ? AND status IN ('outcome_unknown', 'expired') AND created_at >= ?",
@@ -205,7 +216,11 @@ def candidates_for(conn, bot_id: str, *, now_ms: int, days: int = FALLBACK_DAYS)
             ),
             at_ms=int(row["created_at"] or 0),
         ))
+    return found
 
+
+def _read_tasks(conn, bot_id: str, cutoff: int) -> list[Candidate]:
+    found: list[Candidate] = []
     for row in conn.execute(
         "SELECT id, title, kind, status, error, updated_at FROM tasks "
         "WHERE bot_id = ? AND updated_at >= ? AND status IN "
@@ -226,7 +241,11 @@ def candidates_for(conn, bot_id: str, *, now_ms: int, days: int = FALLBACK_DAYS)
             subject=f"task:{row['id']}", kind=kind, summary=summary,
             at_ms=int(row["updated_at"] or 0),
         ))
+    return found
 
+
+def _read_routines(conn, bot_id: str, cutoff: int) -> list[Candidate]:
+    found: list[Candidate] = []
     for row in conn.execute(
         "SELECT job_id, failures, last_error, notified_at FROM routine_health "
         "WHERE bot_id = ? AND notified_at >= ?",
@@ -241,8 +260,48 @@ def candidates_for(conn, bot_id: str, *, now_ms: int, days: int = FALLBACK_DAYS)
             ),
             at_ms=int(row["notified_at"] or 0),
         ))
-
     return found
+
+
+#: Named for a person, because the name is what the note shows when one of them
+#: cannot be read.
+_SOURCES: tuple[tuple[str, Any], ...] = (
+    ("approvals", _read_approvals),
+    ("tasks", _read_tasks),
+    ("routines", _read_routines),
+)
+
+
+def candidates_for(conn, bot_id: str, *, now_ms: int, days: int = FALLBACK_DAYS) -> Material:
+    """Everything this teammate could reasonably bring up, and what it could not read.
+
+    One query per source rather than a union, because the sources do not share
+    a shape and pretending they do would mean a SELECT nobody can read six
+    months from now. The widest window is read once; :func:`pick` narrows.
+
+    Each source is read inside its own ``try``, so a missing or locked table
+    costs that source and not the whole note. The failure is carried out in
+    ``could_not`` rather than logged and forgotten: a shorter list with nothing
+    to say it is shorter is the one outcome worth preventing here.
+    """
+    cutoff = now_ms - days * DAY_MS
+    found: list[Candidate] = []
+    could_not: list[dict] = []
+
+    for source, read in _SOURCES:
+        try:
+            found.extend(read(conn, bot_id, cutoff))
+        except Exception as exc:  # noqa: BLE001 - any read failure is this source's
+            could_not.append({
+                "source": source,
+                "why": " ".join(str(exc).split())[:160] or exc.__class__.__name__,
+            })
+            log.warning(
+                "crew: could not read %s for %s's unprompted note", source, bot_id,
+                exc_info=True,
+            )
+
+    return Material(candidates=found, could_not=could_not)
 
 
 def already_raised(conn, bot_id: str, *, now_ms: int, days: int = FALLBACK_DAYS) -> set[str]:

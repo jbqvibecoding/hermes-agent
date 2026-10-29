@@ -3,10 +3,19 @@
 Ported in shape from octop's ``infra/proactive/service.py`` (MIT — see
 ``NOTICE.md``), including the decision its docstring leads with: **this does
 not run the agent.** No ReAct loop, no tools, no turn. It is a procedure —
-read, pick, ask a small model for one sentence, post it — and that is what
-makes an unprompted message affordable enough to happen at all. Waking a full
-agent loop to produce forty words would cost more than the work it is asking
-about.
+read, pick, build the structure, ask a small model for one sentence, post it —
+and that is what makes an unprompted message affordable enough to happen at
+all. Waking a full agent loop to produce forty words would cost more than the
+work it is asking about.
+
+**The structure is the message; the words are the voice.** The picked
+candidates go out as a ``standstill`` chip built by
+:mod:`crew.proactive.digest`, and the model's sentence rides in ``content``
+beside it. This replaced sending the prose alone, which threw away everything
+the picker knew and produced *nothing at all* when the auxiliary model was
+missing — silence being the exact symptom this feature exists to break. The
+split is openduet's (``server/src/openduet/brief.ts``, MIT): code reports the
+honest parts, the model writes the conversation around them.
 
 The step order is octop's too, and the last two steps are the load-bearing
 ones: **the message is posted, and only then is the dedup record written.**
@@ -120,38 +129,53 @@ def run_once(conn, bot: dict, *, now_ms: Optional[int] = None) -> Optional[dict]
 
     Every early return leaves the dedup records untouched, so nothing is
     consumed by a run that produced no message.
+
+    "Something to say" now includes **a source it could not read**: that is a
+    thing the operator needs to know and used to be the one case that produced
+    silence indistinguishable from a quiet week.
     """
     from crew import db as crew_db
+    from crew.proactive import digest as crew_digest
 
     bot_id = str(bot.get("id") or "")
     stamp = crew_db.now_ms() if now_ms is None else now_ms
 
-    candidates = crew_picker.candidates_for(conn, bot_id, now_ms=stamp)
-    if not candidates:
+    material = crew_picker.candidates_for(conn, bot_id, now_ms=stamp)
+    if not material.candidates and not material.could_not:
         return None
 
     chosen = crew_picker.pick(
-        candidates,
+        material.candidates,
         raised=crew_picker.already_raised(conn, bot_id, now_ms=stamp),
         now_ms=stamp,
     )
-    if not chosen.candidates:
+    if not chosen.candidates and not material.could_not:
         return None
 
+    # The words are the teammate's voice and they are optional. They used to be
+    # the whole message, so no auxiliary model meant no message at all — and
+    # silence is the exact symptom this feature exists to break: a routine that
+    # "said so once and then went quiet" is one of the things the picker raises.
+    # The old note here argued a templated fallback would be a notification
+    # rather than a message, and that is still true of a *templated* one. This
+    # is not that: the chip carries the real structure the picker found, and the
+    # prose rides on top when it can be had. openduet's brief makes the same
+    # split — code reports the honest parts, the model writes the conversation
+    # around them.
     text = compose(bot, chosen.candidates)
-    if not text:
-        # No auxiliary model, or it failed. Nothing is posted and nothing is
-        # recorded, so this item comes round again next time. A templated
-        # fallback would always work, but it would be a notification — and a
-        # notification is the thing this feature exists instead of.
-        return None
 
     message = crew_db.insert_message(
         conn,
         thread_id=crew_db.ensure_dm_thread(conn, bot_id),
         sender=bot_id,
-        kind="text",
+        kind="standstill",
         content=text,
+        payload=crew_digest.build(
+            chosen.candidates,
+            now_ms=stamp,
+            could_not=material.could_not,
+            spoke=bool(text),
+        ),
     )
     # Only now. See the module docstring: the other order loses the item for
     # good the first time a write fails.

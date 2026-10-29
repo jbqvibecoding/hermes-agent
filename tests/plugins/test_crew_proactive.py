@@ -271,8 +271,10 @@ def test_the_material_is_the_state_we_already_keep(conn):
     )
     conn.commit()
 
-    kinds = {c.kind for c in crew_picker.candidates_for(conn, "scout", now_ms=now)}
+    material = crew_picker.candidates_for(conn, "scout", now_ms=now)
+    kinds = {c.kind for c in material.candidates}
     assert kinds == {"approval_outcome_unknown", "task_failed", "routine_suspended"}
+    assert material.could_not == [], "all three sources were readable"
 
 
 def test_another_teammates_standstill_is_not_this_ones_to_raise(conn):
@@ -284,7 +286,7 @@ def test_another_teammates_standstill_is_not_this_ones_to_raise(conn):
         (_at(now, 1), _at(now, 1)),
     )
     conn.commit()
-    assert crew_picker.candidates_for(conn, "scout", now_ms=now) == []
+    assert crew_picker.candidates_for(conn, "scout", now_ms=now).candidates == []
 
 
 # ---------------------------------------------------------------------------
@@ -316,24 +318,38 @@ def test_it_posts_the_note_and_only_then_remembers_it(one_failed_task, monkeypat
     assert crew_picker.already_raised(conn, "scout", now_ms=crew_db.now_ms()) == {"task:t1"}
 
 
-def test_a_note_that_could_not_be_written_is_not_recorded_as_raised(one_failed_task, monkeypatch):
-    """**The ordering that matters most.**
+def test_a_note_the_teammate_could_not_word_still_says_what_is_stuck(
+    one_failed_task, monkeypatch
+):
+    """**This reverses what this test used to assert, deliberately.**
 
-    Recording first is the obvious way round and it is wrong: a push that fails
-    after the record lands means this item is never raised again — silently,
-    permanently, and with no trace that anything went missing. So a failed
-    compose must leave the dedup table untouched and the item must come round
-    again on the next run.
+    It used to require that a failed `compose` posted *nothing*, on the
+    argument that a message without the teammate's own words would be a
+    notification, and a notification is what this feature exists instead of.
+    That argument holds for a *templated* fallback. It does not hold here,
+    because the chip is not a template: it carries the standstill the picker
+    actually found in crew.db.
+
+    And the old behaviour had a cost that outweighed it. The thing the picker
+    is proudest of raising is "a routine that said so once and then went
+    quiet" — so a run that goes silent because a *side* model was unavailable
+    reproduces, exactly, the symptom the whole feature was built to break.
+
+    `spoke` is how the chip knows not to pretend: it renders the items and says
+    the teammate could not write them up.
     """
     conn = one_failed_task
     monkeypatch.setattr(crew_service, "compose", lambda bot, cands: "")
 
-    assert crew_service.run_once(conn, {"id": "scout"}) is None
-    assert crew_picker.already_raised(conn, "scout", now_ms=crew_db.now_ms()) == set()
-    assert crew_db.list_messages(conn, "dm:scout") == []
+    message = crew_service.run_once(conn, {"id": "scout"})
+    assert message is not None, "a standstill nobody can word is still a standstill"
+    assert message["kind"] == "standstill"
+    assert message["content"] == ""
+    assert message["payload"]["spoke"] is False
+    assert [item["subject"] for item in message["payload"]["items"]] == ["task:t1"]
 
-    monkeypatch.setattr(crew_service, "compose", lambda bot, cands: "Now I can say it.")
-    assert crew_service.run_once(conn, {"id": "scout"}) is not None
+    # It was raised, so it is recorded — otherwise the next run says it again.
+    assert crew_picker.already_raised(conn, "scout", now_ms=crew_db.now_ms()) == {"task:t1"}
 
 
 def test_the_same_thing_is_not_raised_twice(one_failed_task, monkeypatch):
@@ -465,3 +481,209 @@ def test_a_note_that_could_not_be_posted_is_not_recorded_as_raised(one_failed_ta
     monkeypatch.undo()
     monkeypatch.setattr(crew_service, "compose", lambda bot, cands: "Second time lucky.")
     assert crew_service.run_once(conn, {"id": "scout"}) is not None
+
+
+# ---------------------------------------------------------------------------
+# The structure, which used to be thrown away
+#
+# `compose()` flattened everything the picker knew into forty words and posted
+# them as plain text. The shape below is openduet's `MorningBrief`
+# (server/src/openduet/brief.ts, MIT): the items, what could not be read, and
+# whether the words around them could be written at all.
+# ---------------------------------------------------------------------------
+
+
+def test_the_chip_carries_what_the_picker_found(one_failed_task, monkeypatch):
+    conn = one_failed_task
+    monkeypatch.setattr(crew_service, "compose", lambda bot, cands: "The digest is broken.")
+
+    message = crew_service.run_once(conn, {"id": "scout"})
+    payload = message["payload"]
+
+    assert message["kind"] == "standstill"
+    assert message["content"] == "The digest is broken.", "the voice still travels"
+    assert payload["spoke"] is True
+    assert len(payload["items"]) == 1
+    item = payload["items"][0]
+    assert item["kind"] == "task_failed"
+    assert "Morning digest" in item["summary"]
+    assert item["ref"] == {"kind": "task", "id": "t1"}
+    assert item["stuck_for_hours"] >= 24, "the fixture's task failed a day ago"
+
+
+def test_a_reference_round_trips_against_the_subjects_the_picker_really_emits(conn):
+    """**The guard against the bug of the last three rounds.**
+
+    `ref_for` parses a string the *picker* writes. Testing it on hand-written
+    strings proves only that the parser agrees with the test author — writing
+    under one key and reading another is exactly how a control passes its own
+    tests while never firing. So the subjects here come from a real read of
+    real rows, one per source, and every one of them has to resolve.
+    """
+    from crew.proactive import digest as crew_digest
+
+    now = crew_db.now_ms()
+    conn.execute(
+        "INSERT INTO approvals (thread_id, bot_id, action, status, created_at) "
+        "VALUES ('dm:scout', 'scout', 'Send the invoice', 'outcome_unknown', ?)",
+        (_at(now, 1),),
+    )
+    conn.execute(
+        "INSERT INTO tasks (id, bot_id, kind, title, status, error, created_at, updated_at) "
+        "VALUES ('t1', 'scout', 'routine', 'Morning digest', 'failed', 'down', ?, ?)",
+        (_at(now, 1), _at(now, 1)),
+    )
+    # A job id with a colon in it, which is the real shape `routines.job_name`
+    # produces — and the reason the parse splits on the first colon only.
+    conn.execute(
+        "INSERT INTO routine_health (job_id, bot_id, failures, last_error, notified_at) "
+        "VALUES ('scout:digest', 'scout', 5, 'no such host', ?)",
+        (_at(now, 2),),
+    )
+    conn.commit()
+
+    material = crew_picker.candidates_for(conn, "scout", now_ms=now)
+    assert len(material.candidates) == 3
+
+    refs = {}
+    for candidate in material.candidates:
+        ref = crew_digest.ref_for(candidate.subject)
+        assert ref is not None, f"the picker emits {candidate.subject!r} and nothing resolves it"
+        refs[ref["kind"]] = ref["id"]
+
+    assert refs == {"approval": "1", "task": "t1", "routine": "scout:digest"}
+
+
+def test_an_unknown_subject_prefix_gets_no_reference(conn):
+    """The chip turns a reference into a link. A link to something that does
+    not exist is worse than plain text, so an unrecognised prefix resolves to
+    nothing rather than to a guess."""
+    from crew.proactive import digest as crew_digest
+
+    for subject in ("message:88", "approval:", "", "nocolon", ":12"):
+        assert crew_digest.ref_for(subject) is None, subject
+
+
+def test_how_long_it_is_stuck_is_hours_not_the_ranking_weight(conn):
+    """`picker.intensity` looks like the thing to reuse and is not: it is a
+    score (``1.0 + days``, capped at five) built to rank candidates against
+    each other. Rendering it would put "2.4" in front of a person, and would
+    stop growing after five days while the thing kept ageing."""
+    from crew.proactive import digest as crew_digest
+
+    now = crew_db.now_ms()
+    old = crew_picker.Candidate(
+        subject="task:t9", kind="task_failed", summary="x", at_ms=_at(now, 30),
+    )
+    assert crew_digest.stuck_for_hours(old.at_ms, now) == 30 * 24
+    assert crew_picker.intensity(old, now) == 6.0, "capped, as it should be for ranking"
+    assert crew_digest.stuck_for_hours(now + 5_000, now) == 0, "never negative"
+
+
+# ---------------------------------------------------------------------------
+# Honesty about what it could not do
+# ---------------------------------------------------------------------------
+
+
+def test_a_source_that_cannot_be_read_is_named_rather_than_quietly_missing(
+    one_failed_task, monkeypatch
+):
+    """openduet's `couldNotCheck`. The three reads are independent; one
+    unreadable table used to raise out of `candidates_for`, get swallowed by
+    the sweep, and leave the teammate silent — indistinguishable from a quiet
+    week. Now the readable sources still get raised and the note names the one
+    it could not check."""
+    conn = one_failed_task
+    monkeypatch.setattr(crew_service, "compose", lambda bot, cands: "Something is up.")
+    conn.execute("DROP TABLE routine_health")
+    conn.commit()
+
+    message = crew_service.run_once(conn, {"id": "scout"})
+    payload = message["payload"]
+
+    assert [item["kind"] for item in payload["items"]] == ["task_failed"], (
+        "the readable sources are still raised"
+    )
+    assert len(payload["could_not"]) == 1
+    assert payload["could_not"][0]["source"] == "routines"
+    assert "routine_health" in payload["could_not"][0]["why"]
+
+
+def test_a_teammate_with_nothing_but_an_unreadable_source_still_speaks(conn, monkeypatch):
+    """Nothing to say is a valid answer — but "I could not look" is not
+    nothing, and it is the one case that used to produce silence the operator
+    could not tell apart from a quiet week."""
+    monkeypatch.setattr(crew_service, "compose", lambda bot, cands: "")
+    conn.execute("DROP TABLE tasks")
+    conn.commit()
+
+    message = crew_service.run_once(conn, {"id": "scout"})
+    assert message is not None
+    assert message["payload"]["items"] == []
+    assert [entry["source"] for entry in message["payload"]["could_not"]] == ["tasks"]
+
+
+def test_the_real_compose_failing_still_posts_the_structure(one_failed_task):
+    """**The test that stands where the code actually runs.**
+
+    Every other test here hands `compose` a stub, which proves nothing about
+    the real path: the thing that fails in production is the *auxiliary client*,
+    resolved inside `compose` from the profile's own provider. The hermetic test
+    environment has no provider at all, so this calls the genuine `compose`,
+    which genuinely returns "" — and the chip has to post anyway.
+    """
+    conn = one_failed_task
+
+    message = crew_service.run_once(conn, {"id": "scout"})
+
+    assert message is not None, "no auxiliary model must not mean no message"
+    assert message["kind"] == "standstill"
+    assert message["payload"]["spoke"] is False
+    assert [item["subject"] for item in message["payload"]["items"]] == ["task:t1"]
+
+
+def test_the_chip_and_the_voice_arrive_as_one_message_in_two_parts(one_failed_task, monkeypatch):
+    """The client reads parts, and a chip kind used to emit only its chip —
+    which would have dropped the teammate's words on the floor."""
+    from crew import contract
+
+    conn = one_failed_task
+    monkeypatch.setattr(crew_service, "compose", lambda bot, cands: "The digest is broken.")
+    crew_service.run_once(conn, {"id": "scout"})
+
+    row = crew_db.list_messages(conn, "dm:scout")[-1]
+    parts = contract.message(row)["parts"]
+    assert [part["type"] for part in parts] == ["text", "chip"]
+    assert parts[0]["text"] == "The digest is broken."
+    assert parts[1]["kind"] == "standstill"
+
+
+def test_a_wordless_standstill_emits_the_chip_alone(one_failed_task):
+    """…and with no words there is no empty text part to render as a blank line."""
+    from crew import contract
+
+    conn = one_failed_task
+    crew_service.run_once(conn, {"id": "scout"})
+
+    row = crew_db.list_messages(conn, "dm:scout")[-1]
+    parts = contract.message(row)["parts"]
+    assert [part["type"] for part in parts] == ["chip"]
+
+
+def test_the_sidebar_prefers_the_teammates_own_words(one_failed_task, monkeypatch):
+    from crew import contract
+
+    conn = one_failed_task
+    monkeypatch.setattr(crew_service, "compose", lambda bot, cands: "The digest is broken.")
+    crew_service.run_once(conn, {"id": "scout"})
+    row = crew_db.list_messages(conn, "dm:scout")[-1]
+    assert contract.preview_text(row) == "The digest is broken."
+
+
+def test_the_sidebar_still_says_something_when_there_were_no_words(one_failed_task):
+    from crew import contract
+
+    conn = one_failed_task
+    crew_service.run_once(conn, {"id": "scout"})
+    row = crew_db.list_messages(conn, "dm:scout")[-1]
+    assert contract.preview_text(row) == "⏳ 1 thing stuck"

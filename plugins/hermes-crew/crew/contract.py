@@ -124,6 +124,17 @@ def preview_text(message: Optional[dict]) -> Optional[str]:
         return f"↪ from @{payload.get('from_name') or 'a teammate'}"
     if kind == "login_request":
         return f"🔑 Sign in to {payload.get('site') or 'a site'}"
+    if kind == "standstill":
+        # The teammate's own words when it managed any, because that is what a
+        # walk past its desk would hear. Otherwise the count, which is the one
+        # thing the row always knows.
+        words = (message.get("content") or "").strip()
+        if words:
+            return words
+        stuck = len(payload.get("items") or [])
+        if stuck:
+            return f"⏳ {stuck} thing{'s' if stuck != 1 else ''} stuck"
+        return "⏳ Could not check what is stuck"
     if kind == "screenshot":
         caption = payload.get("caption")
         return f"📷 {caption}" if caption else "📷 Screenshot"
@@ -195,6 +206,16 @@ def message(row: dict) -> dict:
             "type": "chip", "kind": kind, "payload": row.get("payload"),
             "turnId": row.get("turn_id") or "",
         }]
+        # A chip row that *also* has words — today only `standstill`, where the
+        # structure is the message and the model's sentence is the teammate's
+        # voice on top of it. Both parts of one row, which the tail is fine
+        # with: the warning in this module's docstring is about grouping
+        # several *rows* into one message, where a chip arriving after its
+        # message was delivered would have nowhere to go. Here there is one
+        # row, one id, and both parts arrive together.
+        words = (row.get("content") or "").strip()
+        if words:
+            parts.insert(0, {"type": "text", "text": words})
     else:
         parts = [{"type": "text", "text": row.get("content") or ""}]
 

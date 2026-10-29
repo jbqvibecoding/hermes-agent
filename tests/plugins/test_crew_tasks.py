@@ -587,9 +587,18 @@ def test_a_recovered_text_routine_is_delivered_rather_than_run(conn, monkeypatch
     assert ran == [], "no model was woken"
     assert crew_tasks.get(conn, task["id"])["status"] == "succeeded"
 
-    [message] = crew_db.list_messages(conn, "dm:scout")
-    assert message["content"] == "Stand-up in five."
-    assert message["sender"] == "scout"
+    # By kind, not "the only message in the thread". `crew_worker.tick()` runs
+    # the whole sweep, and the proactive pass now raises the task it just
+    # finished ("did that land right?") as a `standstill` chip — which it could
+    # not do before, because a wordless push used to post nothing at all. That
+    # is unrelated traffic as far as this test is concerned, and asserting on
+    # the delivery says what the test is actually about.
+    delivered = [
+        m for m in crew_db.list_messages(conn, "dm:scout") if m["kind"] == "text"
+    ]
+    assert len(delivered) == 1
+    assert delivered[0]["content"] == "Stand-up in five."
+    assert delivered[0]["sender"] == "scout"
 
 
 def test_a_recovered_turn_that_errored_is_not_called_succeeded(conn, monkeypatch):
