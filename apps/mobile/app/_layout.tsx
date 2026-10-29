@@ -31,6 +31,8 @@ function Screens() {
       <Stack.Screen name="index" options={{ title: "Crew" }} />
       <Stack.Screen name="approvals" options={{ title: "Needs you" }} />
       <Stack.Screen name="agent/[id]" options={{ title: "" }} />
+      <Stack.Screen name="spaces" options={{ title: "Documents" }} />
+      <Stack.Screen name="space/[spaceId]/[pageId]" options={{ title: "" }} />
       <Stack.Screen name="connect" options={{ title: "Connect", presentation: "modal" }} />
     </Stack>
   );

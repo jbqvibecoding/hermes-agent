@@ -64,8 +64,28 @@ container. What is actually verified:
 | The connect-screen logic | `src/connection.test.ts` — 13 tests, 5 mutations confirmed |
 | The markdown tokeniser | `src/markdown.test.ts` — including that unsupported constructs survive as literal text |
 | Approvals always send `contentHash` | `src/approvals.test.ts` — the one claim of this design that code can check |
+| What a backgrounded edit does | `src/draft.test.ts` — including that a *conflict* is never re-sent unattended |
 | Everything typechecks together | `tsc -p . --noEmit`, including the shared imports |
-| **Layout, keyboard, navigation, the WebView** | **not verified — needs a device** |
+| **Layout, keyboard, navigation** | **not verified — needs a device** |
+| **Whether the background flush actually fires** | **not verified — depends on OS suspend behaviour no container reproduces** |
+
+### Spaces
+
+Read and write, over the same `PageAutosave` the desktop uses. Two things are
+specific to a phone:
+
+- **A flush when the app leaves the foreground.** The autosave is debounced; a
+  browser tab stays alive long enough for the timer, but an OS can suspend or
+  kill an app the instant you switch away, and the typed text would be gone.
+  Not done for a `conflict`, though — re-sending a draft the server already
+  refused would turn a conflict you have not seen into a silent attempt to
+  overwrite whoever changed the page.
+- **A conflict is resolved by hand**, with *Take theirs* and *Keep mine*.
+  `PageAutosave.useLatest()` is the only thing in it that discards work, so it
+  runs only because somebody pressed it.
+
+Creating and deleting Spaces stays on the dashboard: a phone that can delete a
+shared document with a stray tap is a liability.
 
 ### Markdown: what renders and what does not
 
@@ -94,6 +114,28 @@ parts nobody was worried about.
   Hermes has no server-side push path, so the app is pull-only. Worth knowing,
   because "approve from your phone" is weaker when nothing taps you on the
   shoulder.
-- Spaces editing, and the teammate's screen via `react-native-webview` (the
-  noVNC library is DOM-only and cannot be ported).
 - Markdown tables, headings, links and blockquotes as anything but literal text.
+- Creating or deleting Spaces (dashboard only, deliberately).
+
+### The teammate's screen is not here, and will not be without a proxy
+
+`crew/computer.py:261` serves VNC at `ws://127.0.0.1:{port}/websockify`, and
+`vnc_session()` says why there is no ticket: *"websockify on loopback needs no
+ticket — there is no gateway to authenticate to."* From a phone `127.0.0.1` is
+the phone, and publishing that port to the LAN would put an **unauthenticated
+remote desktop, with the teammate's shell behind it**, in front of anyone on the
+network.
+
+Pointing a WebView somewhere is not the missing piece either: no `vnc.html` is
+served, and the same docstring explains that driving the RFB client directly was
+chosen *over* an iframe because it is what buys view-only mode and the
+first-frame deadline — *"'connected but black forever' is this image's most
+likely failure. An iframe cannot tell the difference."*
+
+A live screen needs a websocket proxy behind the dashboard's bearer auth,
+authorized to one teammate, with view-only enforced server-side and an idle
+timeout. That is a security-sensitive component and its own piece of work.
+
+The thread's `screenshot` chip already shows images a teammate posted as
+evidence, over the authenticated `/screenshots/{bot_id}/{filename}` route; there
+is no on-demand capture.

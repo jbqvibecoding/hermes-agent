@@ -82,7 +82,8 @@ function Roster() {
       data={crew.agents}
       keyExtractor={(agent) => agent.id}
       ListHeaderComponent={
-        waiting > 0 ? (
+        <>
+          {waiting > 0 ? (
           <Pressable
             onPress={() => router.push("/approvals")}
             style={{
@@ -98,7 +99,16 @@ function Roster() {
               Held until you decide
             </Text>
           </Pressable>
-        ) : undefined
+          ) : null}
+          <Pressable
+            onPress={() => router.push("/spaces")}
+            style={{
+              marginHorizontal: 12, marginBottom: 4, paddingVertical: 10, paddingHorizontal: 14,
+            }}
+          >
+            <Text style={{ color: "#8ab4f8", fontSize: 14 }}>Documents →</Text>
+          </Pressable>
+        </>
       }
       ListEmptyComponent={
         <Text style={{ color: "#9aa0a6", padding: 24, fontSize: 15 }}>
