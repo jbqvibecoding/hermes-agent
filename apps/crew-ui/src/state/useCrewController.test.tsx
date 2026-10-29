@@ -13,6 +13,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CloudAgentsClient } from "../domain/CloudAgentsClient";
 import type { Agent, ApprovalRequest, ConversationEvent, Message } from "../domain/types";
+import type { PlatformBridge, WakeReason } from "./platform";
 import { useCrewController } from "./useCrewController";
 
 const ISO = new Date(0).toISOString();
@@ -360,15 +361,13 @@ describe("useCrewController", () => {
  */
 describe("the roster safety net", () => {
   function bridge(state: { active: boolean; online: boolean }) {
-    let wake: (() => void) | undefined;
-    return {
-      platform: {
-        isActive: () => state.active,
-        isOnline: () => state.online,
-        subscribe: (onWake: () => void) => { wake = onWake; return () => { wake = undefined; }; },
-      },
-      fire: () => act(() => { wake?.(); }),
+    let wake: ((reason: WakeReason) => void) | undefined;
+    const platform: PlatformBridge = {
+      isActive: () => state.active,
+      isOnline: () => state.online,
+      subscribe: (onWake) => { wake = onWake; return () => { wake = undefined; }; },
     };
+    return { platform, fire: () => act(() => { wake?.("focus"); }) };
   }
 
   it("re-reads the roster when the surface wakes", async () => {
