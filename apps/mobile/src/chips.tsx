@@ -196,8 +196,37 @@ function ApprovalChip({ payload }: {
   );
 }
 
+/** Where the page actually is, read off it by the server rather than named by
+ * the teammate.
+ *
+ * This matters more here than on the desktop, and the reason is the phone: the
+ * dashboard's card sits next to a "Take the wheel" button, so an operator who
+ * is unsure can go and look at the screen. There is no such button on a phone
+ * — the teammate's screen is not a surface this app has — so these few
+ * characters are the *only* thing standing between the person and typing their
+ * password into whatever page a teammate has been talked onto.
+ */
+function PageItIsOn({ origin, warning }: { origin?: string | null; warning?: string | null }) {
+  if (!origin) {
+    return (
+      <View style={styles.origin}>
+        <Text style={styles.originUnknown}>Could not confirm which page this is</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.origin, warning ? styles.originOdd : null]}>
+      <Text style={styles.originText} numberOfLines={2}>{origin}</Text>
+      {warning ? <Text style={styles.originWarning}>{warning}</Text> : null}
+    </View>
+  );
+}
+
 function LoginChip({ payload }: {
-  payload: { site?: string; why?: string; field?: string; ref?: string; filled?: boolean };
+  payload: {
+    site?: string; why?: string; field?: string; ref?: string; filled?: boolean;
+    origin?: string | null; origin_warning?: string | null;
+  };
 }) {
   const { crew, client } = useCrew();
   const [value, setValue] = useState("");
@@ -222,6 +251,7 @@ function LoginChip({ payload }: {
 
   return (
     <Chip label="Sign in">
+      <PageItIsOn origin={payload.origin} warning={payload.origin_warning} />
       <Text style={[styles.body, { fontWeight: "600" }]}>{payload.site || "a site"}</Text>
       {payload.why ? <Text style={styles.sub}>{payload.why}</Text> : null}
       {/* Masked, and it goes straight to the site. The whole point of this
@@ -334,6 +364,17 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "baseline", gap: 6 },
   body: { flex: 1, color: C.text, fontSize: 14, lineHeight: 20 },
   sub: { color: C.dim, fontSize: 13, lineHeight: 19 },
+  // Monospaced and given two lines: a look-alike domain is only catchable when
+  // the characters have room, and this is the one string on the card the
+  // operator is being asked to actually read.
+  origin: {
+    marginBottom: 6, padding: 8,
+    borderWidth: 1, borderColor: C.line, borderRadius: 8,
+  },
+  originOdd: { borderColor: C.amber },
+  originText: { color: C.text, fontFamily: "monospace", fontSize: 13, lineHeight: 18 },
+  originWarning: { marginTop: 4, color: C.amber, fontSize: 12, lineHeight: 17 },
+  originUnknown: { color: C.amber, fontSize: 13, lineHeight: 18 },
   note: { color: C.dim, fontSize: 12, lineHeight: 18 },
   closing: {
     marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: C.line,

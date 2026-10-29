@@ -30,6 +30,9 @@ out below, because they are the parts worth not re-deciding.
 | `crew/prompts.py::RECEIPTS` | `rowboat/skills/spaces/procedures.ts` | Apache-2.0 | the three receipt marks, and "a receipt says what you did, not what you read" |
 | `crew/handoffs.py` | `octop/docs/agent-interop-mailbox.md` | MIT | re-asking the original agent with the answer, on its own thread |
 | `crew/watchdog.py` | `openbot/.../turn-watchdog.ts`, `stall-guard.ts` | MIT | watch the silence, not the duration |
+| `crew/secret_taint.py` | `cindy/apps/desktop/src/main/input-handoff/secretTaint.ts` | Apache-2.0 | hold the *page* a credential landed on, not a list of the ways to read it |
+| `crew/policy.py::secret_floor` | `cindy/packages/lizi-mcps/src/browser/tools.ts` (`readsPageState`) | Apache-2.0 | which reads count as reading page state, and where the line sits |
+| `crew/origin_policy.py` | `cindy/apps/desktop/src/main/input-handoff/originPolicy.ts` | Apache-2.0 | the five phishing-relevant warnings; a warning cautions and never blocks |
 
 ## The decisions worth not re-deciding
 
@@ -221,6 +224,47 @@ having testable: while a person holds the screen the bot's actions are refused
 rather than queued (a queued click lands after they have walked away), and the
 bot may ask for help but cannot hand itself over (a bot that can put a person
 in front of a page can put them in front of one they did not ask to see).
+
+**The secret hold is per teammate, and holds more when it cannot place the
+page** (cindy). Two deliberate reversals of `secretTaint.ts`, for different
+reasons. Its map is global because cindy has one owner at one desktop; a crew
+runs several teammates on several containers at once, so a global hold would
+mean any teammate's login muted every other. And its `markSecretEntered`
+returns without doing anything when the URL will not parse — its own test is
+named "ignores pages it cannot place" — but the function is only called
+*because a credential just landed*, so the unparseable case is not "nothing
+happened", it is "something happened and we cannot say where". Ours holds every
+page for that teammate instead of none. Same direction as the never-list
+fail-open this product has already fixed once.
+
+**The hold covers the vault path for free, which cindy's does not have to.**
+cindy marks only its owner-typed handoff. We have a second path — a password
+the operator saved earlier, typed in by `crew/vault.py` with nobody at the
+keyboard — and that value is exactly as readable out of the field as a freshly
+typed one. Both paths type through `fill_secret`, so the hold lives there and
+covers both. The test for it is deliberately paired with the operator-path test:
+removing the single hold site must turn both red.
+
+**The page-state line is cindy's, including what it leaves open**
+(`readsPageState`). Script evaluation, console and network bodies are refused
+while a page is held; snapshots and screenshots are not. A teammate that cannot
+see the page it just failed to sign in to cannot tell anyone what went wrong,
+which would make the operator's keystrokes a dead end. The cost is real and is
+recorded in the plugin README rather than papered over: we cannot verify from
+this repo whether the browser sidecar's accessibility output carries field
+values, so a plain-text one-time code may still be legible through a snapshot
+during the hold.
+
+**A login card shows the host's origin and the teammate's claim as two
+different things** (cindy's input-handoff invariant 2.2). The card used to lead
+with `site`, a string the model chose. The argument against that was already in
+our own tree — `_fill_from_vault` refuses to pick a *saved* credential on a
+teammate's word, and says why — and had simply never been carried to the path
+where the operator supplies a fresh one. cindy's `origin_changed` voiding the
+step comes with it, as the submit-time check that makes the display more than
+decoration; expressed in the idiom the approvals desk already uses, where what
+the person was shown is pinned and an action against a changed world is refused
+rather than applied to the change.
 
 ## Not taken
 

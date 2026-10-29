@@ -643,6 +643,41 @@
 .crew-login-site { display: flex; align-items: center; gap: 0.35rem; font-weight: 600; }
 .crew-login-why { margin: 0.25rem 0 0.7rem; color: var(--crew-dim); line-height: 1.5; }
 
+/* The host's reading of the page, above the teammate's account of it. Boxed
+   and monospaced so it reads as a quoted fact rather than as more prose — the
+   operator is being asked to compare a string, and a look-alike domain is only
+   catchable when the characters are given room. */
+.crew-login-origin {
+  margin-bottom: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--crew-line);
+  border-radius: var(--crew-radius);
+  background: var(--crew-bg);
+}
+.crew-login-origin-row { display: flex; align-items: center; gap: 0.35rem; }
+.crew-login-origin code {
+  font-family: var(--crew-mono);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+.crew-login-origin-warning {
+  margin-top: 0.25rem;
+  color: var(--crew-amber);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+.crew-login-origin-odd,
+.crew-login-origin-unknown {
+  border-color: color-mix(in srgb, var(--crew-amber) 45%, var(--crew-line));
+}
+.crew-login-origin-unknown {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--crew-amber);
+  font-size: 0.78rem;
+}
+
 .crew-shot { margin: 0.5rem 0 0; }
 .crew-shot img {
   display: block;

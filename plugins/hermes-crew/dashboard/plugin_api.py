@@ -751,6 +751,51 @@ class SecretBody(BaseModel):
     account: str = ""
 
 
+def _page_moved_since_the_card(bot_id: str, request) -> Optional[str]:
+    """Why this value must not be typed, or ``None`` to go ahead.
+
+    The card shows the operator a host-verified origin so they can see where
+    their password is going. That display is information; this is the
+    enforcement, and without it the display would be decorative — the page can
+    navigate in the seconds or minutes between the card going up and somebody
+    typing into it, and the keystrokes go to whatever is focused *now*.
+
+    Same shape as the approvals desk's content hash: what the person was shown
+    is pinned, and an action against a changed world is refused rather than
+    applied to the change.
+
+    A card posted when the address could not be read has nothing to compare, so
+    it proceeds — that card already told the operator it could not confirm the
+    page, and refusing here as well would mean no login ever worked on a page
+    we cannot read.
+    """
+    from crew import origin_policy
+    from crew import secrets as crew_secrets
+    from crew import computer as crew_computer
+
+    if not request.origin:
+        return None
+    try:
+        cdp_url = (crew_computer.endpoints(bot_id) or {}).get("cdp_url")
+        address = crew_secrets.page_address(cdp_url) if cdp_url else None
+    except Exception:
+        address = None
+
+    now = origin_policy.classify(address).origin
+    if now is None:
+        return (
+            "The page cannot be read any more, so this was not typed in. Open the "
+            "teammate's screen to see where it is."
+        )
+    if now != request.origin:
+        return (
+            f"This page is now {now}, not {request.origin} as it was when you were asked, "
+            f"so nothing was typed in and nothing was saved. Ask the teammate to try again "
+            f"if that move was expected."
+        )
+    return None
+
+
 @router.post("/bots/{bot_id}/secret")
 def submit_secret(bot_id: str, body: SecretBody):
     """Type a value the teammate asked for straight into its page.
@@ -771,6 +816,15 @@ def submit_secret(bot_id: str, body: SecretBody):
         # rather than filled. Somebody typing a password deserves to know it
         # went nowhere.
         raise HTTPException(status_code=409, detail="That request is no longer open.")
+
+    moved = _page_moved_since_the_card(bot_id, request)
+    if moved is not None:
+        # Before `fill_secret`, and therefore before `_remember_secret` below:
+        # a credential typed at the wrong place is neither typed nor saved. The
+        # request has already been claimed by ref, so this is terminal for it —
+        # the teammate must ask again, and the next card will show wherever the
+        # page has got to.
+        raise HTTPException(status_code=409, detail=moved)
 
     if not fill_secret(bot_id, request, body.value):
         raise HTTPException(status_code=502, detail="Could not reach the screen to type it in.")

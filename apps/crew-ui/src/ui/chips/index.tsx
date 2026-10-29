@@ -10,7 +10,7 @@
  * is why `ChipPart` is our one addition to its domain model.
  */
 
-import { Check, Clock, CornerDownRight, KeyRound, ShieldAlert } from "lucide-react";
+import { Check, Clock, CornerDownRight, Globe, KeyRound, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import type { ChipKind, StandstillItem, TurnEffect } from "../../domain/types";
 
@@ -294,8 +294,37 @@ function BotRefChip({ payload }: { payload: { from?: string; from_name?: string;
  * before. Keeping both is the point: one field is the common case, and a
  * consent flow with three steps is not.
  */
+/** Where the page actually is, above everything the teammate said about it.
+ *
+ * The rest of this card is the teammate's account of itself: it names a site
+ * and gives a reason, and both are strings a model chose. This line is the
+ * only thing on the card the teammate did not write — the server read it off
+ * the page over CDP just before posting the row. It goes first because the
+ * operator's whole job at this moment is to compare the two.
+ *
+ * A missing origin is stated, not skipped. "We could not confirm where this
+ * page is" is worth more to somebody about to type a password than a tidy card.
+ */
+function PageItIsOn({ origin, warning }: { origin?: string | null; warning?: string | null }) {
+  if (!origin) {
+    return <div className="crew-login-origin crew-login-origin-unknown">
+      <ShieldAlert size={13} /> Could not confirm which page this is
+    </div>;
+  }
+  return <div className={`crew-login-origin${warning ? " crew-login-origin-odd" : ""}`}>
+    <div className="crew-login-origin-row">
+      {warning ? <ShieldAlert size={13} /> : <Globe size={13} />}
+      <code>{origin}</code>
+    </div>
+    {warning && <div className="crew-login-origin-warning">{warning}</div>}
+  </div>;
+}
+
 function LoginChip({ payload, onOpenScreen, onSubmitSecret }: {
-  payload: { site?: string; why?: string; field?: string; ref?: string; filled?: boolean };
+  payload: {
+    site?: string; why?: string; field?: string; ref?: string; filled?: boolean;
+    origin?: string | null; origin_warning?: string | null;
+  };
   onOpenScreen(): void;
   onSubmitSecret(ref: string, value: string): Promise<void>;
 }) {
@@ -326,6 +355,7 @@ function LoginChip({ payload, onOpenScreen, onSubmitSecret }: {
       }
     };
     return <Chip label="Needs one thing from you">
+      <PageItIsOn origin={payload.origin} warning={payload.origin_warning} />
       <div className="crew-login-site">
         <KeyRound size={13} /> The {payload.field} for {payload.site || "a site"}
       </div>
@@ -351,6 +381,7 @@ function LoginChip({ payload, onOpenScreen, onSubmitSecret }: {
   }
 
   return <Chip label="Needs you at the keyboard">
+    <PageItIsOn origin={payload.origin} warning={payload.origin_warning} />
     <div className="crew-login-site"><KeyRound size={13} /> Sign in to {payload.site || "a site"}</div>
     {payload.why && <div className="crew-login-why">{payload.why}</div>}
     {/* The point of the whole container: the operator takes the wheel, signs in

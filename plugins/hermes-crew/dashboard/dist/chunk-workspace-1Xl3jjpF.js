@@ -1,79 +1,79 @@
-const St = globalThis.__HERMES_PLUGIN_SDK__, e = St?.React;
+const Mt = globalThis.__HERMES_PLUGIN_SDK__, e = Mt?.React;
 if (!e)
   throw new Error(
     "hermes-crew: the dashboard plugin SDK is not on the page, so there is no React to borrow."
   );
 const {
-  Children: Ct,
-  Fragment: Mt,
-  Profiler: Tt,
-  StrictMode: _t,
-  Suspense: De,
-  cloneElement: xt,
-  createContext: It,
-  createElement: Ie,
-  createRef: Rt,
+  Children: Tt,
+  Fragment: _t,
+  Profiler: xt,
+  StrictMode: It,
+  Suspense: Pe,
+  cloneElement: Rt,
+  createContext: At,
+  createElement: Re,
+  createRef: Ot,
   forwardRef: He,
-  isValidElement: At,
-  lazy: Pe,
-  memo: Ot,
-  startTransition: Dt,
-  use: Pt,
-  useActionState: $t,
+  isValidElement: Dt,
+  lazy: $e,
+  memo: Pt,
+  startTransition: $t,
+  use: Lt,
+  useActionState: zt,
   useCallback: Ee,
-  useContext: Lt,
-  useDebugValue: zt,
-  useDeferredValue: Ut,
+  useContext: Ut,
+  useDebugValue: qt,
+  useDeferredValue: Ht,
   useEffect: U,
-  useId: qt,
-  useImperativeHandle: Ht,
-  useInsertionEffect: jt,
+  useId: jt,
+  useImperativeHandle: Ft,
+  useInsertionEffect: Vt,
   useLayoutEffect: je,
   useMemo: fe,
-  useOptimistic: Ft,
-  useReducer: Vt,
+  useOptimistic: Bt,
+  useReducer: Wt,
   useRef: Y,
   useState: N,
-  useSyncExternalStore: ct,
-  useTransition: Bt,
-  version: Wt
-} = e, Gt = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  useSyncExternalStore: lt,
+  useTransition: Gt,
+  version: Kt
+} = e, Yt = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
-  Children: Ct,
-  Fragment: Mt,
-  Profiler: Tt,
-  StrictMode: _t,
-  Suspense: De,
-  cloneElement: xt,
-  createContext: It,
-  createElement: Ie,
-  createRef: Rt,
+  Children: Tt,
+  Fragment: _t,
+  Profiler: xt,
+  StrictMode: It,
+  Suspense: Pe,
+  cloneElement: Rt,
+  createContext: At,
+  createElement: Re,
+  createRef: Ot,
   default: e,
   forwardRef: He,
-  isValidElement: At,
-  lazy: Pe,
-  memo: Ot,
-  startTransition: Dt,
-  use: Pt,
-  useActionState: $t,
+  isValidElement: Dt,
+  lazy: $e,
+  memo: Pt,
+  startTransition: $t,
+  use: Lt,
+  useActionState: zt,
   useCallback: Ee,
-  useContext: Lt,
-  useDebugValue: zt,
-  useDeferredValue: Ut,
+  useContext: Ut,
+  useDebugValue: qt,
+  useDeferredValue: Ht,
   useEffect: U,
-  useId: qt,
-  useImperativeHandle: Ht,
-  useInsertionEffect: jt,
+  useId: jt,
+  useImperativeHandle: Ft,
+  useInsertionEffect: Vt,
   useLayoutEffect: je,
   useMemo: fe,
-  useOptimistic: Ft,
-  useReducer: Vt,
+  useOptimistic: Bt,
+  useReducer: Wt,
   useRef: Y,
   useState: N,
-  useSyncExternalStore: ct,
-  useTransition: Bt,
-  version: Wt
-}, Symbol.toStringTag, { value: "Module" })), Kt = {
+  useSyncExternalStore: lt,
+  useTransition: Gt,
+  version: Kt
+}, Symbol.toStringTag, { value: "Module" })), Xt = {
   isActive: () => document.visibilityState !== "hidden",
   isOnline: () => navigator.onLine,
   subscribe(t) {
@@ -84,14 +84,14 @@ const {
       window.removeEventListener("focus", n), window.removeEventListener("online", a), document.removeEventListener("visibilitychange", r);
     };
   }
-}, Yt = {
+}, Jt = {
   isActive: () => !0,
   isOnline: () => !0,
   subscribe: () => () => {
   }
 };
-function Xt() {
-  return typeof document < "u" && typeof window < "u" && typeof document.addEventListener == "function" ? Kt : Yt;
+function Zt() {
+  return typeof document < "u" && typeof window < "u" && typeof document.addEventListener == "function" ? Xt : Jt;
 }
 class we extends Error {
   constructor(n, a, r = !1) {
@@ -100,20 +100,20 @@ class we extends Error {
   code;
   retryable;
 }
-function lt(t) {
+function dt(t) {
   return !t || t.role !== "agent" ? "" : t.parts.filter((n) => n.type === "text").map((n) => n.text).join("").trim();
 }
-function _e(t) {
-  return lt(
+function xe(t) {
+  return dt(
     [...t].reverse().find((n) => n.role === "agent" && !n.streaming)
   );
 }
 function Be(t) {
   return t.parts.filter((n) => n.type === "text").map((n) => n.text).join("");
 }
-const We = 6e4, Jt = 3e4, $e = "optimistic-user:", Ne = "optimistic-agent:";
-function Zt(t, n = {}) {
-  const { enabled: a = !0, notify: r, platform: c = Xt() } = n, [u, h] = N([]), [m, l] = N(""), [o, b] = N(""), [i, s] = N([]), [y, g] = N([]), [d, O] = N([]), [$, R] = N([]), [P, H] = N(), [J, B] = N("connecting"), [S, j] = N([]), [te, K] = N(a), [de, Z] = N(), [E, D] = N(() => /* @__PURE__ */ new Set()), [ne, pe] = N(""), [he, oe] = N(0), W = Y(/* @__PURE__ */ new Map()), se = Y(m), ae = Y(/* @__PURE__ */ new Set()), G = Y(/* @__PURE__ */ new Map()), ie = Y(r), me = fe(
+const We = 6e4, Qt = 3e4, Le = "optimistic-user:", Ne = "optimistic-agent:";
+function en(t, n = {}) {
+  const { enabled: a = !0, notify: r, platform: c = Zt() } = n, [u, h] = N([]), [m, l] = N(""), [o, b] = N(""), [i, s] = N([]), [y, g] = N([]), [d, O] = N([]), [$, R] = N([]), [P, H] = N(), [J, B] = N("connecting"), [S, j] = N([]), [te, K] = N(a), [de, Z] = N(), [E, D] = N(() => /* @__PURE__ */ new Set()), [ne, pe] = N(""), [he, oe] = N(0), W = Y(/* @__PURE__ */ new Map()), se = Y(m), ae = Y(/* @__PURE__ */ new Set()), G = Y(/* @__PURE__ */ new Map()), ie = Y(r), me = fe(
     () => u.find((v) => v.id === m),
     [u, m]
   ), ue = o || (m ? `dm:${m}` : ""), ve = !!(m && !E.has(m));
@@ -127,10 +127,10 @@ function Zt(t, n = {}) {
     for (const w of ae.current)
       T.some((M) => M.id === w) || ae.current.delete(w);
     const q = T.filter((w) => !ae.current.has(w.id)), V = se.current, L = q.find((w) => w.id === V), k = W.current.get(V);
-    L?.lastMessagePreview && k && !k.messages.some((w) => w.streaming) && _e(k.messages) !== L.lastMessagePreview && (W.current.set(V, { ...k, cachedAt: 0 }), oe((M) => M + 1));
+    L?.lastMessagePreview && k && !k.messages.some((w) => w.streaming) && xe(k.messages) !== L.lastMessagePreview && (W.current.set(V, { ...k, cachedAt: 0 }), oe((M) => M + 1));
     const C = !!k?.messages.some((w) => w.streaming);
     return h((w) => q.map((M) => {
-      const p = w.find((X) => X.id === M.id), x = _e(W.current.get(M.id)?.messages ?? []), z = !!x || M.id === V && C;
+      const p = w.find((X) => X.id === M.id), x = xe(W.current.get(M.id)?.messages ?? []), z = !!x || M.id === V && C;
       return {
         ...M,
         lastMessagePreview: z ? x || p?.lastMessagePreview : M.lastMessagePreview ?? p?.lastMessagePreview
@@ -158,7 +158,7 @@ function Zt(t, n = {}) {
     const v = () => {
       !c.isActive() || !c.isOnline() || _().catch(() => {
       });
-    }, T = setInterval(v, Jt), q = c.subscribe(v);
+    }, T = setInterval(v, Qt), q = c.subscribe(v);
     return () => {
       clearInterval(T), q();
     };
@@ -187,11 +187,11 @@ function Zt(t, n = {}) {
         const I = G.current.get(f.id);
         return I ? { ...f, id: I } : f;
       }), z = p.filter(
-        (f) => f.id.startsWith($e) || f.id.startsWith(Ne)
+        (f) => f.id.startsWith(Le) || f.id.startsWith(Ne)
       ), X = [
         ...x,
         ...z.filter((f) => !x.some((I) => I.id === f.id))
-      ], ee = _e(X), ge = M?.activities ?? [];
+      ], ee = xe(X), ge = M?.activities ?? [];
       W.current.set(m, {
         messages: X,
         activities: ge,
@@ -252,7 +252,7 @@ function Zt(t, n = {}) {
           let w = k.message;
           const M = G.current.get(k.message.id);
           if (M && (w = { ...k.message, id: M }), k.message.role === "user" && !M) {
-            const x = new Set(G.current.values()), z = C.find((X) => X.id.startsWith($e) && !x.has(X.id) && Be(X) === Be(k.message));
+            const x = new Set(G.current.values()), z = C.find((X) => X.id.startsWith(Le) && !x.has(X.id) && Be(X) === Be(k.message));
             z && (G.current.set(k.message.id, z.id), w = { ...k.message, id: z.id });
           }
           if (k.message.role === "agent" && !M) {
@@ -284,7 +284,7 @@ function Zt(t, n = {}) {
             parts: M.parts.map((p) => p.type === "text" ? { ...p, text: "" } : p),
             streaming: !0
           }] : [])) : (V((w) => {
-            const M = w.filter((x) => x.id === C || x.role !== "agent" || !x.streaming).map((x) => x.id === C ? { ...x, streaming: !1 } : x), p = _e(M);
+            const M = w.filter((x) => x.id === C || x.role !== "agent" || !x.streaming).map((x) => x.id === C ? { ...x, streaming: !1 } : x), p = xe(M);
             return p && h((x) => x.map((z) => z.id === T ? { ...z, lastMessagePreview: p } : z)), M;
           }), ie.current?.({
             title: `${me?.name ?? "Your teammate"} finished`,
@@ -298,7 +298,7 @@ function Zt(t, n = {}) {
         k.type === "message.updated" && (V((C) => {
           const w = G.current.get(k.message.id), M = w ? { ...k.message, id: w } : k.message, p = C.find((z) => z.id === M.id), x = k.message.role === "agent" && !k.message.streaming ? C.filter((z) => z.id === M.id || z.role !== "agent" || !z.streaming) : C;
           return p ? x.map((z) => z.id === M.id ? M : z) : [...x, M];
-        }), k.message.role === "agent" && !k.message.streaming && h((C) => C.map((w) => w.id === T ? { ...w, lastMessagePreview: lt(k.message) || void 0 } : w))), k.type === "approval.updated" && (R((C) => {
+        }), k.message.role === "agent" && !k.message.streaming && h((C) => C.map((w) => w.id === T ? { ...w, lastMessagePreview: dt(k.message) || void 0 } : w))), k.type === "approval.updated" && (R((C) => {
           const w = C.some((M) => M.id === k.approval.id) ? C.map((M) => M.id === k.approval.id ? k.approval : M) : [k.approval, ...C];
           return q({ approvals: w }), w;
         }), k.approval.status === "pending" && ie.current?.({
@@ -369,7 +369,7 @@ function Zt(t, n = {}) {
     },
     sendMessage: async (v) => {
       if (!ue || !m) return;
-      const T = m, q = ue, V = `${Date.now()}:${Math.random().toString(36).slice(2)}`, L = `${$e}${V}`, k = `${Ne}${V}`, C = (/* @__PURE__ */ new Date()).toISOString(), w = {
+      const T = m, q = ue, V = `${Date.now()}:${Math.random().toString(36).slice(2)}`, L = `${Le}${V}`, k = `${Ne}${V}`, C = (/* @__PURE__ */ new Date()).toISOString(), w = {
         id: L,
         conversationId: q,
         role: "user",
@@ -395,7 +395,7 @@ function Zt(t, n = {}) {
         G.current.set(ee.id, L);
         const ge = ee.id.match(/^(.+):user(?:$|:)/)?.[1];
         ge && (G.current.set(`${ge}:user`, L), G.current.set(`${ge}:agent`, x?.id ?? k));
-        const f = W.current.get(T) ?? p, I = { ...ee, id: L }, Q = f.messages.map((re) => re.id === L ? I : re).filter((re, ke, kt) => kt.findIndex((Nt) => Nt.id === re.id) === ke);
+        const f = W.current.get(T) ?? p, I = { ...ee, id: L }, Q = f.messages.map((re) => re.id === L ? I : re).filter((re, ke, St) => St.findIndex((Ct) => Ct.id === re.id) === ke);
         W.current.set(T, { ...f, messages: Q, cachedAt: Date.now() }), se.current === T && g(Q);
       } catch (ee) {
         const ge = W.current.get(T) ?? p, f = ge.messages.filter((Q) => Q.id !== k), I = f.some((Q) => Q.id === L) ? f : [...f, w];
@@ -424,8 +424,8 @@ function Zt(t, n = {}) {
     }
   };
 }
-const Qt = (t) => t.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase(), dt = (...t) => t.filter((n, a, r) => !!n && n.trim() !== "" && r.indexOf(n) === a).join(" ").trim();
-var en = {
+const tn = (t) => t.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase(), ut = (...t) => t.filter((n, a, r) => !!n && n.trim() !== "" && r.indexOf(n) === a).join(" ").trim();
+var nn = {
   xmlns: "http://www.w3.org/2000/svg",
   width: 24,
   height: 24,
@@ -436,7 +436,7 @@ var en = {
   strokeLinecap: "round",
   strokeLinejoin: "round"
 };
-const tn = He(
+const an = He(
   ({
     color: t = "currentColor",
     size: n = 24,
@@ -446,49 +446,49 @@ const tn = He(
     children: u,
     iconNode: h,
     ...m
-  }, l) => Ie(
+  }, l) => Re(
     "svg",
     {
       ref: l,
-      ...en,
+      ...nn,
       width: n,
       height: n,
       stroke: t,
       strokeWidth: r ? Number(a) * 24 / Number(n) : a,
-      className: dt("lucide", c),
+      className: ut("lucide", c),
       ...m
     },
     [
-      ...h.map(([o, b]) => Ie(o, b)),
+      ...h.map(([o, b]) => Re(o, b)),
       ...Array.isArray(u) ? u : [u]
     ]
   )
 );
 const A = (t, n) => {
   const a = He(
-    ({ className: r, ...c }, u) => Ie(tn, {
+    ({ className: r, ...c }, u) => Re(an, {
       ref: u,
       iconNode: n,
-      className: dt(`lucide-${Qt(t)}`, r),
+      className: ut(`lucide-${tn(t)}`, r),
       ...c
     })
   );
   return a.displayName = `${t}`, a;
 };
-const nn = A("Archive", [
+const rn = A("Archive", [
   ["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1", key: "1wp1u1" }],
   ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
   ["path", { d: "M10 12h4", key: "a56b0p" }]
 ]);
-const an = A("ArrowDown", [
+const sn = A("ArrowDown", [
   ["path", { d: "M12 5v14", key: "s699le" }],
   ["path", { d: "m19 12-7 7-7-7", key: "1idqje" }]
 ]);
-const rn = A("Ban", [
+const on = A("Ban", [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "m4.9 4.9 14.2 14.2", key: "1m5liu" }]
 ]);
-const sn = A("BookText", [
+const cn = A("BookText", [
   [
     "path",
     {
@@ -499,7 +499,7 @@ const sn = A("BookText", [
   ["path", { d: "M8 11h8", key: "vwpz6n" }],
   ["path", { d: "M8 7h6", key: "1f0q6e" }]
 ]);
-const on = A("Bot", [
+const ln = A("Bot", [
   ["path", { d: "M12 8V4H8", key: "hb8ula" }],
   ["rect", { width: "16", height: "12", x: "4", y: "8", rx: "2", key: "enze0r" }],
   ["path", { d: "M2 14h2", key: "vft8re" }],
@@ -507,22 +507,22 @@ const on = A("Bot", [
   ["path", { d: "M15 13v2", key: "1xurst" }],
   ["path", { d: "M9 13v2", key: "rq6x2g" }]
 ]);
-const Me = A("Check", [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]]);
-const cn = A("ChevronDown", [
+const Te = A("Check", [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]]);
+const dn = A("ChevronDown", [
   ["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]
 ]);
-const Re = A("ChevronRight", [
+const Ae = A("ChevronRight", [
   ["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]
 ]);
-const ln = A("ChevronsRight", [
+const un = A("ChevronsRight", [
   ["path", { d: "m6 17 5-5-5-5", key: "xnjwq" }],
   ["path", { d: "m13 17 5-5-5-5", key: "17xmmf" }]
 ]);
-const ze = A("CircleCheck", [
+const Ue = A("CircleCheck", [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ]);
-const ut = A("CircleDashed", [
+const mt = A("CircleDashed", [
   ["path", { d: "M10.1 2.182a10 10 0 0 1 3.8 0", key: "5ilxe3" }],
   ["path", { d: "M13.9 21.818a10 10 0 0 1-3.8 0", key: "11zvb9" }],
   ["path", { d: "M17.609 3.721a10 10 0 0 1 2.69 2.7", key: "1iw5b2" }],
@@ -532,37 +532,37 @@ const ut = A("CircleDashed", [
   ["path", { d: "M3.721 6.391a10 10 0 0 1 2.7-2.69", key: "1mcia2" }],
   ["path", { d: "M6.391 20.279a10 10 0 0 1-2.69-2.7", key: "1fvljs" }]
 ]);
-const dn = A("CircleHelp", [
+const mn = A("CircleHelp", [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", key: "1u773s" }],
   ["path", { d: "M12 17h.01", key: "p32p05" }]
 ]);
-const mt = A("Clock", [
+const pt = A("Clock", [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["polyline", { points: "12 6 12 12 16 14", key: "68esgv" }]
 ]);
-const Ue = A("Cloud", [
+const qe = A("Cloud", [
   ["path", { d: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z", key: "p7xjir" }]
 ]);
-const un = A("Copy", [
+const pn = A("Copy", [
   ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
   ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
 ]);
-const mn = A("CornerDownRight", [
+const hn = A("CornerDownRight", [
   ["polyline", { points: "15 10 20 15 15 20", key: "1q7qjw" }],
   ["path", { d: "M4 4v7a4 4 0 0 0 4 4h12", key: "z08zvw" }]
 ]);
-const pn = A("Database", [
+const fn = A("Database", [
   ["ellipse", { cx: "12", cy: "5", rx: "9", ry: "3", key: "msslwz" }],
   ["path", { d: "M3 5V19A9 3 0 0 0 21 19V5", key: "1wlel7" }],
   ["path", { d: "M3 12A9 3 0 0 0 21 12", key: "mv7ke4" }]
 ]);
-const hn = A("Download", [
+const gn = A("Download", [
   ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
   ["polyline", { points: "7 10 12 15 17 10", key: "2ggqvy" }],
   ["line", { x1: "12", x2: "12", y1: "15", y2: "3", key: "1vk2je" }]
 ]);
-const fn = A("Earth", [
+const yn = A("Earth", [
   ["path", { d: "M21.54 15H17a2 2 0 0 0-2 2v4.54", key: "1djwo0" }],
   [
     "path",
@@ -574,12 +574,12 @@ const fn = A("Earth", [
   ["path", { d: "M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05", key: "14pb5j" }],
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }]
 ]);
-const gn = A("Ellipsis", [
+const vn = A("Ellipsis", [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
   ["circle", { cx: "19", cy: "12", r: "1", key: "1wjl8i" }],
   ["circle", { cx: "5", cy: "12", r: "1", key: "1pcz8c" }]
 ]);
-const yn = A("Eye", [
+const En = A("Eye", [
   [
     "path",
     {
@@ -589,13 +589,13 @@ const yn = A("Eye", [
   ],
   ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
 ]);
-const vn = A("FileCode2", [
+const wn = A("FileCode2", [
   ["path", { d: "M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4", key: "1pf5j1" }],
   ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
   ["path", { d: "m5 12-3 3 3 3", key: "oke12k" }],
   ["path", { d: "m9 18 3-3-3-3", key: "112psh" }]
 ]);
-const En = A("FileSpreadsheet", [
+const bn = A("FileSpreadsheet", [
   ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
   ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
   ["path", { d: "M8 13h2", key: "yr2amv" }],
@@ -610,11 +610,11 @@ const be = A("FileText", [
   ["path", { d: "M16 13H8", key: "t4e002" }],
   ["path", { d: "M16 17H8", key: "z1uh3a" }]
 ]);
-const pt = A("File", [
+const ht = A("File", [
   ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
   ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }]
 ]);
-const wn = A("Globe", [
+const ft = A("Globe", [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
   ["path", { d: "M2 12h20", key: "9i4pu4" }]
@@ -631,7 +631,7 @@ const Ge = A("Hand", [
     }
   ]
 ]);
-const bn = A("Hourglass", [
+const kn = A("Hourglass", [
   ["path", { d: "M5 22h14", key: "ehvnwv" }],
   ["path", { d: "M5 2h14", key: "pdyrp9" }],
   [
@@ -646,7 +646,7 @@ const bn = A("Hourglass", [
     { d: "M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2", key: "1vvvr6" }
   ]
 ]);
-const kn = A("Image", [
+const Nn = A("Image", [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
   ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
   ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
@@ -661,38 +661,38 @@ const Ke = A("KeyRound", [
   ],
   ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
 ]);
-const Te = A("LoaderCircle", [
+const _e = A("LoaderCircle", [
   ["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]
 ]);
-const Nn = A("Lock", [
+const Sn = A("Lock", [
   ["rect", { width: "18", height: "11", x: "3", y: "11", rx: "2", ry: "2", key: "1w4ew1" }],
   ["path", { d: "M7 11V7a5 5 0 0 1 10 0v4", key: "fwvmzm" }]
 ]);
-const Sn = A("Mail", [
+const Cn = A("Mail", [
   ["rect", { width: "20", height: "16", x: "2", y: "4", rx: "2", key: "18n3k1" }],
   ["path", { d: "m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7", key: "1ocrg3" }]
 ]);
-const Cn = A("Maximize2", [
+const Mn = A("Maximize2", [
   ["polyline", { points: "15 3 21 3 21 9", key: "mznyad" }],
   ["polyline", { points: "9 21 3 21 3 15", key: "1avn1i" }],
   ["line", { x1: "21", x2: "14", y1: "3", y2: "10", key: "ota7mn" }],
   ["line", { x1: "3", x2: "10", y1: "21", y2: "14", key: "1atl0r" }]
 ]);
-const Mn = A("MessageSquare", [
+const Tn = A("MessageSquare", [
   ["path", { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", key: "1lielz" }]
 ]);
-const Tn = A("Minimize2", [
+const _n = A("Minimize2", [
   ["polyline", { points: "4 14 10 14 10 20", key: "11kfnr" }],
   ["polyline", { points: "20 10 14 10 14 4", key: "rlmsce" }],
   ["line", { x1: "14", x2: "21", y1: "10", y2: "3", key: "o5lafz" }],
   ["line", { x1: "3", x2: "10", y1: "21", y2: "14", key: "1atl0r" }]
 ]);
-const ht = A("Monitor", [
+const gt = A("Monitor", [
   ["rect", { width: "20", height: "14", x: "2", y: "3", rx: "2", key: "48i651" }],
   ["line", { x1: "8", x2: "16", y1: "21", y2: "21", key: "1svkeh" }],
   ["line", { x1: "12", x2: "12", y1: "17", y2: "21", key: "vw1qmm" }]
 ]);
-const _n = A("Pencil", [
+const xn = A("Pencil", [
   [
     "path",
     {
@@ -702,22 +702,22 @@ const _n = A("Pencil", [
   ],
   ["path", { d: "m15 5 4 4", key: "1mk7zo" }]
 ]);
-const Ae = A("Plus", [
+const Oe = A("Plus", [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "M12 5v14", key: "s699le" }]
 ]);
-const xn = A("Presentation", [
+const In = A("Presentation", [
   ["path", { d: "M2 3h20", key: "91anmk" }],
   ["path", { d: "M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3", key: "2k9sn8" }],
   ["path", { d: "m7 21 5-5 5 5", key: "bip4we" }]
 ]);
-const In = A("RefreshCw", [
+const Rn = A("RefreshCw", [
   ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
   ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
   ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
   ["path", { d: "M8 16H3v5", key: "1cv678" }]
 ]);
-const Rn = A("RotateCcw", [
+const An = A("RotateCcw", [
   ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
   ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
 ]);
@@ -731,7 +731,7 @@ const Ye = A("Settings2", [
   ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
   ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
 ]);
-const qe = A("ShieldAlert", [
+const Me = A("ShieldAlert", [
   [
     "path",
     {
@@ -742,7 +742,7 @@ const qe = A("ShieldAlert", [
   ["path", { d: "M12 8v4", key: "1got3b" }],
   ["path", { d: "M12 16h.01", key: "1drbdi" }]
 ]);
-const An = A("ShieldCheck", [
+const On = A("ShieldCheck", [
   [
     "path",
     {
@@ -752,7 +752,7 @@ const An = A("ShieldCheck", [
   ],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ]);
-const On = A("ShieldX", [
+const Dn = A("ShieldX", [
   [
     "path",
     {
@@ -763,7 +763,7 @@ const On = A("ShieldX", [
   ["path", { d: "m14.5 9.5-5 5", key: "17q4r4" }],
   ["path", { d: "m9.5 9.5 5 5", key: "18nt4w" }]
 ]);
-const Dn = A("Terminal", [
+const Pn = A("Terminal", [
   ["polyline", { points: "4 17 10 11 4 5", key: "akl6gq" }],
   ["line", { x1: "12", x2: "20", y1: "19", y2: "19", key: "q2wloq" }]
 ]);
@@ -774,7 +774,7 @@ const Ve = A("Trash2", [
   ["line", { x1: "10", x2: "10", y1: "11", y2: "17", key: "1uufr5" }],
   ["line", { x1: "14", x2: "14", y1: "11", y2: "17", key: "xtxkd" }]
 ]);
-const Oe = A("TriangleAlert", [
+const De = A("TriangleAlert", [
   [
     "path",
     {
@@ -785,27 +785,27 @@ const Oe = A("TriangleAlert", [
   ["path", { d: "M12 9v4", key: "juzpu7" }],
   ["path", { d: "M12 17h.01", key: "p32p05" }]
 ]);
-const Pn = A("User", [
+const $n = A("User", [
   ["path", { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2", key: "975kel" }],
   ["circle", { cx: "12", cy: "7", r: "4", key: "17ys0d" }]
 ]);
-const ft = A("Users", [
+const yt = A("Users", [
   ["path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", key: "1yyitq" }],
   ["circle", { cx: "9", cy: "7", r: "4", key: "nufk8" }],
   ["path", { d: "M22 21v-2a4 4 0 0 0-3-3.87", key: "kshegd" }],
   ["path", { d: "M16 3.13a4 4 0 0 1 0 7.75", key: "1da9ce" }]
 ]);
-const $n = A("X", [
+const Ln = A("X", [
   ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
   ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
 ]);
-function Ln(t) {
+function zn(t) {
   let n = 0;
   for (let a = 0; a < t.length; a += 1) n = (n * 31 + t.charCodeAt(a)) % 360;
   return n;
 }
-function gt({ agent: t, size: n = 36 }) {
-  const a = Ln(t.id || t.name);
+function vt({ agent: t, size: n = 36 }) {
+  const a = zn(t.id || t.name);
   return /* @__PURE__ */ e.createElement(
     "span",
     {
@@ -823,13 +823,13 @@ function gt({ agent: t, size: n = 36 }) {
     t.avatar || t.name.trim().slice(0, 1).toUpperCase()
   );
 }
-const zn = Pe(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-CLfmBW3m.js").then((t) => t.i)).Streamdown })), Xe = {
+const Un = $e(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-DYEx7YSH.js").then((t) => t.i)).Streamdown })), Xe = {
   working: "Working",
   idle: "Idle",
   waiting_for_approval: "Needs you",
   offline: "No profile"
 };
-function Un({
+function qn({
   agents: t,
   sections: n,
   rooms: a,
@@ -862,7 +862,7 @@ function Un({
       key: S.id,
       className: `agent-row ${r === S.id && !c.startsWith("group:") ? "selected" : ""} ${S.status === "working" ? "is-working" : ""}`
     },
-    /* @__PURE__ */ e.createElement("button", { className: "agent-select", onClick: () => m(S.id) }, /* @__PURE__ */ e.createElement(gt, { agent: S }), /* @__PURE__ */ e.createElement("span", { className: "agent-copy" }, /* @__PURE__ */ e.createElement("strong", null, /* @__PURE__ */ e.createElement("span", null, S.name), /* @__PURE__ */ e.createElement("span", { className: `agent-status ${S.status}`, title: Xe[S.status], "aria-label": Xe[S.status] })), S.workingOn ? /* @__PURE__ */ e.createElement("span", { className: "agent-preview agent-working-on" }, S.workingOn) : S.lastMessagePreview && /* @__PURE__ */ e.createElement("span", { className: "agent-preview agent-preview-entering" }, /* @__PURE__ */ e.createElement(De, { fallback: S.lastMessagePreview }, /* @__PURE__ */ e.createElement(zn, { className: "agent-preview-markdown", mode: "static", controls: !1, linkSafety: { enabled: !0 }, skipHtml: !0 }, S.lastMessagePreview))))),
+    /* @__PURE__ */ e.createElement("button", { className: "agent-select", onClick: () => m(S.id) }, /* @__PURE__ */ e.createElement(vt, { agent: S }), /* @__PURE__ */ e.createElement("span", { className: "agent-copy" }, /* @__PURE__ */ e.createElement("strong", null, /* @__PURE__ */ e.createElement("span", null, S.name), /* @__PURE__ */ e.createElement("span", { className: `agent-status ${S.status}`, title: Xe[S.status], "aria-label": Xe[S.status] })), S.workingOn ? /* @__PURE__ */ e.createElement("span", { className: "agent-preview agent-working-on" }, S.workingOn) : S.lastMessagePreview && /* @__PURE__ */ e.createElement("span", { className: "agent-preview agent-preview-entering" }, /* @__PURE__ */ e.createElement(Pe, { fallback: S.lastMessagePreview }, /* @__PURE__ */ e.createElement(Un, { className: "agent-preview-markdown", mode: "static", controls: !1, linkSafety: { enabled: !0 }, skipHtml: !0 }, S.lastMessagePreview))))),
     /* @__PURE__ */ e.createElement(
       "button",
       {
@@ -871,11 +871,11 @@ function Un({
         onPointerDown: (j) => j.stopPropagation(),
         onClick: () => d((j) => j === S.id ? void 0 : S.id)
       },
-      /* @__PURE__ */ e.createElement(gn, { size: 15 })
+      /* @__PURE__ */ e.createElement(vn, { size: 15 })
     ),
-    g === S.id && /* @__PURE__ */ e.createElement("div", { className: "agent-menu", role: "menu", onPointerDown: (j) => j.stopPropagation() }, /* @__PURE__ */ e.createElement("button", { role: "menuitem", onClick: () => O(S, "edit") }, /* @__PURE__ */ e.createElement(_n, { size: 13 }), " Edit"), /* @__PURE__ */ e.createElement("button", { role: "menuitem", onClick: () => O(S, "duplicate") }, /* @__PURE__ */ e.createElement(un, { size: 13 }), " Duplicate"), /* @__PURE__ */ e.createElement("div", null), /* @__PURE__ */ e.createElement("button", { role: "menuitem", className: "danger-text", onClick: () => O(S, "delete") }, /* @__PURE__ */ e.createElement(Ve, { size: 13 }), " Remove from crew"))
+    g === S.id && /* @__PURE__ */ e.createElement("div", { className: "agent-menu", role: "menu", onPointerDown: (j) => j.stopPropagation() }, /* @__PURE__ */ e.createElement("button", { role: "menuitem", onClick: () => O(S, "edit") }, /* @__PURE__ */ e.createElement(xn, { size: 13 }), " Edit"), /* @__PURE__ */ e.createElement("button", { role: "menuitem", onClick: () => O(S, "duplicate") }, /* @__PURE__ */ e.createElement(pn, { size: 13 }), " Duplicate"), /* @__PURE__ */ e.createElement("div", null), /* @__PURE__ */ e.createElement("button", { role: "menuitem", className: "danger-text", onClick: () => O(S, "delete") }, /* @__PURE__ */ e.createElement(Ve, { size: 13 }), " Remove from crew"))
   );
-  return /* @__PURE__ */ e.createElement("aside", { className: "agent-sidebar" }, /* @__PURE__ */ e.createElement("div", { className: "sidebar-titlebar" }, /* @__PURE__ */ e.createElement("span", { className: "sidebar-title" }, "Crew"), /* @__PURE__ */ e.createElement("button", { className: "brand-add", "aria-label": "Hire a teammate", onClick: b }, /* @__PURE__ */ e.createElement(Ae, { size: 18 }))), y && /* @__PURE__ */ e.createElement("div", { className: "sidebar-views", role: "tablist", "aria-label": "Workspace view" }, /* @__PURE__ */ e.createElement(
+  return /* @__PURE__ */ e.createElement("aside", { className: "agent-sidebar" }, /* @__PURE__ */ e.createElement("div", { className: "sidebar-titlebar" }, /* @__PURE__ */ e.createElement("span", { className: "sidebar-title" }, "Crew"), /* @__PURE__ */ e.createElement("button", { className: "brand-add", "aria-label": "Hire a teammate", onClick: b }, /* @__PURE__ */ e.createElement(Oe, { size: 18 }))), y && /* @__PURE__ */ e.createElement("div", { className: "sidebar-views", role: "tablist", "aria-label": "Workspace view" }, /* @__PURE__ */ e.createElement(
     "button",
     {
       role: "tab",
@@ -883,7 +883,7 @@ function Un({
       className: s === "chat" ? "is-current" : "",
       onClick: () => y("chat")
     },
-    /* @__PURE__ */ e.createElement(Mn, { size: 13 }),
+    /* @__PURE__ */ e.createElement(Tn, { size: 13 }),
     " Threads"
   ), /* @__PURE__ */ e.createElement(
     "button",
@@ -893,7 +893,7 @@ function Un({
       className: s === "spaces" ? "is-current" : "",
       onClick: () => y("spaces")
     },
-    /* @__PURE__ */ e.createElement(sn, { size: 13 }),
+    /* @__PURE__ */ e.createElement(cn, { size: 13 }),
     " Documents"
   )), /* @__PURE__ */ e.createElement("label", { className: "search" }, /* @__PURE__ */ e.createElement(Fe, { size: 15 }), /* @__PURE__ */ e.createElement("input", { "aria-label": "Search the crew", placeholder: "Search your crew", value: u, onChange: (S) => h(S.target.value) })), /* @__PURE__ */ e.createElement("div", { className: "agent-list" }, t.length === 0 && /* @__PURE__ */ e.createElement("div", { className: "agent-list-empty" }, "No teammates yet"), t.length > 0 && H.length === 0 && /* @__PURE__ */ e.createElement("div", { className: "agent-list-empty" }, "No teammates found"), J ? H.map(({ section: S, members: j }) => /* @__PURE__ */ e.createElement("section", { className: "agent-section", key: S.id }, /* @__PURE__ */ e.createElement(
     "button",
@@ -902,12 +902,12 @@ function Un({
       "aria-expanded": !S.collapsed,
       onClick: () => i(S.id, !S.collapsed)
     },
-    /* @__PURE__ */ e.createElement(Re, { size: 13, className: "agent-section-chevron" }),
+    /* @__PURE__ */ e.createElement(Ae, { size: 13, className: "agent-section-chevron" }),
     /* @__PURE__ */ e.createElement("span", null, S.name),
     /* @__PURE__ */ e.createElement("small", null, j.length)
   ), !S.collapsed && j.map(B))) : H.flatMap((S) => S.members).map(B), a.length > 0 && /* @__PURE__ */ e.createElement("section", { className: "agent-section", key: "__rooms__" }, /* @__PURE__ */ e.createElement("div", { className: "agent-section-header is-static" }, /* @__PURE__ */ e.createElement("span", null, "Rooms"), /* @__PURE__ */ e.createElement("small", null, a.length)), a.map((S) => /* @__PURE__ */ e.createElement("div", { key: S.id, className: `agent-row ${c === S.id ? "selected" : ""}` }, /* @__PURE__ */ e.createElement("button", { className: "agent-select", onClick: () => l(S.id) }, /* @__PURE__ */ e.createElement("span", { className: "agent-avatar", role: "img", "aria-label": `${S.title} room` }, S.emoji || "👥"), /* @__PURE__ */ e.createElement("span", { className: "agent-copy" }, /* @__PURE__ */ e.createElement("strong", null, /* @__PURE__ */ e.createElement("span", null, S.title)), /* @__PURE__ */ e.createElement("span", { className: "agent-preview" }, S.lastMessagePreview || S.subtitle))))))));
 }
-function qn({
+function Hn({
   open: t,
   agents: n,
   rooms: a,
@@ -922,20 +922,20 @@ function qn({
     t && (o(""), window.setTimeout(() => b.current?.focus(), 0));
   }, [t]);
   const s = fe(() => [
-    { id: "create", label: "Hire a teammate", detail: "Add someone to the crew", icon: Ae, run: h },
-    { id: "computer", label: "Open their computer", detail: "The current teammate's screen", icon: ht, run: m },
+    { id: "create", label: "Hire a teammate", detail: "Add someone to the crew", icon: Oe, run: h },
+    { id: "computer", label: "Open their computer", detail: "The current teammate's screen", icon: gt, run: m },
     ...n.map((g) => ({
       id: `agent-${g.id}`,
       label: g.name,
       detail: `${g.role} · ${g.status.replaceAll("_", " ")}`,
-      icon: on,
+      icon: ln,
       run: () => c(g.id)
     })),
     ...a.map((g) => ({
       id: `room-${g.id}`,
       label: g.title,
       detail: g.subtitle || "Room",
-      icon: ft,
+      icon: yt,
       run: () => u(g.id)
     }))
   ], [n, a, m, h, c, u]).filter((g) => `${g.label} ${g.detail}`.toLowerCase().includes(l.toLowerCase()));
@@ -970,11 +970,11 @@ function qn({
     }) : /* @__PURE__ */ e.createElement("p", null, "Nothing matches that")), /* @__PURE__ */ e.createElement("footer", null, /* @__PURE__ */ e.createElement("span", null, "Crew"), /* @__PURE__ */ e.createElement("span", null, /* @__PURE__ */ e.createElement("kbd", null, "⌘"), /* @__PURE__ */ e.createElement("kbd", null, "K"), " to open")))
   );
 }
-const Hn = /(?<![\w.-])@([\w一-鿿][\w一-鿿-]{0,63})/g;
+const jn = /(?<![\w.-])@([\w一-鿿][\w一-鿿-]{0,63})/g;
 function Se(t) {
   return t.replace(/[\s_-]+/g, "").trim().toLowerCase();
 }
-function jn(t, n, a) {
+function Fn(t, n, a) {
   if (!n?.length || !t) return [{ text: t }];
   const r = /* @__PURE__ */ new Map();
   for (const h of n) r.has(Se(h)) || r.set(Se(h), h);
@@ -982,7 +982,7 @@ function jn(t, n, a) {
     n.includes(h.id) && (r.has(Se(h.name)) || r.set(Se(h.name), h.id));
   const c = [];
   let u = 0;
-  for (const h of t.matchAll(Hn)) {
+  for (const h of t.matchAll(jn)) {
     const m = r.get(Se(h[1]));
     !m || h.index === void 0 || (h.index > u && c.push({ text: t.slice(u, h.index) }), c.push({ text: h[0], agentId: m }), u = h.index + h[0].length);
   }
@@ -991,7 +991,7 @@ function jn(t, n, a) {
 function ye({ label: t, kind: n = "", children: a }) {
   return /* @__PURE__ */ e.createElement("div", { className: `crew-chip ${n}` }, t && /* @__PURE__ */ e.createElement("div", { className: "crew-chip-label" }, t), a);
 }
-function Fn({ turnId: t, handlers: n }) {
+function Vn({ turnId: t, handlers: n }) {
   const [a, r] = N(!1), [c, u] = N(null), [h, m] = N(""), [l, o] = N("");
   async function b() {
     if (r((s) => !s), c === null)
@@ -1036,10 +1036,10 @@ function Fn({ turnId: t, handlers: n }) {
     s.undone_at ? /* @__PURE__ */ e.createElement("span", { className: "crew-changed-undone" }, "undone") : null
   )))) : null;
 }
-function Vn(t) {
+function Bn(t) {
   return !Number.isFinite(t) || t < 1 ? "just now" : t < 24 ? `${Math.floor(t)}h` : `${Math.floor(t / 24)}d`;
 }
-function Bn({ payload: t, handlers: n }) {
+function Wn({ payload: t, handlers: n }) {
   const [a, r] = N(""), [c, u] = N(""), [h, m] = N([]), l = t.items ?? [], o = t.could_not ?? [];
   async function b(i) {
     if (i.ref) {
@@ -1053,7 +1053,7 @@ function Bn({ payload: t, handlers: n }) {
       }
     }
   }
-  return /* @__PURE__ */ e.createElement(ye, { kind: "standstill", label: "Still waiting" }, l.map((i) => /* @__PURE__ */ e.createElement("div", { className: "crew-stuck-line", key: i.subject }, /* @__PURE__ */ e.createElement("span", { className: "crew-stuck-age" }, Vn(i.stuck_for_hours)), /* @__PURE__ */ e.createElement("span", { className: "crew-stuck-summary" }, i.summary), i.kind === "routine_suspended" && i.ref && (h.includes(i.subject) ? /* @__PURE__ */ e.createElement("span", { className: "crew-stuck-done" }, "resumed") : /* @__PURE__ */ e.createElement(
+  return /* @__PURE__ */ e.createElement(ye, { kind: "standstill", label: "Still waiting" }, l.map((i) => /* @__PURE__ */ e.createElement("div", { className: "crew-stuck-line", key: i.subject }, /* @__PURE__ */ e.createElement("span", { className: "crew-stuck-age" }, Bn(i.stuck_for_hours)), /* @__PURE__ */ e.createElement("span", { className: "crew-stuck-summary" }, i.summary), i.kind === "routine_suspended" && i.ref && (h.includes(i.subject) ? /* @__PURE__ */ e.createElement("span", { className: "crew-stuck-done" }, "resumed") : /* @__PURE__ */ e.createElement(
     "button",
     {
       type: "button",
@@ -1074,26 +1074,29 @@ function Bn({ payload: t, handlers: n }) {
     "Open"
   ))), c && /* @__PURE__ */ e.createElement("div", { className: "crew-stuck-gap" }, c), o.map((i) => /* @__PURE__ */ e.createElement("div", { className: "crew-stuck-gap", key: i.source }, "Could not check ", i.source, " — ", i.why)), t.spoke === !1 && /* @__PURE__ */ e.createElement("div", { className: "crew-stuck-quiet" }, "I could not write this up, so here it is as I found it."));
 }
-function Wn({ payload: t, turnId: n, handlers: a }) {
-  return /* @__PURE__ */ e.createElement(ye, { kind: "report" }, (t.lines ?? []).map((r, c) => /* @__PURE__ */ e.createElement("div", { className: "crew-report-line", key: c }, /* @__PURE__ */ e.createElement("span", { className: "crew-report-check" }, /* @__PURE__ */ e.createElement(Me, { size: 13 })), /* @__PURE__ */ e.createElement("span", { className: "crew-report-system" }, r.system), /* @__PURE__ */ e.createElement("span", { className: "crew-report-arrow" }, "→"), /* @__PURE__ */ e.createElement("span", null, r.result, r.count && /* @__PURE__ */ e.createElement("span", { className: "crew-report-count" }, " · ", r.count)))), t.closing && /* @__PURE__ */ e.createElement("div", { className: "crew-report-closing" }, t.closing), n && /* @__PURE__ */ e.createElement(Fn, { turnId: n, handlers: a }));
+function Gn({ payload: t, turnId: n, handlers: a }) {
+  return /* @__PURE__ */ e.createElement(ye, { kind: "report" }, (t.lines ?? []).map((r, c) => /* @__PURE__ */ e.createElement("div", { className: "crew-report-line", key: c }, /* @__PURE__ */ e.createElement("span", { className: "crew-report-check" }, /* @__PURE__ */ e.createElement(Te, { size: 13 })), /* @__PURE__ */ e.createElement("span", { className: "crew-report-system" }, r.system), /* @__PURE__ */ e.createElement("span", { className: "crew-report-arrow" }, "→"), /* @__PURE__ */ e.createElement("span", null, r.result, r.count && /* @__PURE__ */ e.createElement("span", { className: "crew-report-count" }, " · ", r.count)))), t.closing && /* @__PURE__ */ e.createElement("div", { className: "crew-report-closing" }, t.closing), n && /* @__PURE__ */ e.createElement(Vn, { turnId: n, handlers: a }));
 }
-function Gn({ payload: t, onDecide: n }) {
+function Kn({ payload: t, onDecide: n }) {
   const a = t.status === "approved" || t.status === "discarded";
-  return /* @__PURE__ */ e.createElement("div", { className: `crew-chip approval ${a ? "resolved" : ""}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-chip-label" }, /* @__PURE__ */ e.createElement(qe, { size: 13 }), " ", a ? "Decided" : "Needs you"), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), t.detail && /* @__PURE__ */ e.createElement("div", { className: "crew-approval-detail" }, t.detail), a ? /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded") : /* @__PURE__ */ e.createElement("div", { className: "crew-approval-buttons" }, /* @__PURE__ */ e.createElement("button", { className: "crew-btn danger", onClick: () => n(String(t.approval_id), "deny") }, "Discard"), /* @__PURE__ */ e.createElement("button", { className: "crew-btn primary", onClick: () => n(String(t.approval_id), "allow") }, "Approve")));
-}
-function Kn({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ye, { label: "You decided" }, /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded"));
+  return /* @__PURE__ */ e.createElement("div", { className: `crew-chip approval ${a ? "resolved" : ""}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-chip-label" }, /* @__PURE__ */ e.createElement(Me, { size: 13 }), " ", a ? "Decided" : "Needs you"), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), t.detail && /* @__PURE__ */ e.createElement("div", { className: "crew-approval-detail" }, t.detail), a ? /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded") : /* @__PURE__ */ e.createElement("div", { className: "crew-approval-buttons" }, /* @__PURE__ */ e.createElement("button", { className: "crew-btn danger", onClick: () => n(String(t.approval_id), "deny") }, "Discard"), /* @__PURE__ */ e.createElement("button", { className: "crew-btn primary", onClick: () => n(String(t.approval_id), "allow") }, "Approve")));
 }
 function Yn({ payload: t }) {
-  return t.proposal ? /* @__PURE__ */ e.createElement(ye, { label: t.kind === "conflicting" ? "Rules disagree" : "Rule may be stale" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-note" }, t.note), /* @__PURE__ */ e.createElement("ul", { className: "crew-memory-entries" }, (t.entries || []).map((n, a) => /* @__PURE__ */ e.createElement("li", { key: a }, n))), t.why && /* @__PURE__ */ e.createElement("div", { className: "crew-memory-why" }, t.why)) : t.tidied ? /* @__PURE__ */ e.createElement(ye, { label: "Memory tidied" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-note" }, t.note)) : /* @__PURE__ */ e.createElement(ye, { label: "Memory updated" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-rule" }, t.rule), t.diff && /* @__PURE__ */ e.createElement("pre", { className: "crew-memory-diff" }, t.diff));
+  return /* @__PURE__ */ e.createElement(ye, { label: "You decided" }, /* @__PURE__ */ e.createElement("div", { className: "crew-approval-action" }, t.action), /* @__PURE__ */ e.createElement("div", { className: "crew-approval-outcome" }, t.status === "approved" ? "Approved" : "Discarded"));
 }
 function Xn({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ye, { label: "Routine created" }, /* @__PURE__ */ e.createElement("div", { className: "crew-routine-name" }, /* @__PURE__ */ e.createElement(mt, { size: 13 }), " ", t.name), /* @__PURE__ */ e.createElement("div", { className: "crew-routine-when" }, t.human || t.cron));
+  return t.proposal ? /* @__PURE__ */ e.createElement(ye, { label: t.kind === "conflicting" ? "Rules disagree" : "Rule may be stale" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-note" }, t.note), /* @__PURE__ */ e.createElement("ul", { className: "crew-memory-entries" }, (t.entries || []).map((n, a) => /* @__PURE__ */ e.createElement("li", { key: a }, n))), t.why && /* @__PURE__ */ e.createElement("div", { className: "crew-memory-why" }, t.why)) : t.tidied ? /* @__PURE__ */ e.createElement(ye, { label: "Memory tidied" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-note" }, t.note)) : /* @__PURE__ */ e.createElement(ye, { label: "Memory updated" }, /* @__PURE__ */ e.createElement("div", { className: "crew-memory-rule" }, t.rule), t.diff && /* @__PURE__ */ e.createElement("pre", { className: "crew-memory-diff" }, t.diff));
 }
 function Jn({ payload: t }) {
-  return /* @__PURE__ */ e.createElement(ye, { label: `Handed over by @${t.from_name || t.from || "a teammate"}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-botref-body" }, /* @__PURE__ */ e.createElement(mn, { size: 13 }), " ", t.content));
+  return /* @__PURE__ */ e.createElement(ye, { label: "Routine created" }, /* @__PURE__ */ e.createElement("div", { className: "crew-routine-name" }, /* @__PURE__ */ e.createElement(pt, { size: 13 }), " ", t.name), /* @__PURE__ */ e.createElement("div", { className: "crew-routine-when" }, t.human || t.cron));
 }
-function Zn({ payload: t, onOpenScreen: n, onSubmitSecret: a }) {
+function Zn({ payload: t }) {
+  return /* @__PURE__ */ e.createElement(ye, { label: `Handed over by @${t.from_name || t.from || "a teammate"}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-botref-body" }, /* @__PURE__ */ e.createElement(hn, { size: 13 }), " ", t.content));
+}
+function Je({ origin: t, warning: n }) {
+  return t ? /* @__PURE__ */ e.createElement("div", { className: `crew-login-origin${n ? " crew-login-origin-odd" : ""}` }, /* @__PURE__ */ e.createElement("div", { className: "crew-login-origin-row" }, n ? /* @__PURE__ */ e.createElement(Me, { size: 13 }) : /* @__PURE__ */ e.createElement(ft, { size: 13 }), /* @__PURE__ */ e.createElement("code", null, t)), n && /* @__PURE__ */ e.createElement("div", { className: "crew-login-origin-warning" }, n)) : /* @__PURE__ */ e.createElement("div", { className: "crew-login-origin crew-login-origin-unknown" }, /* @__PURE__ */ e.createElement(Me, { size: 13 }), " Could not confirm which page this is");
+}
+function Qn({ payload: t, onOpenScreen: n, onSubmitSecret: a }) {
   const [r, c] = N(""), [u, h] = N(""), m = t.filled ? "sent" : u;
   if (t.field && t.ref) {
     const l = t.ref, o = async () => {
@@ -1106,7 +1109,7 @@ function Zn({ payload: t, onOpenScreen: n, onSubmitSecret: a }) {
         }
       }
     };
-    return /* @__PURE__ */ e.createElement(ye, { label: "Needs one thing from you" }, /* @__PURE__ */ e.createElement("div", { className: "crew-login-site" }, /* @__PURE__ */ e.createElement(Ke, { size: 13 }), " The ", t.field, " for ", t.site || "a site"), t.why && /* @__PURE__ */ e.createElement("div", { className: "crew-login-why" }, t.why), m === "sent" ? /* @__PURE__ */ e.createElement("div", { className: "crew-login-why" }, "Typed into the page. ", t.site, " should move on now.") : /* @__PURE__ */ e.createElement("form", { className: "crew-secret-row", onSubmit: (b) => {
+    return /* @__PURE__ */ e.createElement(ye, { label: "Needs one thing from you" }, /* @__PURE__ */ e.createElement(Je, { origin: t.origin, warning: t.origin_warning }), /* @__PURE__ */ e.createElement("div", { className: "crew-login-site" }, /* @__PURE__ */ e.createElement(Ke, { size: 13 }), " The ", t.field, " for ", t.site || "a site"), t.why && /* @__PURE__ */ e.createElement("div", { className: "crew-login-why" }, t.why), m === "sent" ? /* @__PURE__ */ e.createElement("div", { className: "crew-login-why" }, "Typed into the page. ", t.site, " should move on now.") : /* @__PURE__ */ e.createElement("form", { className: "crew-secret-row", onSubmit: (b) => {
       b.preventDefault(), o();
     } }, /* @__PURE__ */ e.createElement(
       "input",
@@ -1119,58 +1122,58 @@ function Zn({ payload: t, onOpenScreen: n, onSubmitSecret: a }) {
       }
     ), /* @__PURE__ */ e.createElement("button", { className: "crew-btn", type: "submit", disabled: !r || m === "sending" }, m === "sending" ? "Typing…" : "Type it in")), m === "failed" && /* @__PURE__ */ e.createElement("div", { className: "crew-login-why" }, "That did not reach the screen — nothing was typed. Try taking the wheel instead."));
   }
-  return /* @__PURE__ */ e.createElement(ye, { label: "Needs you at the keyboard" }, /* @__PURE__ */ e.createElement("div", { className: "crew-login-site" }, /* @__PURE__ */ e.createElement(Ke, { size: 13 }), " Sign in to ", t.site || "a site"), t.why && /* @__PURE__ */ e.createElement("div", { className: "crew-login-why" }, t.why), /* @__PURE__ */ e.createElement("button", { className: "crew-btn", onClick: n }, "Take the wheel"));
+  return /* @__PURE__ */ e.createElement(ye, { label: "Needs you at the keyboard" }, /* @__PURE__ */ e.createElement(Je, { origin: t.origin, warning: t.origin_warning }), /* @__PURE__ */ e.createElement("div", { className: "crew-login-site" }, /* @__PURE__ */ e.createElement(Ke, { size: 13 }), " Sign in to ", t.site || "a site"), t.why && /* @__PURE__ */ e.createElement("div", { className: "crew-login-why" }, t.why), /* @__PURE__ */ e.createElement("button", { className: "crew-btn", onClick: n }, "Take the wheel"));
 }
-function Qn({ payload: t, screenshotUrl: n }) {
+function ea({ payload: t, screenshotUrl: n }) {
   const a = t.url ?? (t.bot_id && t.file ? n(t.bot_id, t.file) : void 0);
   return a ? /* @__PURE__ */ e.createElement("figure", { className: "crew-shot" }, /* @__PURE__ */ e.createElement("img", { src: a, alt: t.caption || "the teammate's screen", loading: "lazy" }), t.caption && /* @__PURE__ */ e.createElement("figcaption", null, t.caption)) : null;
 }
-function ea({ kind: t, payload: n, turnId: a, handlers: r }) {
+function ta({ kind: t, payload: n, turnId: a, handlers: r }) {
   const c = n ?? {};
   switch (t) {
     case "report":
-      return /* @__PURE__ */ e.createElement(Wn, { payload: c, turnId: a, handlers: r });
+      return /* @__PURE__ */ e.createElement(Gn, { payload: c, turnId: a, handlers: r });
     case "standstill":
-      return /* @__PURE__ */ e.createElement(Bn, { payload: c, handlers: r });
+      return /* @__PURE__ */ e.createElement(Wn, { payload: c, handlers: r });
     case "approval_request":
-      return /* @__PURE__ */ e.createElement(Gn, { payload: c, onDecide: r.onDecide });
+      return /* @__PURE__ */ e.createElement(Kn, { payload: c, onDecide: r.onDecide });
     case "approval_resolved":
-      return /* @__PURE__ */ e.createElement(Kn, { payload: c });
-    case "memory_updated":
       return /* @__PURE__ */ e.createElement(Yn, { payload: c });
-    case "routine_created":
+    case "memory_updated":
       return /* @__PURE__ */ e.createElement(Xn, { payload: c });
-    case "bot_ref":
+    case "routine_created":
       return /* @__PURE__ */ e.createElement(Jn, { payload: c });
+    case "bot_ref":
+      return /* @__PURE__ */ e.createElement(Zn, { payload: c });
     case "login_request":
-      return /* @__PURE__ */ e.createElement(Zn, { payload: c, onOpenScreen: r.onOpenScreen, onSubmitSecret: r.onSubmitSecret });
+      return /* @__PURE__ */ e.createElement(Qn, { payload: c, onOpenScreen: r.onOpenScreen, onSubmitSecret: r.onSubmitSecret });
     case "screenshot":
-      return /* @__PURE__ */ e.createElement(Qn, { payload: c, screenshotUrl: r.screenshotUrl });
+      return /* @__PURE__ */ e.createElement(ea, { payload: c, screenshotUrl: r.screenshotUrl });
     default:
       return null;
   }
 }
-const ta = Pe(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-CLfmBW3m.js").then((t) => t.i)).Streamdown })), na = {
-  browser: fn,
-  terminal: Dn,
+const na = $e(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-DYEx7YSH.js").then((t) => t.i)).Streamdown })), aa = {
+  browser: yn,
+  terminal: Pn,
   file: be,
-  handoff: Ue,
-  status: Ue
+  handoff: qe,
+  status: qe
 };
-function aa(t) {
+function ra(t) {
   return t.parts.filter((n) => n.type === "text").map((n) => n.text).join("");
 }
-const ra = (t) => {
+const sa = (t) => {
   const n = Math.max(0, Math.floor(t / 1e3)), a = Math.floor(n / 60);
   return a ? `${a}m ${n % 60}s` : `${n}s`;
 };
-function sa() {
+function oa() {
   return /* @__PURE__ */ e.createElement("svg", { "aria-hidden": "true", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ e.createElement("path", { d: "m5 12 7-7 7 7" }), /* @__PURE__ */ e.createElement("path", { d: "M12 19V5" }));
 }
-function oa() {
+function ia() {
   return /* @__PURE__ */ e.createElement("svg", { className: "stop-icon", "aria-hidden": "true", viewBox: "0 0 24 24" }, /* @__PURE__ */ e.createElement("rect", { x: "7.5", y: "7.5", width: "9", height: "9", rx: "1.5", fill: "currentColor" }));
 }
-function ia(t) {
+function ca(t) {
   if (!(t.target instanceof Element)) return;
   const n = t.target.closest("a[href]");
   if (!(!n || !t.currentTarget.contains(n)))
@@ -1181,7 +1184,7 @@ function ia(t) {
     } catch {
     }
 }
-function ca({ agent: t, label: n, activities: a, startedAt: r }) {
+function la({ agent: t, label: n, activities: a, startedAt: r }) {
   const [c, u] = N(0), [h, m] = N(!1);
   return U(() => {
     u(Date.now());
@@ -1196,14 +1199,14 @@ function ca({ agent: t, label: n, activities: a, startedAt: r }) {
         l.preventDefault(), m((o) => !o);
       }
     },
-    /* @__PURE__ */ e.createElement("span", { className: "agent-working-progress" }, "Working for ", ra(c - Date.parse(r))),
-    /* @__PURE__ */ e.createElement(Re, { className: "agent-working-chevron", size: 15 })
+    /* @__PURE__ */ e.createElement("span", { className: "agent-working-progress" }, "Working for ", sa(c - Date.parse(r))),
+    /* @__PURE__ */ e.createElement(Ae, { className: "agent-working-chevron", size: 15 })
   ), a.length > 0 && /* @__PURE__ */ e.createElement("div", { className: "agent-working-tools" }, a.map((l) => {
-    const o = na[l.kind] ?? Ue;
-    return /* @__PURE__ */ e.createElement("details", { className: `agent-tool-detail ${l.status}`, key: l.id }, /* @__PURE__ */ e.createElement("summary", null, /* @__PURE__ */ e.createElement(o, { size: 14 }), /* @__PURE__ */ e.createElement("span", null, l.title), /* @__PURE__ */ e.createElement(Re, { size: 13 })), /* @__PURE__ */ e.createElement("div", null, l.output ?? (l.status === "running" ? "Waiting for result…" : "No output")));
+    const o = aa[l.kind] ?? qe;
+    return /* @__PURE__ */ e.createElement("details", { className: `agent-tool-detail ${l.status}`, key: l.id }, /* @__PURE__ */ e.createElement("summary", null, /* @__PURE__ */ e.createElement(o, { size: 14 }), /* @__PURE__ */ e.createElement("span", null, l.title), /* @__PURE__ */ e.createElement(Ae, { size: 13 })), /* @__PURE__ */ e.createElement("div", null, l.output ?? (l.status === "running" ? "Waiting for result…" : "No output")));
   })));
 }
-function la({
+function da({
   message: t,
   agent: n,
   senderName: a,
@@ -1212,7 +1215,7 @@ function la({
   entering: u = !1,
   room: h = []
 }) {
-  const m = aa(t), l = Y(null), o = Y(!!t.streaming), b = r.filter((d) => d.conversationId === t.conversationId), i = [...b].reverse().find((d) => d.status === "running") ?? b.at(-1), s = t.role === "agent" && !!t.streaming, y = m.trim() || i?.title || "Working", g = t.parts.filter((d) => d.type === "chip");
+  const m = ra(t), l = Y(null), o = Y(!!t.streaming), b = r.filter((d) => d.conversationId === t.conversationId), i = [...b].reverse().find((d) => d.status === "running") ?? b.at(-1), s = t.role === "agent" && !!t.streaming, y = m.trim() || i?.title || "Working", g = t.parts.filter((d) => d.type === "chip");
   return je(() => {
     const d = l.current, O = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (d && t.role === "agent" && o.current && !t.streaming && !O) {
@@ -1227,10 +1230,10 @@ function la({
     "div",
     {
       className: "message-body",
-      onClick: t.role === "agent" ? ia : void 0
+      onClick: t.role === "agent" ? ca : void 0
     },
-    t.role === "agent" ? /* @__PURE__ */ e.createElement(De, { fallback: /* @__PURE__ */ e.createElement("span", { className: "agent-markdown-fallback" }, m) }, /* @__PURE__ */ e.createElement(
-      ta,
+    t.role === "agent" ? /* @__PURE__ */ e.createElement(Pe, { fallback: /* @__PURE__ */ e.createElement("span", { className: "agent-markdown-fallback" }, m) }, /* @__PURE__ */ e.createElement(
+      na,
       {
         className: "agent-markdown",
         mode: t.streaming ? "streaming" : "static",
@@ -1242,9 +1245,9 @@ function la({
         skipHtml: !0
       },
       m
-    )) : jn(m, t.mentions, h).map((d, O) => d.agentId ? /* @__PURE__ */ e.createElement("mark", { key: O, className: "mention", title: `Asked ${h.find(($) => $.id === d.agentId)?.name ?? d.agentId} directly` }, d.text) : /* @__PURE__ */ e.createElement("span", { key: O }, d.text))
+    )) : Fn(m, t.mentions, h).map((d, O) => d.agentId ? /* @__PURE__ */ e.createElement("mark", { key: O, className: "mention", title: `Asked ${h.find(($) => $.id === d.agentId)?.name ?? d.agentId} directly` }, d.text) : /* @__PURE__ */ e.createElement("span", { key: O }, d.text))
   ), s && /* @__PURE__ */ e.createElement(
-    ca,
+    la,
     {
       agent: n,
       label: y,
@@ -1252,7 +1255,7 @@ function la({
       startedAt: t.createdAt
     }
   ), g.map((d, O) => /* @__PURE__ */ e.createElement(
-    ea,
+    ta,
     {
       key: `${t.id}:${O}`,
       kind: d.kind,
@@ -1262,7 +1265,7 @@ function la({
     }
   )));
 }
-function da({
+function ua({
   agent: t,
   thread: n,
   agentsById: a,
@@ -1333,7 +1336,7 @@ function da({
       }
     }
   }
-  return /* @__PURE__ */ e.createElement("main", { className: "conversation" }, /* @__PURE__ */ e.createElement("header", { className: `conversation-header ${d ? "scrolled" : ""}` }, /* @__PURE__ */ e.createElement("h1", null, n?.emoji && /* @__PURE__ */ e.createElement("span", { className: "conversation-emoji" }, n.emoji), se), n?.subtitle && /* @__PURE__ */ e.createElement("p", { className: "conversation-subtitle" }, n.subtitle), /* @__PURE__ */ e.createElement("div", { className: "header-actions" }, !ae && /* @__PURE__ */ e.createElement("button", { className: "computer-trigger", "aria-label": "Open this teammate's computer", onClick: b }, /* @__PURE__ */ e.createElement(ht, { size: 18 })))), /* @__PURE__ */ e.createElement("div", { className: "conversation-scroll-shell" }, h ? /* @__PURE__ */ e.createElement("div", { className: "conversation-skeleton", role: "status", "aria-label": "Loading this thread" }, /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-agent" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-line skeleton-line-wide" }), /* @__PURE__ */ e.createElement("span", { className: "skeleton-line" })), /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-user" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-bubble" })), /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-agent" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-line skeleton-line-short" }))) : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(
+  return /* @__PURE__ */ e.createElement("main", { className: "conversation" }, /* @__PURE__ */ e.createElement("header", { className: `conversation-header ${d ? "scrolled" : ""}` }, /* @__PURE__ */ e.createElement("h1", null, n?.emoji && /* @__PURE__ */ e.createElement("span", { className: "conversation-emoji" }, n.emoji), se), n?.subtitle && /* @__PURE__ */ e.createElement("p", { className: "conversation-subtitle" }, n.subtitle), /* @__PURE__ */ e.createElement("div", { className: "header-actions" }, !ae && /* @__PURE__ */ e.createElement("button", { className: "computer-trigger", "aria-label": "Open this teammate's computer", onClick: b }, /* @__PURE__ */ e.createElement(gt, { size: 18 })))), /* @__PURE__ */ e.createElement("div", { className: "conversation-scroll-shell" }, h ? /* @__PURE__ */ e.createElement("div", { className: "conversation-skeleton", role: "status", "aria-label": "Loading this thread" }, /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-agent" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-line skeleton-line-wide" }), /* @__PURE__ */ e.createElement("span", { className: "skeleton-line" })), /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-user" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-bubble" })), /* @__PURE__ */ e.createElement("div", { className: "skeleton-message skeleton-agent" }, /* @__PURE__ */ e.createElement("span", { className: "skeleton-line skeleton-line-short" }))) : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(
     "div",
     {
       className: `message-scroll ${P ? "scrollbar-visible" : ""}`,
@@ -1350,8 +1353,8 @@ function da({
       },
       onPointerLeave: () => H(!1)
     },
-    /* @__PURE__ */ e.createElement("div", { className: "message-content", ref: B }, r.length === 0 && t && /* @__PURE__ */ e.createElement("div", { className: "conversation-intro" }, /* @__PURE__ */ e.createElement(gt, { agent: t, size: 54 }), /* @__PURE__ */ e.createElement("h2", null, t.name), /* @__PURE__ */ e.createElement("p", null, t.role)), r.map((_) => /* @__PURE__ */ e.createElement(
-      la,
+    /* @__PURE__ */ e.createElement("div", { className: "message-content", ref: B }, r.length === 0 && t && /* @__PURE__ */ e.createElement("div", { className: "conversation-intro" }, /* @__PURE__ */ e.createElement(vt, { agent: t, size: 54 }), /* @__PURE__ */ e.createElement("h2", null, t.name), /* @__PURE__ */ e.createElement("p", null, t.role)), r.map((_) => /* @__PURE__ */ e.createElement(
+      da,
       {
         key: _.id,
         message: _,
@@ -1371,7 +1374,7 @@ function da({
       "aria-label": "Scroll to the latest message",
       onClick: () => me("smooth")
     },
-    /* @__PURE__ */ e.createElement(an, { size: 20 })
+    /* @__PURE__ */ e.createElement(sn, { size: 20 })
   ))), /* @__PURE__ */ e.createElement("form", { className: "composer", onSubmit: ve }, /* @__PURE__ */ e.createElement(
     "textarea",
     {
@@ -1392,10 +1395,10 @@ function da({
       "aria-label": y ? "Sending" : "Send message",
       disabled: !i.trim() || y
     },
-    y ? /* @__PURE__ */ e.createElement(oa, null) : /* @__PURE__ */ e.createElement(sa, null)
+    y ? /* @__PURE__ */ e.createElement(ia, null) : /* @__PURE__ */ e.createElement(oa, null)
   ))));
 }
-const ua = [
+const ma = [
   { id: "all", label: "Everything", types: [] },
   {
     id: "stopped",
@@ -1404,17 +1407,17 @@ const ua = [
   },
   { id: "failed", label: "Went wrong", types: ["tool.failed"] },
   { id: "decisions", label: "Your decisions", types: ["approval.decided", "grant.changed"] }
-], ma = {
-  "tool.allowed": ze,
-  "tool.refused": On,
+], pa = {
+  "tool.allowed": Ue,
+  "tool.refused": Dn,
   "tool.held": Ge,
-  "tool.failed": Oe,
-  "approval.decided": ze,
-  "approval.expired": mt,
+  "tool.failed": De,
+  "approval.decided": Ue,
+  "approval.expired": pt,
   "grant.changed": Ye,
   "crew.policy_loaded": Ye,
   "crew.bot_declined": Ge
-}, pa = {
+}, ha = {
   "tool.allowed": "ran",
   "tool.refused": "refused",
   "tool.held": "held for you",
@@ -1425,13 +1428,13 @@ const ua = [
   "crew.policy_loaded": "rules in force",
   "crew.bot_declined": "declined it itself"
 };
-function ha(t) {
+function fa(t) {
   const n = new Date(t);
   return `${n.toLocaleDateString(void 0, { month: "short", day: "numeric" })} ${n.toLocaleTimeString(void 0, { hour: "2-digit", minute: "2-digit" })}`;
 }
-function fa({ events: t, loading: n, viewId: a, onChangeView: r, onLoadMore: c, hasMore: u }) {
+function ga({ events: t, loading: n, viewId: a, onChangeView: r, onLoadMore: c, hasMore: u }) {
   const [h, m] = N(() => /* @__PURE__ */ new Set()), l = fe(() => t.slice().sort((o, b) => b.id - o.id), [t]);
-  return /* @__PURE__ */ e.createElement("section", { className: "audit-timeline" }, /* @__PURE__ */ e.createElement("div", { className: "audit-views", role: "tablist", "aria-label": "What to show" }, ua.map((o) => /* @__PURE__ */ e.createElement(
+  return /* @__PURE__ */ e.createElement("section", { className: "audit-timeline" }, /* @__PURE__ */ e.createElement("div", { className: "audit-views", role: "tablist", "aria-label": "What to show" }, ma.map((o) => /* @__PURE__ */ e.createElement(
     "button",
     {
       key: o.id,
@@ -1443,7 +1446,7 @@ function fa({ events: t, loading: n, viewId: a, onChangeView: r, onLoadMore: c, 
     },
     o.label
   ))), l.length === 0 && !n && /* @__PURE__ */ e.createElement("p", { className: "audit-empty" }, "Nothing recorded yet."), /* @__PURE__ */ e.createElement("ol", { className: "audit-rows" }, l.map((o) => {
-    const b = ma[o.event_type] ?? ze, i = h.has(o.id), s = o.event_type === "tool.refused" || o.event_type === "tool.held";
+    const b = pa[o.event_type] ?? Ue, i = h.has(o.id), s = o.event_type === "tool.refused" || o.event_type === "tool.held";
     return /* @__PURE__ */ e.createElement(
       "li",
       {
@@ -1463,8 +1466,8 @@ function fa({ events: t, loading: n, viewId: a, onChangeView: r, onLoadMore: c, 
         },
         /* @__PURE__ */ e.createElement(b, { size: 14 }),
         /* @__PURE__ */ e.createElement("span", { className: "audit-subject" }, o.subject || o.tool || o.event_type),
-        /* @__PURE__ */ e.createElement("span", { className: "audit-kind" }, pa[o.event_type] ?? o.event_type),
-        /* @__PURE__ */ e.createElement("time", { className: "audit-when", dateTime: new Date(o.created_at).toISOString() }, ha(o.created_at))
+        /* @__PURE__ */ e.createElement("span", { className: "audit-kind" }, ha[o.event_type] ?? o.event_type),
+        /* @__PURE__ */ e.createElement("time", { className: "audit-when", dateTime: new Date(o.created_at).toISOString() }, fa(o.created_at))
       ),
       i && /* @__PURE__ */ e.createElement("dl", { className: "audit-detail" }, o.tool && /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("dt", null, "Tool"), /* @__PURE__ */ e.createElement("dd", null, /* @__PURE__ */ e.createElement("code", null, o.tool))), o.detail && /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("dt", null, "Why"), /* @__PURE__ */ e.createElement("dd", null, o.detail)), o.actor !== "_system" && /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("dt", null, "Who"), /* @__PURE__ */ e.createElement("dd", null, o.actor === "_operator" ? "you" : o.actor)), o.duration_ms !== null && /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("dt", null, "Took"), /* @__PURE__ */ e.createElement("dd", null, o.duration_ms, " ms")), o.args_digest && /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("dt", null, "Arguments"), /* @__PURE__ */ e.createElement("dd", null, /* @__PURE__ */ e.createElement("code", null, o.args_digest))))
     );
@@ -1479,18 +1482,18 @@ function fa({ events: t, loading: n, viewId: a, onChangeView: r, onLoadMore: c, 
     n ? "Loading…" : "Show older"
   ));
 }
-const ga = {
-  slides: xn,
+const ya = {
+  slides: In,
   document: be,
-  sheet: En,
-  image: kn,
-  data: pn,
+  sheet: bn,
+  image: Nn,
+  data: fn,
   text: be,
-  code: vn,
-  archive: nn,
-  file: pt
+  code: wn,
+  archive: rn,
+  file: ht
 };
-function ya(t) {
+function va(t) {
   if (t === 0) return "0 bytes";
   const n = ["bytes", "KB", "MB", "GB"];
   let a = t, r = 0;
@@ -1498,13 +1501,13 @@ function ya(t) {
     a /= 1024, r += 1;
   return `${r === 0 ? a : a.toFixed(a < 10 ? 1 : 0)} ${n[r]}`;
 }
-function va(t) {
+function Ea(t) {
   const n = new Date(t);
   return Number.isNaN(n.getTime()) ? "" : (/* @__PURE__ */ new Date()).toDateString() === n.toDateString() ? n.toLocaleTimeString(void 0, { hour: "2-digit", minute: "2-digit" }) : n.toLocaleDateString(void 0, { month: "short", day: "numeric" });
 }
-function Ea({ agentName: t, artifacts: n, urlFor: a }) {
+function wa({ agentName: t, artifacts: n, urlFor: a }) {
   return n.length === 0 ? /* @__PURE__ */ e.createElement("p", { className: "files-empty" }, t, " has not produced any files yet.") : /* @__PURE__ */ e.createElement("ul", { className: "files-list" }, n.map((r) => {
-    const c = ga[r.kind] ?? pt, u = r.size === 0;
+    const c = ya[r.kind] ?? ht, u = r.size === 0;
     return /* @__PURE__ */ e.createElement("li", { className: `files-row ${u ? "is-empty" : ""}`, key: r.id }, /* @__PURE__ */ e.createElement(
       "a",
       {
@@ -1514,41 +1517,41 @@ function Ea({ agentName: t, artifacts: n, urlFor: a }) {
       },
       /* @__PURE__ */ e.createElement(c, { size: 15 }),
       /* @__PURE__ */ e.createElement("span", { className: "files-name", title: r.path }, r.name),
-      /* @__PURE__ */ e.createElement("span", { className: "files-meta" }, ya(r.size), u && /* @__PURE__ */ e.createElement("span", { className: "files-warning", title: "Nothing was written to this file" }, "didn't finish")),
-      /* @__PURE__ */ e.createElement("span", { className: "files-when" }, va(r.updatedAt)),
-      /* @__PURE__ */ e.createElement(hn, { size: 13, className: "files-download" })
+      /* @__PURE__ */ e.createElement("span", { className: "files-meta" }, va(r.size), u && /* @__PURE__ */ e.createElement("span", { className: "files-warning", title: "Nothing was written to this file" }, "didn't finish")),
+      /* @__PURE__ */ e.createElement("span", { className: "files-when" }, Ea(r.updatedAt)),
+      /* @__PURE__ */ e.createElement(gn, { size: 13, className: "files-download" })
     ));
   }));
 }
-const wa = {
-  pending: ut,
-  running: Te,
-  succeeded: Me,
-  failed: $n,
-  waiting: bn
-}, ba = {
-  web: wn,
+const ba = {
+  pending: mt,
+  running: _e,
+  succeeded: Te,
+  failed: Ln,
+  waiting: kn
+}, ka = {
+  web: ft,
   file: be,
-  mail: Sn,
-  user: Pn
+  mail: Cn,
+  user: $n
 };
-function ka({ step: t }) {
-  const n = wa[t.status] ?? ut;
+function Na({ step: t }) {
+  const n = ba[t.status] ?? mt;
   return /* @__PURE__ */ e.createElement("li", { className: `plan-step is-${t.status}` }, /* @__PURE__ */ e.createElement(n, { size: 13, className: t.status === "running" ? "spin" : void 0 }), /* @__PURE__ */ e.createElement("span", { className: "plan-step-title" }, t.title), t.detail && /* @__PURE__ */ e.createElement("span", { className: "plan-step-detail" }, t.detail));
 }
-function Na({ item: t }) {
-  const n = ba[t.kind] ?? be, a = t.url ? /* @__PURE__ */ e.createElement("a", { href: t.url, target: "_blank", rel: "noreferrer noopener" }, t.title) : /* @__PURE__ */ e.createElement("span", null, t.title);
+function Sa({ item: t }) {
+  const n = ka[t.kind] ?? be, a = t.url ? /* @__PURE__ */ e.createElement("a", { href: t.url, target: "_blank", rel: "noreferrer noopener" }, t.title) : /* @__PURE__ */ e.createElement("span", null, t.title);
   return /* @__PURE__ */ e.createElement("li", { className: "evidence-row" }, /* @__PURE__ */ e.createElement("div", { className: "evidence-head" }, /* @__PURE__ */ e.createElement(n, { size: 12 }), a), /* @__PURE__ */ e.createElement("p", { className: "evidence-excerpt" }, t.excerpt));
 }
-function Sa({ agentName: t, tasks: n }) {
-  return n.length === 0 ? /* @__PURE__ */ e.createElement("p", { className: "plan-empty" }, t, " has no scheduled or long-running work.") : /* @__PURE__ */ e.createElement("div", { className: "plan-list" }, n.map((a) => /* @__PURE__ */ e.createElement("section", { className: "plan-task", key: a.id }, /* @__PURE__ */ e.createElement("div", { className: "plan-task-head" }, /* @__PURE__ */ e.createElement("span", { className: "plan-task-title" }, a.title || a.kind), /* @__PURE__ */ e.createElement("span", { className: `plan-task-status is-${a.status}` }, a.status.replace("_", " "))), a.attempts > 1 && /* @__PURE__ */ e.createElement("p", { className: "plan-task-attempts" }, "picked up ", a.attempts, " times"), a.error && /* @__PURE__ */ e.createElement("p", { className: "plan-task-error" }, a.error), a.plan.length > 0 && /* @__PURE__ */ e.createElement("ol", { className: "plan-steps" }, a.plan.map((r) => /* @__PURE__ */ e.createElement(ka, { step: r, key: r.id }))), a.evidence.length > 0 && /* @__PURE__ */ e.createElement("details", { className: "evidence" }, /* @__PURE__ */ e.createElement("summary", null, "What it read (", a.evidence.length, ")"), /* @__PURE__ */ e.createElement("ul", { className: "evidence-list" }, a.evidence.map((r, c) => /* @__PURE__ */ e.createElement(Na, { item: r, key: `${r.title}-${c}` })))))));
+function Ca({ agentName: t, tasks: n }) {
+  return n.length === 0 ? /* @__PURE__ */ e.createElement("p", { className: "plan-empty" }, t, " has no scheduled or long-running work.") : /* @__PURE__ */ e.createElement("div", { className: "plan-list" }, n.map((a) => /* @__PURE__ */ e.createElement("section", { className: "plan-task", key: a.id }, /* @__PURE__ */ e.createElement("div", { className: "plan-task-head" }, /* @__PURE__ */ e.createElement("span", { className: "plan-task-title" }, a.title || a.kind), /* @__PURE__ */ e.createElement("span", { className: `plan-task-status is-${a.status}` }, a.status.replace("_", " "))), a.attempts > 1 && /* @__PURE__ */ e.createElement("p", { className: "plan-task-attempts" }, "picked up ", a.attempts, " times"), a.error && /* @__PURE__ */ e.createElement("p", { className: "plan-task-error" }, a.error), a.plan.length > 0 && /* @__PURE__ */ e.createElement("ol", { className: "plan-steps" }, a.plan.map((r) => /* @__PURE__ */ e.createElement(Na, { step: r, key: r.id }))), a.evidence.length > 0 && /* @__PURE__ */ e.createElement("details", { className: "evidence" }, /* @__PURE__ */ e.createElement("summary", null, "What it read (", a.evidence.length, ")"), /* @__PURE__ */ e.createElement("ul", { className: "evidence-list" }, a.evidence.map((r, c) => /* @__PURE__ */ e.createElement(Sa, { item: r, key: `${r.title}-${c}` })))))));
 }
-const Ca = [
-  { mode: "deny", label: "Never", icon: rn },
-  { mode: "ask", label: "Ask me", icon: dn },
-  { mode: "allow", label: "Allow", icon: An }
+const Ma = [
+  { mode: "deny", label: "Never", icon: on },
+  { mode: "ask", label: "Ask me", icon: mn },
+  { mode: "allow", label: "Allow", icon: On }
 ];
-function Ma({ agentName: t, grants: n, busy: a, onSetGrant: r, onClearGrant: c }) {
+function Ta({ agentName: t, grants: n, busy: a, onSetGrant: r, onClearGrant: c }) {
   const [u, h] = N(""), [m, l] = N(!1), o = fe(() => {
     const i = u.trim().toLowerCase(), s = n.filter((g) => m && g.source !== "grant" ? !1 : i ? g.tool.toLowerCase().includes(i) || g.toolset.toLowerCase().includes(i) : !0), y = /* @__PURE__ */ new Map();
     for (const g of s) {
@@ -1557,7 +1560,7 @@ function Ma({ agentName: t, grants: n, busy: a, onSetGrant: r, onClearGrant: c }
     }
     return [...y.entries()].sort(([g], [d]) => g.localeCompare(d));
   }, [n, u, m]), b = n.filter((i) => i.mode === "ask").length;
-  return /* @__PURE__ */ e.createElement("section", { className: "permissions-panel" }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow" }, /* @__PURE__ */ e.createElement(Nn, { size: 14 }), " What ", t, " can do"), /* @__PURE__ */ e.createElement("p", { className: "permissions-summary" }, n.length, " tools · ", b, " need your say-so"), /* @__PURE__ */ e.createElement("div", { className: "permissions-filters" }, /* @__PURE__ */ e.createElement(
+  return /* @__PURE__ */ e.createElement("section", { className: "permissions-panel" }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow" }, /* @__PURE__ */ e.createElement(Sn, { size: 14 }), " What ", t, " can do"), /* @__PURE__ */ e.createElement("p", { className: "permissions-summary" }, n.length, " tools · ", b, " need your say-so"), /* @__PURE__ */ e.createElement("div", { className: "permissions-filters" }, /* @__PURE__ */ e.createElement(
     "input",
     {
       type: "search",
@@ -1580,7 +1583,7 @@ function Ma({ agentName: t, grants: n, busy: a, onSetGrant: r, onClearGrant: c }
       key: y.tool
     },
     /* @__PURE__ */ e.createElement("div", { className: "permissions-tool" }, /* @__PURE__ */ e.createElement("code", null, y.tool), /* @__PURE__ */ e.createElement("span", { className: "permissions-why" }, y.why)),
-    /* @__PURE__ */ e.createElement("div", { className: "permissions-modes", role: "group", "aria-label": `What ${t} may do with ${y.tool}` }, Ca.map(({ mode: g, label: d, icon: O }) => /* @__PURE__ */ e.createElement(
+    /* @__PURE__ */ e.createElement("div", { className: "permissions-modes", role: "group", "aria-label": `What ${t} may do with ${y.tool}` }, Ma.map(({ mode: g, label: d, icon: O }) => /* @__PURE__ */ e.createElement(
       "button",
       {
         key: g,
@@ -1607,11 +1610,11 @@ function Ma({ agentName: t, grants: n, busy: a, onSetGrant: r, onClearGrant: c }
           c(y.tool);
         }
       },
-      /* @__PURE__ */ e.createElement(Rn, { size: 13 })
+      /* @__PURE__ */ e.createElement(An, { size: 13 })
     ))
   )))));
 }
-const Ta = [
+const _a = [
   [/support|ticket|helpdesk|customer/, [
     "Every weekday at 9am, go through the ticket queue and tell me which ones have been waiting longest.",
     "Each Friday afternoon, summarise what people asked about this week and what kept coming up."
@@ -1636,20 +1639,20 @@ const Ta = [
     "Every Monday at 9am, list the invoices that are past due and by how long.",
     "On the last working day of the month, put the expense summary together."
   ]]
-], _a = [
+], xa = [
   "Every weekday at 9am, tell me what changed overnight that I should know about.",
   "Each Friday afternoon, write up what you got done this week."
 ];
-function xa(t) {
+function Ia(t) {
   const n = (t || "").toLowerCase();
-  for (const [a, r] of Ta)
+  for (const [a, r] of _a)
     if (a.test(n)) return r;
-  return _a;
+  return xa;
 }
-function tr(t) {
+function nr(t) {
   return t && t.__esModule && Object.prototype.hasOwnProperty.call(t, "default") ? t.default : t;
 }
-function Ia(t) {
+function Ra(t) {
   if (Object.prototype.hasOwnProperty.call(t, "__esModule")) return t;
   var n = t.default;
   if (typeof n == "function") {
@@ -1673,13 +1676,13 @@ function Ia(t) {
     });
   }), a;
 }
-var xe = { exports: {} }, ce = {};
-const yt = /* @__PURE__ */ Ia(Gt);
-var Je;
-function Ra() {
-  if (Je) return ce;
-  Je = 1;
-  var t = yt;
+var Ie = { exports: {} }, ce = {};
+const Et = /* @__PURE__ */ Ra(Yt);
+var Ze;
+function Aa() {
+  if (Ze) return ce;
+  Ze = 1;
+  var t = Et;
   function n(l) {
     var o = "https://react.dev/errors/" + l;
     if (1 < arguments.length) {
@@ -1809,9 +1812,9 @@ function Ra() {
   }, ce.version = "19.2.7", ce;
 }
 var le = {};
-var Ze;
-function Aa() {
-  return Ze || (Ze = 1, process.env.NODE_ENV !== "production" && (function() {
+var Qe;
+function Oa() {
+  return Qe || (Qe = 1, process.env.NODE_ENV !== "production" && (function() {
     function t() {
     }
     function n(i) {
@@ -1858,7 +1861,7 @@ See https://react.dev/link/invalid-hook-call for tips about how to debug and fix
       ), i;
     }
     typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ < "u" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart == "function" && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-    var m = yt, l = {
+    var m = Et, l = {
       d: {
         f: t,
         r: function() {
@@ -2013,10 +2016,10 @@ See https://react.dev/link/invalid-hook-call for tips about how to debug and fix
     }, le.version = "19.2.7", typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ < "u" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop == "function" && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
   })()), le;
 }
-var Qe;
-function Oa() {
-  if (Qe) return xe.exports;
-  Qe = 1;
+var et;
+function Da() {
+  if (et) return Ie.exports;
+  et = 1;
   function t() {
     if (!(typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ > "u" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE != "function")) {
       if (process.env.NODE_ENV !== "production")
@@ -2028,10 +2031,10 @@ function Oa() {
       }
     }
   }
-  return process.env.NODE_ENV === "production" ? (t(), xe.exports = Ra()) : xe.exports = Aa(), xe.exports;
+  return process.env.NODE_ENV === "production" ? (t(), Ie.exports = Aa()) : Ie.exports = Oa(), Ie.exports;
 }
-var vt = Oa();
-function Da(t) {
+var wt = Da();
+function Pa(t) {
   if (t.width <= 0 || t.height <= 0) return !1;
   try {
     const n = t.getContext("2d", { willReadFrequently: !0 });
@@ -2047,7 +2050,7 @@ function Da(t) {
     return !1;
   }
 }
-function Et({
+function bt({
   session: t,
   viewOnly: n,
   compact: a = !1,
@@ -2071,7 +2074,7 @@ function Et({
       i || s || (s = !0, J(), H(), b(E), l("disconnected"), B(), R?.disconnect());
     }, j = () => {
       const E = u.current?.querySelector("canvas");
-      return E ? Da(E) : !1;
+      return E ? Pa(E) : !1;
     }, te = () => {
       i || s || (J(), y = !0, d = window.setInterval(() => {
         !i && j() && (H(), l("connected"));
@@ -2091,18 +2094,18 @@ function Et({
     }).catch(() => S("Could not load the screen client.")), () => {
       i = !0, J(), H(), R?.removeEventListener("connect", te), R?.removeEventListener("disconnect", K), R?.removeEventListener("securityfailure", de), R?.removeEventListener("credentialsrequired", Z), R?.disconnect();
     };
-  }, [a, t, n]), /* @__PURE__ */ e.createElement("div", { className: `vnc-viewport ${a ? "is-compact" : ""}` }, /* @__PURE__ */ e.createElement("div", { ref: u, className: "vnc-target" }), m !== "connected" && /* @__PURE__ */ e.createElement("div", { className: "vnc-status", role: "status" }, m === "connecting" ? /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(Te, { size: a ? 14 : 18, className: "spin" }), !a && "Connecting…") : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("span", null, a ? "Screen unavailable" : o), r && /* @__PURE__ */ e.createElement("button", { className: "secondary-button", onClick: r }, "Reconnect"))));
+  }, [a, t, n]), /* @__PURE__ */ e.createElement("div", { className: `vnc-viewport ${a ? "is-compact" : ""}` }, /* @__PURE__ */ e.createElement("div", { ref: u, className: "vnc-target" }), m !== "connected" && /* @__PURE__ */ e.createElement("div", { className: "vnc-status", role: "status" }, m === "connecting" ? /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(_e, { size: a ? 14 : 18, className: "spin" }), !a && "Connecting…") : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("span", null, a ? "Screen unavailable" : o), r && /* @__PURE__ */ e.createElement("button", { className: "secondary-button", onClick: r }, "Reconnect"))));
 }
-function Pa({
+function $a({
   session: t,
   failure: n,
   title: a,
   onClose: r,
   onReconnect: c
 }) {
-  return vt.createPortal(/* @__PURE__ */ e.createElement("div", { className: "vnc-desktop", role: "dialog", "aria-label": a }, /* @__PURE__ */ e.createElement("div", { className: "vnc-titlebar", "aria-hidden": "true" }), /* @__PURE__ */ e.createElement("button", { className: "vnc-close", "aria-label": "Close this screen", onClick: r }, /* @__PURE__ */ e.createElement(Tn, { size: 18 })), t ? /* @__PURE__ */ e.createElement(Et, { session: t, viewOnly: !1, onReconnect: c }) : /* @__PURE__ */ e.createElement("div", { className: "vnc-viewport" }, /* @__PURE__ */ e.createElement("div", { className: "vnc-status", role: "status" }, n ? /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("span", null, n), /* @__PURE__ */ e.createElement("button", { className: "secondary-button", onClick: c }, "Reconnect")) : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(Te, { size: 18, className: "spin" }), " Connecting…")))), document.body);
+  return wt.createPortal(/* @__PURE__ */ e.createElement("div", { className: "vnc-desktop", role: "dialog", "aria-label": a }, /* @__PURE__ */ e.createElement("div", { className: "vnc-titlebar", "aria-hidden": "true" }), /* @__PURE__ */ e.createElement("button", { className: "vnc-close", "aria-label": "Close this screen", onClick: r }, /* @__PURE__ */ e.createElement(_n, { size: 18 })), t ? /* @__PURE__ */ e.createElement(bt, { session: t, viewOnly: !1, onReconnect: c }) : /* @__PURE__ */ e.createElement("div", { className: "vnc-viewport" }, /* @__PURE__ */ e.createElement("div", { className: "vnc-status", role: "status" }, n ? /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement("span", null, n), /* @__PURE__ */ e.createElement("button", { className: "secondary-button", onClick: c }, "Reconnect")) : /* @__PURE__ */ e.createElement(e.Fragment, null, /* @__PURE__ */ e.createElement(_e, { size: 18, className: "spin" }), " Connecting…")))), document.body);
 }
-function $a({
+function La({
   open: t,
   width: n,
   onResize: a,
@@ -2198,7 +2201,7 @@ function $a({
         p.currentTarget.hasPointerCapture(p.pointerId) && M(p.clientX);
       }
     }
-  ), /* @__PURE__ */ e.createElement("header", null, /* @__PURE__ */ e.createElement("button", { className: "icon-button", "aria-label": "Close the details panel", onClick: de }, /* @__PURE__ */ e.createElement(ln, { size: 18 }))), h.filter((p) => p.outcome === "outcome_unknown").map((p) => /* @__PURE__ */ e.createElement("section", { className: "approval-card is-uncertain", key: `unknown-${p.id}` }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow warning" }, /* @__PURE__ */ e.createElement(qe, { size: 14 }), " Outcome unknown"), /* @__PURE__ */ e.createElement("h3", null, p.title), /* @__PURE__ */ e.createElement("p", null, "You allowed this and the process stopped before anything recorded whether it went through. It may have. Check before allowing it again."))), T.map((p) => /* @__PURE__ */ e.createElement("section", { className: "approval-card", key: p.id }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow warning" }, /* @__PURE__ */ e.createElement(qe, { size: 14 }), " Waiting for you", p.source && p.source !== p.agentId && /* @__PURE__ */ e.createElement("span", { className: "approval-source" }, p.source), p.ref && /* @__PURE__ */ e.createElement("code", { className: "approval-ref", title: "Reply with this in the thread to decide without opening the panel" }, p.ref)), /* @__PURE__ */ e.createElement("h3", null, p.title), p.description && /* @__PURE__ */ e.createElement("p", null, p.description), p.scope.length > 0 && /* @__PURE__ */ e.createElement("div", { className: "scope" }, /* @__PURE__ */ e.createElement("span", null, "This allows:"), p.scope.map((x) => /* @__PURE__ */ e.createElement("div", { key: x }, /* @__PURE__ */ e.createElement(Me, { size: 13 }), x))), /* @__PURE__ */ e.createElement(
+  ), /* @__PURE__ */ e.createElement("header", null, /* @__PURE__ */ e.createElement("button", { className: "icon-button", "aria-label": "Close the details panel", onClick: de }, /* @__PURE__ */ e.createElement(un, { size: 18 }))), h.filter((p) => p.outcome === "outcome_unknown").map((p) => /* @__PURE__ */ e.createElement("section", { className: "approval-card is-uncertain", key: `unknown-${p.id}` }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow warning" }, /* @__PURE__ */ e.createElement(Me, { size: 14 }), " Outcome unknown"), /* @__PURE__ */ e.createElement("h3", null, p.title), /* @__PURE__ */ e.createElement("p", null, "You allowed this and the process stopped before anything recorded whether it went through. It may have. Check before allowing it again."))), T.map((p) => /* @__PURE__ */ e.createElement("section", { className: "approval-card", key: p.id }, /* @__PURE__ */ e.createElement("div", { className: "eyebrow warning" }, /* @__PURE__ */ e.createElement(Me, { size: 14 }), " Waiting for you", p.source && p.source !== p.agentId && /* @__PURE__ */ e.createElement("span", { className: "approval-source" }, p.source), p.ref && /* @__PURE__ */ e.createElement("code", { className: "approval-ref", title: "Reply with this in the thread to decide without opening the panel" }, p.ref)), /* @__PURE__ */ e.createElement("h3", null, p.title), p.description && /* @__PURE__ */ e.createElement("p", null, p.description), p.scope.length > 0 && /* @__PURE__ */ e.createElement("div", { className: "scope" }, /* @__PURE__ */ e.createElement("span", null, "This allows:"), p.scope.map((x) => /* @__PURE__ */ e.createElement("div", { key: x }, /* @__PURE__ */ e.createElement(Te, { size: 13 }), x))), /* @__PURE__ */ e.createElement(
     "textarea",
     {
       "aria-label": "Note for this decision",
@@ -2227,7 +2230,7 @@ function $a({
         key: p
       },
       /* @__PURE__ */ e.createElement(
-        Et,
+        bt,
         {
           session: x,
           viewOnly: !0,
@@ -2235,7 +2238,7 @@ function $a({
           onDisconnect: () => ie((z) => new Set(z).add(p))
         }
       )
-    )), !oe.has(u?.id ?? "") && (se === u?.id ? /* @__PURE__ */ e.createElement("span", { className: "computer-preview-loading", role: "status", "aria-label": `Loading ${r}'s screen` }, /* @__PURE__ */ e.createElement(Te, { size: 18, className: "spin" })) : G.has(u?.id ?? "") ? /* @__PURE__ */ e.createElement("span", { className: "computer-preview-loading", role: "status" }, "Screen unavailable") : /* @__PURE__ */ e.createElement("span", { className: "computer-screen-off", "aria-hidden": "true" })), /* @__PURE__ */ e.createElement("span", { className: "screen-hover-action" }, /* @__PURE__ */ e.createElement(Cn, { size: 14 }), " Open"))
+    )), !oe.has(u?.id ?? "") && (se === u?.id ? /* @__PURE__ */ e.createElement("span", { className: "computer-preview-loading", role: "status", "aria-label": `Loading ${r}'s screen` }, /* @__PURE__ */ e.createElement(_e, { size: 18, className: "spin" })) : G.has(u?.id ?? "") ? /* @__PURE__ */ e.createElement("span", { className: "computer-preview-loading", role: "status" }, "Screen unavailable") : /* @__PURE__ */ e.createElement("span", { className: "computer-screen-off", "aria-hidden": "true" })), /* @__PURE__ */ e.createElement("span", { className: "screen-hover-action" }, /* @__PURE__ */ e.createElement(Mn, { size: 14 }), " Open"))
   ), /* @__PURE__ */ e.createElement("div", { className: "screen-caption" }, /* @__PURE__ */ e.createElement("span", null, r, "'s screen"), /* @__PURE__ */ e.createElement("span", { className: `screen-state ${u?.status ?? "offline"}` }, u?.status === "online" ? "Running" : u?.status === "starting" ? "Starting…" : "Off")), u && u.status !== "online" && /* @__PURE__ */ e.createElement(
     "button",
     {
@@ -2265,7 +2268,7 @@ function $a({
       }
     },
     /* @__PURE__ */ e.createElement(Ve, { size: 14 })
-  ))), m.length === 0 && /* @__PURE__ */ e.createElement("div", { className: "routine-empty" }, /* @__PURE__ */ e.createElement("p", null, "Nothing on a schedule yet. Ask for something like:"), xa(c).map((p) => /* @__PURE__ */ e.createElement(
+  ))), m.length === 0 && /* @__PURE__ */ e.createElement("div", { className: "routine-empty" }, /* @__PURE__ */ e.createElement("p", null, "Nothing on a schedule yet. Ask for something like:"), Ia(c).map((p) => /* @__PURE__ */ e.createElement(
     "button",
     {
       type: "button",
@@ -2315,15 +2318,15 @@ function $a({
       onClick: () => ne((p) => p === "audit" ? "" : "audit")
     },
     "History"
-  )), D === "work" && /* @__PURE__ */ e.createElement(Sa, { agentName: r, tasks: O }), D === "files" && /* @__PURE__ */ e.createElement(
-    Ea,
+  )), D === "work" && /* @__PURE__ */ e.createElement(Ca, { agentName: r, tasks: O }), D === "files" && /* @__PURE__ */ e.createElement(
+    wa,
     {
       agentName: r,
       artifacts: g,
       urlFor: d
     }
   ), D === "permissions" && /* @__PURE__ */ e.createElement(
-    Ma,
+    Ta,
     {
       agentName: r,
       grants: l,
@@ -2332,7 +2335,7 @@ function $a({
       onClearGrant: j
     }
   ), D === "audit" && /* @__PURE__ */ e.createElement(
-    fa,
+    ga,
     {
       events: b,
       loading: i,
@@ -2342,7 +2345,7 @@ function $a({
       onLoadMore: K
     }
   )), ve && /* @__PURE__ */ e.createElement(
-    Pa,
+    $a,
     {
       session: me,
       failure: F,
@@ -2354,12 +2357,12 @@ function $a({
     }
   ));
 }
-const et = 160, tt = 1e5, La = 800, za = 1e4, nt = "This page changed elsewhere. Your draft is safe — copy it before loading the latest version.", Ce = (t) => ({
+const tt = 160, nt = 1e5, za = 800, Ua = 1e4, at = "This page changed elsewhere. Your draft is safe — copy it before loading the latest version.", Ce = (t) => ({
   title: t.title,
   content: t.content,
   parent_id: t.parent_id
-}), at = (t, n) => t.title === n.title && t.content === n.content && t.parent_id === n.parent_id, rt = (t) => !!t && typeof t == "object" && ("kind" in t && t.kind === "conflict" || "status" in t && t.status === 409);
-class Ua {
+}), rt = (t, n) => t.title === n.title && t.content === n.content && t.parent_id === n.parent_id, st = (t) => !!t && typeof t == "object" && ("kind" in t && t.kind === "conflict" || "status" in t && t.status === 409);
+class qa {
   constructor(n) {
     this.save = n;
   }
@@ -2380,7 +2383,7 @@ class Ua {
     for (const a of this.listeners) a();
   }
   get changed() {
-    return !!(this.state.page && this.state.draft && !at(Ce(this.state.page), this.state.draft));
+    return !!(this.state.page && this.state.draft && !rt(Ce(this.state.page), this.state.draft));
   }
   /** Whether there is anything a reload would lose. */
   get dirty() {
@@ -2411,7 +2414,7 @@ class Ua {
         return;
       }
       if (this.dirty) {
-        clearTimeout(this.timer), this.publish({ remote: n, status: "conflict", error: nt });
+        clearTimeout(this.timer), this.publish({ remote: n, status: "conflict", error: at });
         return;
       }
       this.publish({
@@ -2433,7 +2436,7 @@ class Ua {
   schedule() {
     clearTimeout(this.timer), this.changed && !this.pending && this.state.status !== "error" && this.state.status !== "conflict" && (this.timer = setTimeout(() => {
       this.flush();
-    }, La));
+    }, za));
   }
   /**
    * Save now. `retry` is the operator asking again after an error — it is the
@@ -2448,10 +2451,10 @@ class Ua {
     if (!this.changed && this.state.status !== "error")
       return this.publish({ status: "saved", error: void 0 }), !0;
     const a = this.state.page, r = { ...this.state.draft }, c = this.generation;
-    if (!r.title.trim() || r.title.length > et || r.content.length > tt)
+    if (!r.title.trim() || r.title.length > tt || r.content.length > nt)
       return this.publish({
         status: "error",
-        error: `Use a title up to ${et} characters and a document up to ${tt.toLocaleString("en-US")} characters. Your draft is still here.`
+        error: `Use a title up to ${tt} characters and a document up to ${nt.toLocaleString("en-US")} characters. Your draft is still here.`
       }), !1;
     this.controller = new AbortController();
     const u = this.controller;
@@ -2474,11 +2477,11 @@ class Ua {
           new Promise((s, y) => {
             l = setTimeout(() => {
               u.abort(), y(new Error("Saving timed out. Your draft is safe; retry when connected."));
-            }, za);
+            }, Ua);
           })
         ]);
         if (c !== this.generation) return !1;
-        const b = at(this.state.draft, r), i = this.state.remote && this.state.remote.revision > o.revision ? this.state.remote : o;
+        const b = rt(this.state.draft, r), i = this.state.remote && this.state.remote.revision > o.revision ? this.state.remote : o;
         return this.publish({
           page: o,
           remote: i,
@@ -2489,8 +2492,8 @@ class Ua {
         }), this.state.status !== "conflict";
       } catch (o) {
         return c !== this.generation || this.publish({
-          status: rt(o) ? "conflict" : "error",
-          error: rt(o) ? nt : o instanceof Error ? o.message : "Could not save. Your draft is safe."
+          status: st(o) ? "conflict" : "error",
+          error: st(o) ? at : o instanceof Error ? o.message : "Could not save. Your draft is safe."
         }), !1;
       } finally {
         clearTimeout(l), c === this.generation && (this.pending = void 0, this.publish({}), this.schedule());
@@ -2519,8 +2522,8 @@ class Ua {
     this.generation++, clearTimeout(this.timer), this.controller?.abort(), this.pending = void 0, this.listeners.clear();
   }
 }
-const qa = Pe(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-CLfmBW3m.js").then((t) => t.i)).Streamdown }));
-function Ha(t) {
+const Ha = $e(async () => ({ default: (await import("./chunk-mermaid-HWGCJPDP-DYEx7YSH.js").then((t) => t.i)).Streamdown }));
+function ja(t) {
   const n = new Map(
     t.map((r) => [r.id, { page: r, children: [] }])
   ), a = [];
@@ -2530,24 +2533,24 @@ function Ha(t) {
   }
   return a;
 }
-const ja = {
+const Fa = {
   saved: "Saved",
   dirty: "Unsaved changes",
   saving: "Saving…",
   error: "Not saved",
   conflict: "Changed elsewhere"
 };
-function Fa({ state: t }) {
-  const n = t.status === "saving" ? Te : t.status === "saved" ? Me : Oe;
-  return /* @__PURE__ */ e.createElement("span", { className: `space-save space-save-${t.status}` }, /* @__PURE__ */ e.createElement(n, { size: 13, className: t.status === "saving" ? "space-spin" : void 0 }), ja[t.status]);
+function Va({ state: t }) {
+  const n = t.status === "saving" ? _e : t.status === "saved" ? Te : De;
+  return /* @__PURE__ */ e.createElement("span", { className: `space-save space-save-${t.status}` }, /* @__PURE__ */ e.createElement(n, { size: 13, className: t.status === "saving" ? "space-spin" : void 0 }), Fa[t.status]);
 }
-function Va({ client: t, agents: n }) {
+function Ba({ client: t, agents: n }) {
   const [a, r] = N([]), [c, u] = N(""), [h, m] = N([]), [l, o] = N(""), [b, i] = N(""), [s, y] = N(!1), [g, d] = N(""), [O, $] = N(!1), R = fe(
-    () => new Ua((E, D, ne) => t.patchPage(c, E, D, ne)),
+    () => new qa((E, D, ne) => t.patchPage(c, E, D, ne)),
     [t, c]
   );
   U(() => () => R.dispose(), [R]);
-  const P = ct(R.subscribe, R.getSnapshot), H = a.find((E) => E.id === c), J = Ee(async () => {
+  const P = lt(R.subscribe, R.getSnapshot), H = a.find((E) => E.id === c), J = Ee(async () => {
     try {
       const E = await t.listSpaces();
       r(E), u((D) => E.some((ne) => ne.id === D) ? D : E[0]?.id ?? "");
@@ -2616,7 +2619,7 @@ ${E.content}`), $(!0), setTimeout(() => $(!1), 2500);
       } catch {
         d("Could not reach the clipboard. Select the text and copy it.");
       }
-  }, Z = fe(() => Ha(h), [h]);
+  }, Z = fe(() => ja(h), [h]);
   return /* @__PURE__ */ e.createElement("div", { className: "spaces-panel" }, /* @__PURE__ */ e.createElement("aside", { className: "spaces-library" }, /* @__PURE__ */ e.createElement("header", { className: "spaces-library-head" }, /* @__PURE__ */ e.createElement(
     "select",
     {
@@ -2640,7 +2643,7 @@ ${E.content}`), $(!0), setTimeout(() => $(!1), 2500);
       title: "New Space",
       "aria-label": "New Space"
     },
-    /* @__PURE__ */ e.createElement(Ae, { size: 15 })
+    /* @__PURE__ */ e.createElement(Oe, { size: 15 })
   )), /* @__PURE__ */ e.createElement("div", { className: "spaces-search" }, /* @__PURE__ */ e.createElement(Fe, { size: 14 }), /* @__PURE__ */ e.createElement(
     "input",
     {
@@ -2650,7 +2653,7 @@ ${E.content}`), $(!0), setTimeout(() => $(!1), 2500);
       "aria-label": "Search this Space"
     }
   )), /* @__PURE__ */ e.createElement("nav", { className: "spaces-tree", "aria-label": "Pages" }, Z.length === 0 && /* @__PURE__ */ e.createElement("p", { className: "spaces-empty" }, b ? "Nothing matches." : "No pages yet."), Z.map((E) => /* @__PURE__ */ e.createElement(
-    wt,
+    kt,
     {
       key: E.page.id,
       node: E,
@@ -2669,9 +2672,9 @@ ${E.content}`), $(!0), setTimeout(() => $(!1), 2500);
       },
       disabled: !c
     },
-    /* @__PURE__ */ e.createElement(Ae, { size: 14 }),
+    /* @__PURE__ */ e.createElement(Oe, { size: 14 }),
     " New page"
-  ), H && /* @__PURE__ */ e.createElement("section", { className: "spaces-members" }, /* @__PURE__ */ e.createElement("h4", null, /* @__PURE__ */ e.createElement(ft, { size: 13 }), " Who can read this"), n.length === 0 && /* @__PURE__ */ e.createElement("p", { className: "spaces-empty" }, "No teammates yet."), n.map((E) => {
+  ), H && /* @__PURE__ */ e.createElement("section", { className: "spaces-members" }, /* @__PURE__ */ e.createElement("h4", null, /* @__PURE__ */ e.createElement(yt, { size: 13 }), " Who can read this"), n.length === 0 && /* @__PURE__ */ e.createElement("p", { className: "spaces-empty" }, "No teammates yet."), n.map((E) => {
     const D = H.bot_ids.includes(E.id);
     return /* @__PURE__ */ e.createElement("label", { key: E.id, className: "spaces-member" }, /* @__PURE__ */ e.createElement(
       "input",
@@ -2691,7 +2694,7 @@ ${E.content}`), $(!0), setTimeout(() => $(!1), 2500);
       onChange: (E) => R.edit({ title: E.target.value }),
       "aria-label": "Page title"
     }
-  ), /* @__PURE__ */ e.createElement("div", { className: "spaces-editor-actions" }, /* @__PURE__ */ e.createElement(Fa, { state: P }), /* @__PURE__ */ e.createElement(
+  ), /* @__PURE__ */ e.createElement("div", { className: "spaces-editor-actions" }, /* @__PURE__ */ e.createElement(Va, { state: P }), /* @__PURE__ */ e.createElement(
     "button",
     {
       type: "button",
@@ -2700,12 +2703,12 @@ ${E.content}`), $(!0), setTimeout(() => $(!1), 2500);
       title: s ? "Edit" : "Preview",
       onClick: () => y((E) => !E)
     },
-    /* @__PURE__ */ e.createElement(yn, { size: 15 })
-  ))), P.status === "conflict" && /* @__PURE__ */ e.createElement("div", { className: "spaces-conflict", role: "alert" }, /* @__PURE__ */ e.createElement(Oe, { size: 16 }), /* @__PURE__ */ e.createElement("div", null, /* @__PURE__ */ e.createElement("strong", null, P.error), /* @__PURE__ */ e.createElement("p", null, "Nothing has been overwritten and nothing will be saved until you choose.")), /* @__PURE__ */ e.createElement("div", { className: "spaces-conflict-actions" }, /* @__PURE__ */ e.createElement("button", { type: "button", onClick: () => {
+    /* @__PURE__ */ e.createElement(En, { size: 15 })
+  ))), P.status === "conflict" && /* @__PURE__ */ e.createElement("div", { className: "spaces-conflict", role: "alert" }, /* @__PURE__ */ e.createElement(De, { size: 16 }), /* @__PURE__ */ e.createElement("div", null, /* @__PURE__ */ e.createElement("strong", null, P.error), /* @__PURE__ */ e.createElement("p", null, "Nothing has been overwritten and nothing will be saved until you choose.")), /* @__PURE__ */ e.createElement("div", { className: "spaces-conflict-actions" }, /* @__PURE__ */ e.createElement("button", { type: "button", onClick: () => {
     de();
-  } }, O ? "Copied" : "Copy my draft"), /* @__PURE__ */ e.createElement("button", { type: "button", className: "primary", onClick: () => R.useLatest() }, "Load the latest"))), P.status === "error" && /* @__PURE__ */ e.createElement("div", { className: "spaces-conflict spaces-conflict-error", role: "alert" }, /* @__PURE__ */ e.createElement(Oe, { size: 16 }), /* @__PURE__ */ e.createElement("div", null, /* @__PURE__ */ e.createElement("strong", null, P.error)), /* @__PURE__ */ e.createElement("div", { className: "spaces-conflict-actions" }, /* @__PURE__ */ e.createElement("button", { type: "button", className: "primary", onClick: () => {
+  } }, O ? "Copied" : "Copy my draft"), /* @__PURE__ */ e.createElement("button", { type: "button", className: "primary", onClick: () => R.useLatest() }, "Load the latest"))), P.status === "error" && /* @__PURE__ */ e.createElement("div", { className: "spaces-conflict spaces-conflict-error", role: "alert" }, /* @__PURE__ */ e.createElement(De, { size: 16 }), /* @__PURE__ */ e.createElement("div", null, /* @__PURE__ */ e.createElement("strong", null, P.error)), /* @__PURE__ */ e.createElement("div", { className: "spaces-conflict-actions" }, /* @__PURE__ */ e.createElement("button", { type: "button", className: "primary", onClick: () => {
     R.flush(!0);
-  } }, /* @__PURE__ */ e.createElement(In, { size: 13 }), " Try again"))), s ? /* @__PURE__ */ e.createElement("div", { className: "spaces-preview" }, /* @__PURE__ */ e.createElement(De, { fallback: /* @__PURE__ */ e.createElement("p", { className: "spaces-empty" }, "Rendering…") }, /* @__PURE__ */ e.createElement(qa, { mode: "static", controls: !1, linkSafety: { enabled: !0 }, skipHtml: !0 }, P.draft.content))) : /* @__PURE__ */ e.createElement(
+  } }, /* @__PURE__ */ e.createElement(Rn, { size: 13 }), " Try again"))), s ? /* @__PURE__ */ e.createElement("div", { className: "spaces-preview" }, /* @__PURE__ */ e.createElement(Pe, { fallback: /* @__PURE__ */ e.createElement("p", { className: "spaces-empty" }, "Rendering…") }, /* @__PURE__ */ e.createElement(Ha, { mode: "static", controls: !1, linkSafety: { enabled: !0 }, skipHtml: !0 }, P.draft.content))) : /* @__PURE__ */ e.createElement(
     "textarea",
     {
       className: "spaces-body",
@@ -2717,7 +2720,7 @@ ${E.content}`), $(!0), setTimeout(() => $(!1), 2500);
     }
   ), /* @__PURE__ */ e.createElement("footer", { className: "spaces-editor-foot" }, /* @__PURE__ */ e.createElement("span", null, "Revision ", P.page.revision), P.page.created_by && /* @__PURE__ */ e.createElement("span", null, "Started by ", P.page.created_by)))));
 }
-function wt({
+function kt({
   node: t,
   depth: n,
   activeId: a,
@@ -2741,7 +2744,7 @@ function wt({
         "aria-expanded": m ? u : void 0,
         disabled: !m
       },
-      /* @__PURE__ */ e.createElement(Re, { size: 13, className: u ? "spaces-twisty-open" : void 0 })
+      /* @__PURE__ */ e.createElement(Ae, { size: 13, className: u ? "spaces-twisty-open" : void 0 })
     ),
     /* @__PURE__ */ e.createElement("button", { type: "button", className: "spaces-tree-title", onClick: () => r(t.page.id) }, t.page.title),
     /* @__PURE__ */ e.createElement(
@@ -2756,7 +2759,7 @@ function wt({
       /* @__PURE__ */ e.createElement(Ve, { size: 13 })
     )
   ), u && t.children.map((l) => /* @__PURE__ */ e.createElement(
-    wt,
+    kt,
     {
       key: l.page.id,
       node: l,
@@ -2767,7 +2770,7 @@ function wt({
     }
   )));
 }
-function Ba({
+function Wa({
   value: t,
   options: n,
   ariaLabel: a,
@@ -2822,8 +2825,8 @@ function Ba({
       }
     },
     /* @__PURE__ */ e.createElement("span", null, s?.label ?? r),
-    /* @__PURE__ */ e.createElement("span", { className: "crew-select-chevron" }, /* @__PURE__ */ e.createElement(cn, { size: 15 }))
-  ), h && l && vt.createPortal(
+    /* @__PURE__ */ e.createElement("span", { className: "crew-select-chevron" }, /* @__PURE__ */ e.createElement(dn, { size: 15 }))
+  ), h && l && wt.createPortal(
     /* @__PURE__ */ e.createElement(
       "div",
       {
@@ -2848,14 +2851,14 @@ function Ba({
         },
         (d.action || d.icon) && /* @__PURE__ */ e.createElement("span", { className: "crew-select-check", "aria-hidden": "true" }, d.icon),
         /* @__PURE__ */ e.createElement("span", { className: "crew-select-label", title: d.label }, d.label),
-        !d.action && /* @__PURE__ */ e.createElement("span", { className: "crew-select-check", "aria-hidden": "true" }, d.value === t && /* @__PURE__ */ e.createElement(Me, { size: 14 }))
+        !d.action && /* @__PURE__ */ e.createElement("span", { className: "crew-select-check", "aria-hidden": "true" }, d.value === t && /* @__PURE__ */ e.createElement(Te, { size: 14 }))
       ))
     ),
     document.body
   ));
 }
-const Wa = ["🤖", "🔎", "📥", "📈", "🎖️", "🧭", "🛠️", "📚", "🧪", "✍️", "🗂️", "🛰️"];
-function st({
+const Ga = ["🤖", "🔎", "📥", "📈", "🎖️", "🧭", "🛠️", "📚", "🧪", "✍️", "🗂️", "🛰️"];
+function ot({
   editing: t,
   providers: n,
   busy: a,
@@ -2911,7 +2914,7 @@ function st({
           onChange: (d) => o(d.target.value)
         }
       )),
-      /* @__PURE__ */ e.createElement("div", { className: "crew-field" }, /* @__PURE__ */ e.createElement("span", null, "Face"), /* @__PURE__ */ e.createElement("div", { className: "crew-emoji-row" }, Wa.map((d) => /* @__PURE__ */ e.createElement(
+      /* @__PURE__ */ e.createElement("div", { className: "crew-field" }, /* @__PURE__ */ e.createElement("span", null, "Face"), /* @__PURE__ */ e.createElement("div", { className: "crew-emoji-row" }, Ga.map((d) => /* @__PURE__ */ e.createElement(
         "button",
         {
           type: "button",
@@ -2924,7 +2927,7 @@ function st({
         d
       )))),
       !t && n.length > 0 && /* @__PURE__ */ e.createElement("div", { className: "crew-field" }, /* @__PURE__ */ e.createElement("span", null, "Model"), /* @__PURE__ */ e.createElement(
-        Ba,
+        Wa,
         {
           ariaLabel: "Model provider",
           placeholder: "Same as your default profile",
@@ -2947,23 +2950,23 @@ function st({
     )
   );
 }
-const bt = "hermes-crew:detail-width";
-function Ga() {
+const Nt = "hermes-crew:detail-width";
+function Ka() {
   try {
-    const t = window.localStorage?.getItem(bt), n = t ? Number.parseInt(t, 10) : Number.NaN;
+    const t = window.localStorage?.getItem(Nt), n = t ? Number.parseInt(t, 10) : Number.NaN;
     return Number.isFinite(n) ? Math.max(280, n) : 360;
   } catch {
     return 360;
   }
 }
-function Ka({ client: t, notify: n }) {
-  const a = Zt(t, { notify: n }), [r, c] = N(""), [u, h] = N([]), [m, l] = N([]), [o, b] = N([]), [i, s] = N(!1), [y, g] = N([]), [d, O] = N(!1), [$, R] = N({ id: "all", types: [] }), [P, H] = N(null), [J, B] = N([]), [S, j] = N([]), [te, K] = N(!1), [de, Z] = N("chat"), [E, D] = N(Ga), [ne, pe] = N(!1), [he, oe] = N(), [W, se] = N(!1), [ae, G] = N(), [ie, me] = N(0), [ue, ve] = N({ text: "", nonce: 0 }), { agents: _, conversations: F, selectedAgent: v, selectedAgentId: T, selectedThreadId: q } = a, V = fe(() => F.filter((f) => f.kind === "group"), [F]), L = fe(() => new Map(_.map((f) => [f.id, f])), [_]), k = fe(
+function Ya({ client: t, notify: n }) {
+  const a = en(t, { notify: n }), [r, c] = N(""), [u, h] = N([]), [m, l] = N([]), [o, b] = N([]), [i, s] = N(!1), [y, g] = N([]), [d, O] = N(!1), [$, R] = N({ id: "all", types: [] }), [P, H] = N(null), [J, B] = N([]), [S, j] = N([]), [te, K] = N(!1), [de, Z] = N("chat"), [E, D] = N(Ka), [ne, pe] = N(!1), [he, oe] = N(), [W, se] = N(!1), [ae, G] = N(), [ie, me] = N(0), [ue, ve] = N({ text: "", nonce: 0 }), { agents: _, conversations: F, selectedAgent: v, selectedAgentId: T, selectedThreadId: q } = a, V = fe(() => F.filter((f) => f.kind === "group"), [F]), L = fe(() => new Map(_.map((f) => [f.id, f])), [_]), k = fe(
     () => F.find((f) => f.id === q),
     [F, q]
   ), C = a.approvals.filter((f) => f.status === "pending").length;
   U(() => {
     try {
-      window.localStorage?.setItem(bt, String(E));
+      window.localStorage?.setItem(Nt, String(E));
     } catch {
     }
   }, [E]);
@@ -3107,7 +3110,7 @@ function Ka({ client: t, notify: n }) {
     }
   }), [t, a]);
   return a.loading ? /* @__PURE__ */ e.createElement("div", { className: "crew-workspace is-loading", role: "status" }, "Loading your crew…") : _.length ? /* @__PURE__ */ e.createElement("div", { className: "crew-workspace" }, /* @__PURE__ */ e.createElement(
-    Un,
+    qn,
     {
       agents: _,
       sections: u,
@@ -3130,8 +3133,8 @@ function Ka({ client: t, notify: n }) {
       view: de,
       onChangeView: Z
     }
-  ), de === "spaces" ? /* @__PURE__ */ e.createElement(Va, { client: t, agents: _ }) : /* @__PURE__ */ e.createElement(
-    da,
+  ), de === "spaces" ? /* @__PURE__ */ e.createElement(Ba, { client: t, agents: _ }) : /* @__PURE__ */ e.createElement(
+    ua,
     {
       agent: v,
       thread: k,
@@ -3147,7 +3150,7 @@ function Ka({ client: t, notify: n }) {
       onToggleDetails: () => K((f) => !f)
     }
   ), te && v && /* @__PURE__ */ e.createElement(
-    $a,
+    La,
     {
       open: te,
       width: E,
@@ -3199,7 +3202,7 @@ function Ka({ client: t, notify: n }) {
       onClose: () => K(!1)
     }
   ), /* @__PURE__ */ e.createElement(
-    qn,
+    Hn,
     {
       open: ne,
       agents: _,
@@ -3213,7 +3216,7 @@ function Ka({ client: t, notify: n }) {
       onComputer: () => K(!0)
     }
   ), he && /* @__PURE__ */ e.createElement(
-    st,
+    ot,
     {
       editing: he.editing,
       providers: a.modelProviders,
@@ -3225,7 +3228,7 @@ function Ka({ client: t, notify: n }) {
   ), a.error && /* @__PURE__ */ e.createElement("div", { className: "crew-toast", role: "alert" }, /* @__PURE__ */ e.createElement("span", null, a.error), /* @__PURE__ */ e.createElement("button", { className: "icon-button", "aria-label": "Dismiss", onClick: a.dismissError }, "×"))) : /* @__PURE__ */ e.createElement("div", { className: "crew-workspace is-empty" }, /* @__PURE__ */ e.createElement("div", { className: "crew-empty-card" }, /* @__PURE__ */ e.createElement("h2", null, "No teammates yet"), /* @__PURE__ */ e.createElement("p", null, "A teammate is a Hermes profile with a thread, a memory and a computer of its own. Give one a name and a one-line job to start."), /* @__PURE__ */ e.createElement("button", { className: "primary-button", onClick: () => {
     G(void 0), oe({});
   } }, "Hire your first teammate")), he && /* @__PURE__ */ e.createElement(
-    st,
+    ot,
     {
       providers: a.modelProviders,
       busy: W,
@@ -3235,15 +3238,15 @@ function Ka({ client: t, notify: n }) {
     }
   ));
 }
-const Le = 500, Ya = 15e3;
-function Xa(t, n) {
+const ze = 500, Xa = 15e3;
+function Ja(t, n) {
   return t === 401 || t === 403 ? new we("unauthorized", n) : t === 404 ? new we("not_found", n) : t === 409 ? new we("conflict", n) : new we("unknown", n, t >= 500);
 }
-function Ja(t) {
+function Za(t) {
   const n = new URL(t, globalThis.location?.href ?? "http://127.0.0.1");
   return n.protocol = n.protocol === "https:" ? "wss:" : "ws:", n.pathname = `${n.pathname.replace(/\/+$/, "")}/v1/events`, n.toString();
 }
-class Za {
+class Qa {
   baseUrl;
   resolveEventsUrl;
   fetchImpl;
@@ -3257,13 +3260,13 @@ class Za {
    */
   socket;
   listeners = /* @__PURE__ */ new Set();
-  reconnectDelay = Le;
+  reconnectDelay = ze;
   reconnectTimer;
   opening = !1;
   closed = !1;
   constructor(n) {
     this.baseUrl = n.baseUrl.replace(/\/+$/, "");
-    const a = n.eventsUrl ?? Ja(this.baseUrl);
+    const a = n.eventsUrl ?? Za(this.baseUrl);
     this.resolveEventsUrl = typeof a == "function" ? a : async () => a, this.fetchImpl = n.fetchImpl ?? ((r, c) => fetch(r, c)), this.headers = n.headers ?? (() => ({}));
   }
   async request(n, a = {}) {
@@ -3283,7 +3286,7 @@ class Za {
     if (!r.ok) {
       const c = await r.json().then((u) => u?.detail).catch(() => {
       });
-      throw Xa(r.status, c ?? `Crew request failed (${r.status})`);
+      throw Ja(r.status, c ?? `Crew request failed (${r.status})`);
     }
     if (r.status !== 204)
       return await r.json();
@@ -3461,7 +3464,7 @@ class Za {
     );
   }
   async reconnect(n) {
-    this.closeSocket(), this.reconnectDelay = Le, this.listeners.size && this.openSocket(), await this.listAgents(n);
+    this.closeSocket(), this.reconnectDelay = ze, this.listeners.size && this.openSocket(), await this.listAgents(n);
   }
   listSections(n) {
     return this.request("/sections", { signal: n }).then((a) => a.sections);
@@ -3572,7 +3575,7 @@ class Za {
       return;
     }
     this.socket = a, a.onopen = () => {
-      this.reconnectDelay = Le, this.emit({ type: "connection.changed", state: "connected" });
+      this.reconnectDelay = ze, this.emit({ type: "connection.changed", state: "connected" });
     }, a.onmessage = (r) => {
       try {
         this.emit(JSON.parse(String(r.data)));
@@ -3584,7 +3587,7 @@ class Za {
   }
   scheduleReconnect() {
     this.reconnectTimer || this.closed || (this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = void 0, this.reconnectDelay = Math.min(this.reconnectDelay * 2, Ya), this.openSocket();
+      this.reconnectTimer = void 0, this.reconnectDelay = Math.min(this.reconnectDelay * 2, Xa), this.openSocket();
     }, this.reconnectDelay));
   }
   closeSocket() {
@@ -3593,44 +3596,44 @@ class Za {
     this.socket = void 0, n && (n.onclose = null, n.onerror = null, n.close());
   }
 }
-const ot = "/api/plugins/hermes-crew", it = window.__HERMES_PLUGIN_SDK__, Qa = new Za({
-  baseUrl: ot,
+const it = "/api/plugins/hermes-crew", ct = window.__HERMES_PLUGIN_SDK__, er = new Qa({
+  baseUrl: it,
   // The SDK's authed fetch, not the global one. Its own contract says plugins
   // must not hand-read the session token, and this is what keeps loopback,
   // gated-OAuth and server-internal modes all working from one bundle.
-  fetchImpl: (t, n) => it.authedFetch(t, n),
+  fetchImpl: (t, n) => ct.authedFetch(t, n),
   // A resolver, not a string: in gated mode `buildWsUrl` mints a single-use
   // ticket, so the URL has to be rebuilt for every connect and reconnect.
-  eventsUrl: () => it.buildWsUrl(`${ot}/v1/events`)
+  eventsUrl: () => ct.buildWsUrl(`${it}/v1/events`)
 });
-function er(t) {
+function tr(t) {
   try {
     if (typeof Notification > "u" || Notification.permission !== "granted" || document.visibilityState === "visible") return;
     new Notification(t.title, { body: t.body });
   } catch {
   }
 }
-function nr() {
-  return /* @__PURE__ */ e.createElement(Ka, { client: Qa, notify: er });
+function ar() {
+  return /* @__PURE__ */ e.createElement(Ya, { client: er, notify: tr });
 }
 export {
-  nr as C,
+  ar as C,
   e as R,
-  De as S,
+  Pe as S,
   N as a,
   U as b,
-  qt as c,
+  jt as c,
   fe as d,
   Y as e,
   je as f,
-  tr as g,
-  Ie as h,
-  At as i,
-  xt as j,
-  It as k,
+  nr as g,
+  Re as h,
+  Dt as i,
+  Rt as j,
+  At as k,
   Ee as l,
-  Ot as m,
-  Pe as n,
-  vt as r,
-  Lt as u
+  Pt as m,
+  $e as n,
+  wt as r,
+  Ut as u
 };

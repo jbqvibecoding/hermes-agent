@@ -28,6 +28,7 @@ from crew import approvals as crew_approvals
 from crew import computer as crew_computer
 from crew import db as crew_db
 from crew import orchestrator
+from crew import origin_policy as crew_origin_policy
 from crew.report import validate_report_payload
 
 log = logging.getLogger(__name__)
@@ -547,6 +548,11 @@ def _fill_from_vault(
             bot_id=turn.bot_id, ref="vault", field_label=field, site=site,
             why="filled from the vault", created_at=time.time(),
         )
+        # ``fill_secret`` holds the page itself, so the vault path needs nothing
+        # here: a saved password typed into a page is exactly as readable as a
+        # freshly typed one, and both paths type through that one function.
+        # cindy holds only its owner-typed path; covering the vault for free is
+        # the dividend of having one place that does the typing.
         if not crew_secrets.fill_secret(turn.bot_id, request, secret):
             return None
     except Exception:
@@ -569,6 +575,25 @@ def _fill_from_vault(
         },
         ensure_ascii=False,
     )
+
+
+def _page_address(cdp_url: Optional[str]) -> Optional[str]:
+    """Where the teammate's page is, or ``None`` — and never an exception.
+
+    The login card must still go up when the page cannot be read. An operator
+    who is told "we could not confirm where this page is" can decide for
+    themselves; one who is told nothing because a CDP read raised has lost the
+    login *and* the warning.
+    """
+    if not cdp_url:
+        return None
+    try:
+        from crew import secrets as crew_secrets
+
+        return crew_secrets.page_address(cdp_url)
+    except Exception:
+        log.warning("crew: could not read the page address for the login card")
+        return None
 
 
 def handle_ask_for_login(args: dict, **_kw: Any) -> str:
@@ -608,9 +633,20 @@ def handle_ask_for_login(args: dict, **_kw: Any) -> str:
 
         from crew.secrets import SecretRequest, control
 
+        # Where the operator is actually about to type, read from the page
+        # rather than taken from `site`. `site` is the teammate's claim and the
+        # card used to lead with it, so a teammate talked onto a lookalike
+        # mid-task could have the operator's real credential typed into it
+        # under the name of the site it was supposed to be. The argument for
+        # this was already in `_fill_from_vault` above, which refuses to pick a
+        # *saved* credential on a teammate's word for exactly this reason; it
+        # had never been carried to the path where the operator supplies a
+        # fresh one, which is the more dangerous of the two.
+        verified = crew_origin_policy.classify(_page_address(endpoints.get("cdp_url")))
+
         request = control.open_request(SecretRequest(
             bot_id=turn.bot_id, ref=_secrets.token_hex(2), field_label=field,
-            site=site, why=why, created_at=time.time(),
+            site=site, why=why, created_at=time.time(), origin=verified.origin,
         ))
         crew_db.insert_message(
             conn,
@@ -619,7 +655,14 @@ def handle_ask_for_login(args: dict, **_kw: Any) -> str:
             kind="login_request",
             # The label, never a value. Nothing on this row can carry a secret
             # because nothing here has ever seen one.
-            payload={"site": site, "why": why, "field": field, "ref": request.ref},
+            #
+            # `origin` and `origin_warning` are the host's; `site` and `why` are
+            # the teammate's. The card keeps them visibly apart, because the
+            # operator's whole job at this moment is to compare them.
+            payload={
+                "site": site, "why": why, "field": field, "ref": request.ref,
+                "origin": verified.origin, "origin_warning": verified.warning_text,
+            },
         )
         return json.dumps(
             {
@@ -633,12 +676,19 @@ def handle_ask_for_login(args: dict, **_kw: Any) -> str:
             ensure_ascii=False,
         )
 
+    full_verified = crew_origin_policy.classify(_page_address(endpoints.get("cdp_url")))
     crew_db.insert_message(
         conn,
         thread_id=turn.thread_id,
         sender=turn.bot_id,
         kind="login_request",
-        payload={"site": site, "why": why, "vnc_url": endpoints.get("vnc_url")},
+        # The origin matters less here — the operator is about to take the
+        # screen and can read the address bar themselves — but the card must
+        # not imply we looked and failed when we never looked at all.
+        payload={
+            "site": site, "why": why, "vnc_url": endpoints.get("vnc_url"),
+            "origin": full_verified.origin, "origin_warning": full_verified.warning_text,
+        },
     )
     return json.dumps(
         {

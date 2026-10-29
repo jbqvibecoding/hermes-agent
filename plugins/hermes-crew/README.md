@@ -101,11 +101,47 @@ Scout deal with this".
   with a grant, not through the shell.
 - A turn that has read anything from outside the crew cannot quietly take an
   outward action. Reading is not the boundary; what can leave is.
+- The reverse, for the one case where it is a person's credential rather than a
+  page's text: when you type a password into a teammate's page, that page is
+  **held** for 15 minutes or until it navigates, and the teammate's exact reads
+  of it — script evaluation, the console, network bodies — are refused. It used
+  to be told not to read the value back, which is not the same as being unable
+  to. Snapshots and screenshots stay available on purpose, so a teammate can
+  still tell you a sign-in failed; the limit of that choice is in the next
+  section.
+- A login card shows you **the origin the page reported**, read off it by the
+  server, above the site name the teammate claims. If the page moves between
+  being asked and your answering, nothing is typed and nothing is saved.
 - Outward actions are held, not sent, until you approve them.
 - Teammate-to-teammate messaging is off until you allowlist a direction.
 - Screens bind to loopback only.
 - Inbound content a teammate reads is untrusted input. Give teammates their own
   accounts rather than yours.
+
+### What the secret hold does not cover
+
+Stated plainly because a security control that overstates itself is worse than
+one that is absent:
+
+- **Snapshots and screenshots are not refused during the hold.** The browser
+  sidecar that produces them is not part of this repository, so whether its
+  accessibility output carries field values is not something we can verify
+  here. A masked password renders as dots, but a one-time code is usually a
+  plain-text field, and if the sidecar reports values then one is legible
+  through a snapshot while the hold is on. The line is where it is because a
+  teammate that cannot see the page it just failed to sign in to cannot tell
+  you what went wrong — which would leave you with a typed password and a
+  silent teammate.
+- **The hold ends when the page navigates**, which is almost always what a
+  successful sign-in does. In ordinary use it lasts one page transition. It
+  bites when a sign-in fails and the teammate stays put.
+- **Only the top frame is read.** A credential field inside a cross-origin
+  iframe is not reached by `document.activeElement` either, so this is
+  unchanged rather than newly limited — but it means neither the card's origin
+  nor the hold describes such a field.
+- **A teammate with `terminal` in the same container as its browser** is a
+  containment question this does not address.
+- Not exercised on a device: the cards on a real screen.
 
 ## Layout
 

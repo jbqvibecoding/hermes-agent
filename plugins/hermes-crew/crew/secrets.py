@@ -67,6 +67,13 @@ class SecretRequest:
     why: str
     created_at: float
 
+    #: The origin the page reported when the card was posted, or ``None`` if it
+    #: could not be read. This is the host's answer, not the teammate's
+    #: ``site`` string, and it is kept so the submit can check the page has not
+    #: moved underneath the operator between being asked and answering. See
+    #: :mod:`crew.origin_policy`.
+    origin: Optional[str] = None
+
     def expired(self, *, now: Optional[float] = None) -> bool:
         return (now or time.time()) - self.created_at > REQUEST_TTL_S
 
@@ -197,12 +204,47 @@ def fill_secret(bot_id: str, request: SecretRequest, value: str) -> bool:
         if not cdp_url:
             log.info("crew: no screen to fill %r on for %s", request.field_label, bot_id)
             return False
-        return _type_into_focused(cdp_url, value)
+        if not _type_into_focused(cdp_url, value):
+            return False
     except Exception:
         # Never log the exception payload: a CDP error can quote the request
         # body, and the request body is the secret.
         log.warning("crew: could not fill %r for %s", request.field_label, bot_id)
         return False
+
+    hold_the_page(bot_id, cdp_url)
+    return True
+
+
+def hold_the_page(bot_id: str, cdp_url: str) -> None:
+    """A credential just landed on this teammate's page; stop it reading it back.
+
+    Called on both fill paths — this one and the vault's — and only ever after
+    the value is known to have landed, because a fill that never happened
+    leaves nothing to read.
+
+    Two things are deliberate:
+
+    * **The address is read now, not reused from the login card.** If the page
+      moved between the card being posted and the operator typing, the hold
+      belongs on the page the value actually went into.
+    * **Failing to read the address holds the teammate whole** rather than
+      holding nothing, and does not turn a successful fill into a reported
+      failure. By the time we are here the credential is in the page, so a
+      caller told "that did not work" would have the operator type it again.
+
+    Not caught: a failure of the hold *itself*, which is a dictionary write
+    under a lock. That would raise out of here rather than report success, and
+    on this path loud is the right direction — the alternative is telling
+    somebody their password went in while the teammate can still read it.
+    """
+    from crew import secret_taint
+
+    try:
+        secret_taint.mark_entered(bot_id, page_address(cdp_url))
+    except Exception:
+        log.warning("crew: could not place the page a secret landed on; holding %s", bot_id)
+        secret_taint.mark_entered(bot_id, None)
 
 
 #: Read in the page, not asked of the model. ``self.origin`` rather than
@@ -237,6 +279,27 @@ def page_origin(cdp_url: str) -> Optional[str]:
     ``None`` when it cannot be read, which callers must treat as "do not fill".
     """
     value = _evaluate(cdp_url, _ORIGIN_EXPRESSION)
+    return value if isinstance(value, str) and value else None
+
+
+#: The same ``self.origin`` as above, with the path, and for the same reason:
+#: a sandboxed document answers ``"null"`` here too, so it cannot be mistaken
+#: for the site it was framed from. Query and fragment are left off — the page
+#: can rewrite those itself, and what both the hold and the card care about is
+#: which form the operator is looking at.
+_ADDRESS_EXPRESSION = "self.origin + location.pathname"
+
+
+def page_address(cdp_url: str) -> Optional[str]:
+    """``scheme://host/path`` for the page in front of the teammate.
+
+    ``None`` when it cannot be read. Callers must treat that as the dangerous
+    answer, not the harmless one: :mod:`crew.secret_taint` holds the whole
+    teammate rather than nothing, and :func:`crew.policy.secret_floor` refuses
+    rather than allows. We are asking where a credential is about to go, or
+    where one has just gone; silence is not reassurance.
+    """
+    value = _evaluate(cdp_url, _ADDRESS_EXPRESSION)
     return value if isinstance(value, str) and value else None
 
 

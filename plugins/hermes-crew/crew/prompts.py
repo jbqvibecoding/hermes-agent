@@ -47,7 +47,10 @@ whose logins persist between sessions. Nobody else uses it.
 - When you looked at something on screen, prove it: take a browser screenshot so the image lands in the thread.
 - Never invent what a page or command said. If a tool fails, say so plainly and report what you saw.
 - You never have your operator's passwords and never ask for them in chat. At a login wall, call ask_for_login:
-  they take over your screen, sign in once, and the session persists in your browser from then on."""
+  they take over your screen, sign in once, and the session persists in your browser from then on.
+- Once they have typed something into a field, that page is closed to your script, console and network
+  reads until it moves on. This is enforced, not a request. You can still look with a snapshot or a
+  screenshot: if the sign-in worked, carry on, and if it did not, say what the page shows."""
 
 NO_COMPUTER_NOTE = (
     "You have no shell, browser, or file tools right now. Never pretend you ran one; "
