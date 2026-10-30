@@ -114,7 +114,12 @@ Scout deal with this".
   being asked and your answering, nothing is typed and nothing is saved.
 - Outward actions are held, not sent, until you approve them.
 - Teammate-to-teammate messaging is off until you allowlist a direction.
-- Screens bind to loopback only.
+- Screens bind to loopback only. The one way to a screen from anywhere else is
+  the proxy at `/v1/bots/{id}/screen`, which authenticates the upgrade through
+  the dashboard's own gate, **drops every RFB message that would act on the
+  machine** (keys, pointer, clipboard) rather than trusting the viewer to
+  behave, closes itself after three minutes with nobody watching, and leaves a
+  row saying who watched and from where.
 - Inbound content a teammate reads is untrusted input. Give teammates their own
   accounts rather than yours.
 

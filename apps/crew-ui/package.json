@@ -9,7 +9,8 @@
     "./styles.css": "./src/ui/styles.css",
     "./client": "./src/client/HermesCrewClient.ts",
     "./domain": "./src/domain/index.ts",
-    "./state": "./src/state/index.ts"
+    "./state": "./src/state/index.ts",
+    "./screen": "./src/ui/screen/index.ts"
   },
   "types": "./src/index.ts",
   "scripts": {

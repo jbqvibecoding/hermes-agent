@@ -67,11 +67,16 @@ export async function forgetCredentials(): Promise<void> {
  * loopback, which is wrong for a phone — so the base URL is passed explicitly.
  * It is also re-derived on every connect rather than cached, matching the
  * dashboard's reason: a cached ticket makes the first reconnect a 401.
+ *
+ * The credential rides in the query string because a WebSocket upgrade cannot
+ * carry a header — the same reason the dashboard's own SPA does it. Without
+ * it the server answers `no_credential` and closes, which is what this app
+ * did until the screen work needed the same plumbing and found it missing.
  */
 export function createClient({ baseUrl, token }: Credentials): HermesCrewClient {
   return new HermesCrewClient({
     baseUrl,
-    eventsUrl: eventsUrlFor(baseUrl),
+    eventsUrl: eventsUrlFor(baseUrl, { kind: "token", value: token }),
     headers: () => ({ Authorization: `Bearer ${token}` }),
   });
 }

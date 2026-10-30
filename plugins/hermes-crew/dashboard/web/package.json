@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Bundles @hermes/crew-ui into the single IIFE the dashboard plugin host loads.",
   "scripts": {
-    "build": "vite build --config vite.workspace.config.ts && vite build"
+    "build": "vite build --config vite.workspace.config.ts && vite build --config vite.screen.config.ts && vite build"
   },
   "devDependencies": {
     "vite": "^7.0.0"

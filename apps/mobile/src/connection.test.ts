@@ -48,13 +48,15 @@ describe("normalizeBaseUrl", () => {
 });
 
 describe("eventsUrlFor", () => {
+  const token = { kind: "token", value: "t" } as const;
+
   it("maps http to ws and https to wss", () => {
-    expect(eventsUrlFor("http://10.0.0.5:8787/api/plugins/hermes-crew"))
-      .toBe("ws://10.0.0.5:8787/api/plugins/hermes-crew/v1/events");
+    expect(eventsUrlFor("http://10.0.0.5:8787/api/plugins/hermes-crew", token))
+      .toBe("ws://10.0.0.5:8787/api/plugins/hermes-crew/v1/events?token=t");
     // The one that matters: `ws` against a TLS origin is refused outright, so
     // a half-done substitution here breaks every hosted install.
-    expect(eventsUrlFor("https://crew.example.com/api/plugins/hermes-crew"))
-      .toBe("wss://crew.example.com/api/plugins/hermes-crew/v1/events");
+    expect(eventsUrlFor("https://crew.example.com/api/plugins/hermes-crew", token))
+      .toBe("wss://crew.example.com/api/plugins/hermes-crew/v1/events?token=t");
   });
 });
 

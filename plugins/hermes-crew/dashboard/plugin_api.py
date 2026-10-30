@@ -52,10 +52,11 @@ import json
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
@@ -1350,3 +1351,284 @@ async def events_ws(ws: WebSocket):
         log.debug("crew: event stream ended", exc_info=True)
     finally:
         _subscribers.discard(queue)
+
+
+# ---------------------------------------------------------------------------
+# The teammate's screen, read-only, from somewhere that is not this host
+# ---------------------------------------------------------------------------
+
+#: Close codes the phone turns into a sentence. 4401 matches ``/v1/events``.
+_SCREEN_UNAUTHORIZED = 4401
+_SCREEN_NO_BOT = 4404
+_SCREEN_NO_SCREEN = 4409
+_SCREEN_UPSTREAM = 4502
+_SCREEN_PROTOCOL = 4400
+_SCREEN_IDLE = 4408
+
+#: Nothing in either direction for this long and the socket goes. A phone that
+#: was backgrounded mid-view holds a container's VNC connection open otherwise,
+#: and the operator has no way to see that it is still there.
+_SCREEN_IDLE_S = 180.0
+
+
+@router.get("/v1/screen/runtime.js")
+def screen_runtime():
+    """The viewer bundle, served beside the page that loads it.
+
+    By route rather than by relying on wherever the host happens to mount
+    ``dist/`` — the same reason ``/screenshots/{bot_id}/{filename}`` is a route.
+    It also keeps the page's ``script-src 'self'`` honest: the script is on the
+    origin the page came from because it is served by the page's own API.
+    """
+    bundle = Path(__file__).resolve().parent / "dist" / "screen.js"
+    if not bundle.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="The screen viewer has not been built. Run npm run build in dashboard/web.",
+        )
+    return FileResponse(bundle, media_type="text/javascript")
+
+
+#: What this route's path ends with, so the plugin's mount prefix can be
+#: recovered from the request. The alternative is relative URLs resolved
+#: against ``document.baseURI``, which is the *page*, not its directory — the
+#: socket path would end up nested inside the page's own path.
+_PAGE_SUFFIX = "/screen/page"
+
+
+@router.get("/v1/bots/{bot_id}/screen/page")
+def screen_page_for(
+    request: Request, bot_id: str, auth: str = Query(""), kind: str = Query("token")
+):
+    """The HTML a phone's WebView loads to watch this teammate.
+
+    The credential arrives as a query parameter and leaves in the socket URL
+    the page builds. That is not a downgrade from a header: a browser cannot
+    set a header on a WebSocket upgrade at all, which is why the dashboard's
+    own gate reads ``?ticket=``/``?token=`` in the first place. The ticket form
+    is single-use with a 30-second life, so the copy in this URL is spent the
+    moment the socket opens.
+
+    This route is reached through the dashboard's HTTP auth middleware like
+    every other ``/api/...`` route, so an unauthenticated caller never gets
+    here to ask.
+    """
+    from crew import screen_page as crew_screen_page
+
+    conn = _conn()
+    bot = _bot_or_404(conn, bot_id)
+
+    path = request.url.path
+    mount = path[: -len(f"/v1/bots/{bot_id}{_PAGE_SUFFIX}")] if path.endswith(_PAGE_SUFFIX) else ""
+
+    try:
+        html = crew_screen_page.screen_page(
+            bot_id=bot_id,
+            bot_name=bot.get("name") or bot_id,
+            auth_param=kind,
+            auth_value=auth,
+            socket_path=f"{mount}/v1/bots/{bot_id}/screen",
+            runtime_src=f"{mount}/v1/screen/runtime.js",
+        )
+    except crew_screen_page.UnsafeScreenPage as exc:
+        # Every value here comes from our own URL builder, so a rejection means
+        # something upstream is wrong rather than that a person typed oddly.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(content=html, media_type="text/html; charset=utf-8")
+
+
+@router.websocket("/v1/bots/{bot_id}/screen")
+async def screen_ws(bot_id: str, ws: WebSocket):
+    """Relay one teammate's screen to a client that is not on this host.
+
+    ``crew/computer.py`` publishes the screen on loopback only, and its
+    docstring says why there is no ticket: "websockify on loopback needs no
+    ticket — there is no gateway to authenticate to." From a phone,
+    ``127.0.0.1`` is the phone. This is that gateway.
+
+    Three things make it one rather than a hole punched in the wall:
+
+    * **The dashboard's own auth gate decides who may open it** — the same
+      canonical gate ``/v1/events`` uses, never a comparison written here.
+    * **Read-only is enforced in the middle**, by :mod:`crew.rfb_guard`, on the
+      half of the stream that travels from the client. The phone's viewer also
+      sets noVNC's ``viewOnly``, but that is the client describing itself.
+    * **It is written down.** Watching a teammate work is a privileged thing to
+      do; the ledger carries that it happened, and separately that something
+      tried to type.
+
+    The loopback leg speaks to websockify with ``websockets``, already a core
+    dependency. ``x11vnc -shared`` is why this does not evict the operator's
+    own desktop view of the same screen.
+    """
+    import websockets
+
+    from crew import audit as crew_audit
+    from crew import computer as crew_computer
+    from crew import rfb_guard
+
+    if not _ws_upgrade_authorized(ws):
+        await ws.close(code=_SCREEN_UNAUTHORIZED)
+        return
+
+    conn = _conn()
+    if crew_db.get_bot(conn, bot_id) is None:
+        await ws.close(code=_SCREEN_NO_BOT, reason="No such teammate.")
+        return
+
+    upstream_url = (crew_computer.endpoints(bot_id) or {}).get("vnc_ws_url")
+    if not upstream_url:
+        # Distinct from "no teammate" on purpose: the phone says "this teammate
+        # has no screen right now", which is a different thing to do about.
+        await ws.close(code=_SCREEN_NO_SCREEN, reason="That teammate has no screen running.")
+        return
+    if not _is_loopback_ws(upstream_url):
+        # This is the one place in the product that opens an outbound
+        # connection to an address it read out of stored state, which is the
+        # shape of every SSRF. `endpoints()` builds a hardcoded
+        # `ws://127.0.0.1:{port}` today, so this can only fire if that changes
+        # — which is exactly when somebody needs to be stopped and made to
+        # think about what this relay now points at.
+        log.error("crew: refusing to relay %s's screen from a non-loopback address", bot_id)
+        await ws.close(code=_SCREEN_UPSTREAM, reason="That screen is not where it should be.")
+        return
+
+    await ws.accept()
+    guard = rfb_guard.ReadOnlyGuard()
+    thread_id = crew_db.dm_thread_id(bot_id)
+    watcher = ws.client.host if ws.client else ""
+    crew_audit.record(
+        conn, event_type="screen.opened", actor=crew_audit.ACTOR_OPERATOR, bot_id=bot_id,
+        thread_id=thread_id, subject="read-only screen", detail=f"from {watcher}" if watcher else "",
+        status="ok",
+    )
+    ended = "closed"
+
+    try:
+        async with websockets.connect(upstream_url, max_size=None, open_timeout=10) as upstream:
+            seen = _Heartbeat()
+
+            async def to_upstream() -> None:
+                while True:
+                    raw = await ws.receive_bytes()
+                    seen.touch()
+                    allowed = guard.feed(raw)
+                    if allowed:
+                        await upstream.send(allowed)
+
+            async def to_client() -> None:
+                async for frame in upstream:
+                    seen.touch()
+                    if isinstance(frame, str):
+                        frame = frame.encode()
+                    await ws.send_bytes(frame)
+
+            await _race_until_one_ends(
+                to_upstream(), to_client(), seen.expire_after(_SCREEN_IDLE_S)
+            )
+    except rfb_guard.RfbProtocolError as exc:
+        # The guard lost the message boundary, so it can no longer tell input
+        # from a frame request. Closing is the only honest option left.
+        ended = f"protocol: {exc}"
+        log.warning("crew: screen relay for %s closed — %s", bot_id, exc)
+        await _close_quietly(ws, _SCREEN_PROTOCOL, "Screen stream could not be followed.")
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        pass
+    except asyncio.TimeoutError:
+        ended = "idle"
+        await _close_quietly(ws, _SCREEN_IDLE, "Screen idle.")
+    except Exception as exc:
+        ended = f"upstream: {type(exc).__name__}"
+        log.warning("crew: screen relay for %s could not reach the screen", bot_id, exc_info=True)
+        await _close_quietly(ws, _SCREEN_UPSTREAM, "Could not reach that screen.")
+    finally:
+        # Wrapped for the reason `crew/hooks.py::refuse` spells out: a failing
+        # audit write that escapes its handler turns a paper-trail problem
+        # into a behaviour problem. Here the relay is already finished, so the
+        # only thing an escape could break is the socket's teardown — still
+        # not worth trading for a log line.
+        try:
+            crew_audit.record(
+                conn, event_type="screen.closed", actor=crew_audit.ACTOR_OPERATOR, bot_id=bot_id,
+                thread_id=thread_id, subject="read-only screen",
+                detail=(
+                    f"{ended}; refused {guard.refused} input message(s)"
+                    if guard.refused
+                    else ended
+                ),
+                # A viewer that tried to type is not an error, but it is not
+                # the ordinary case either, and the operator should be able to
+                # find it.
+                status="blocked" if guard.refused else "ok",
+            )
+        except Exception:
+            log.error("crew: screen relay for %s ended but could not be recorded",
+                      bot_id, exc_info=True)
+
+
+def _is_loopback_ws(url: str) -> bool:
+    """Whether this is the local websockify the container publishes.
+
+    Hostname rather than a string prefix: `ws://127.0.0.1.evil.test/` starts
+    with the right characters and resolves somewhere else entirely.
+    """
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    return parts.scheme == "ws" and host in ("127.0.0.1", "::1", "localhost")
+
+
+async def _close_quietly(ws: WebSocket, code: int, reason: str) -> None:
+    """Close without letting a second failure mask the first."""
+    try:
+        await ws.close(code=code, reason=reason)
+    except Exception:
+        log.debug("crew: screen socket was already gone", exc_info=True)
+
+
+class _Heartbeat:
+    """Last time anything crossed, in either direction.
+
+    A plain ``asyncio.wait(timeout=…)`` would be a *session cap*, not an idle
+    timeout: it fires after N seconds whether or not pixels are flowing, so
+    somebody watching a screen attentively would have it closed under them.
+    What we want to end is a view nobody is looking at — a backgrounded phone
+    holding a container's VNC connection open with no way for the operator to
+    see it is still there.
+    """
+
+    def __init__(self) -> None:
+        self._at = time.monotonic()
+
+    def touch(self) -> None:
+        self._at = time.monotonic()
+
+    async def expire_after(self, idle_s: float) -> None:
+        """Return once nothing has crossed for ``idle_s``."""
+        while True:
+            quiet_for = time.monotonic() - self._at
+            if quiet_for >= idle_s:
+                raise asyncio.TimeoutError
+            await asyncio.sleep(idle_s - quiet_for)
+
+
+async def _race_until_one_ends(*coros) -> None:
+    """Run every pump until one finishes, then stop the rest.
+
+    Whatever ended it is re-raised, so the caller's handlers see the real
+    reason — a disconnect, a protocol error from the guard, or the idle
+    timeout — rather than a generic close.
+    """
+    tasks = [asyncio.create_task(coro) for coro in coros]
+    try:
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            task.result()
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)

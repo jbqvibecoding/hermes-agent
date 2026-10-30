@@ -88,6 +88,14 @@ EVENT_TYPES = (
     # question with no row behind it: the effects ledger says the teammate
     # created it, and nothing would say who took it away.
     "effect.undone",
+    # Somebody watched a teammate's screen from off this host. The screen is
+    # published on loopback precisely so that it is not reachable; the proxy
+    # that makes it reachable from a phone is the one place where "who was
+    # looking, and from where" stops being answerable by the network itself.
+    # Paired rows rather than one at the end, so a session still running — or
+    # one that ended with the process — is still visible.
+    "screen.opened",
+    "screen.closed",
 )
 
 #: A digest is 12 hex chars: enough to match two calls against each other,

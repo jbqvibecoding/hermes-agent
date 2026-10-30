@@ -108,6 +108,45 @@ so it navigates to the approvals screen instead.
 native mock layer; a suite that rendered them against mocks would prove the
 parts nobody was worried about.
 
+## The teammate's screen
+
+Here now, **read-only**, via a proxy — which is exactly the piece the previous
+version of this section said was missing. Tap **Screen** on a teammate whose
+computer is online.
+
+`crew/computer.py` serves VNC at `ws://127.0.0.1:{port}/websockify`, and from a
+phone `127.0.0.1` is the phone. Publishing that port to the LAN would put an
+**unauthenticated remote desktop with the teammate's shell behind it** in front
+of the network, so instead `/v1/bots/{id}/screen` relays it:
+
+- the upgrade goes through the dashboard's own WebSocket gate, the same one
+  `/v1/events` uses;
+- `crew/rfb_guard.py` reads the client→server half of the stream and forwards
+  only the three RFB messages a viewer needs to *receive pixels*. Keys, pointer
+  and clipboard are dropped **on the server** — the viewer also sets noVNC's
+  `viewOnly`, but that is the client describing itself;
+- three minutes with nothing crossing closes it, so a backgrounded phone does
+  not hold a container's screen open;
+- it leaves `screen.opened` / `screen.closed` rows, and says so separately if
+  something tried to send input.
+
+What you see is a page the dashboard serves into a `WebView`: noVNC paints the
+canvas, cindy's `desktopTransform` (Apache-2.0) does pinch and pan, and
+`canvasHasVisualFrame` tells "connected but never painted" apart from a working
+screen — which is this image's most likely failure and the thing an iframe
+could never distinguish.
+
+**Not verified on a device.** The proxy, the filter and the geometry have
+tests; the WebView, the pinch, and whether a 1280×800 desktop is legible on a
+phone have not been run on real hardware from this container. Treat the feel of
+it as unproven.
+
+**Still not here: taking the wheel.** Watching is the whole feature. That
+leaves one gap worth naming — when a login card cannot confirm which page it is
+on, it tells you to take the screen, and on a phone there is still nothing to
+take.
+
+
 ## Not here yet
 
 - **Push notifications.** `expo-notifications` is only the client half and
@@ -116,26 +155,11 @@ parts nobody was worried about.
   shoulder.
 - Markdown tables, headings, links and blockquotes as anything but literal text.
 - Creating or deleting Spaces (dashboard only, deliberately).
-
-### The teammate's screen is not here, and will not be without a proxy
-
-`crew/computer.py:261` serves VNC at `ws://127.0.0.1:{port}/websockify`, and
-`vnc_session()` says why there is no ticket: *"websockify on loopback needs no
-ticket — there is no gateway to authenticate to."* From a phone `127.0.0.1` is
-the phone, and publishing that port to the LAN would put an **unauthenticated
-remote desktop, with the teammate's shell behind it**, in front of anyone on the
-network.
-
-Pointing a WebView somewhere is not the missing piece either: no `vnc.html` is
-served, and the same docstring explains that driving the RFB client directly was
-chosen *over* an iframe because it is what buys view-only mode and the
-first-frame deadline — *"'connected but black forever' is this image's most
-likely failure. An iframe cannot tell the difference."*
-
-A live screen needs a websocket proxy behind the dashboard's bearer auth,
-authorized to one teammate, with view-only enforced server-side and an idle
-timeout. That is a security-sensitive component and its own piece of work.
-
-The thread's `screenshot` chip already shows images a teammate posted as
-evidence, over the authenticated `/screenshots/{bot_id}/{filename}` route; there
-is no on-demand capture.
+- **Taking the wheel.** The screen above is read-only, enforced on the server.
+- **Gated OAuth dashboards.** This app pairs with a loopback/`--insecure`
+  dashboard and authenticates with its session token. A gated install
+  authenticates by cookie, which a phone has no way to obtain here, so the
+  ticket path exists in the code and is not reachable from this app yet.
+- On-demand screen capture. The thread's `screenshot` chip shows images a
+  teammate posted as evidence, over the authenticated
+  `/screenshots/{bot_id}/{filename}` route; there is no "take one now".

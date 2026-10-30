@@ -33,6 +33,8 @@ out below, because they are the parts worth not re-deciding.
 | `crew/secret_taint.py` | `cindy/apps/desktop/src/main/input-handoff/secretTaint.ts` | Apache-2.0 | hold the *page* a credential landed on, not a list of the ways to read it |
 | `crew/policy.py::secret_floor` | `cindy/packages/lizi-mcps/src/browser/tools.ts` (`readsPageState`) | Apache-2.0 | which reads count as reading page state, and where the line sits |
 | `crew/origin_policy.py` | `cindy/apps/desktop/src/main/input-handoff/originPolicy.ts` | Apache-2.0 | the five phishing-relevant warnings; a warning cautions and never blocks |
+| `apps/crew-ui/src/ui/screen/transform.ts` | `cindy/packages/maker-shared/src/remote-desktop/viewerRuntime.js` (the `TRANSFORM` block) | Apache-2.0 | **verbatim** — the fit/zoom/pan arithmetic, and its clamp at two viewer points per desktop point |
+| `crew/screen_page.py` | `cindy/packages/maker-shared/src/remote-desktop/mobileHtml.ts` | Apache-2.0 | the hardened-page shape: a `default-src 'none'` CSP, and validating every value before it reaches markup |
 
 ## The decisions worth not re-deciding
 
@@ -265,6 +267,35 @@ step comes with it, as the submit-time check that makes the display more than
 decoration; expressed in the idiom the approvals desk already uses, where what
 the person was shown is pinned and an action against a changed world is refused
 rather than applied to the change.
+
+**Most of cindy's remote-desktop viewer could not be used, and the reason is
+structural rather than legal.** Worth recording, because "they have a working
+phone viewer, take it" is the obvious read and it is wrong. `viewerRuntime.js`
+is 2616 lines and marks exactly three extractable blocks (its own
+`viewerScripts.ts` is the generated file that extracts them): `RTC` (~900
+lines) is a WebRTC receiver, `NETWORK_STATS` reads `RTCPeerConnection.getStats()`,
+and `TRANSFORM` is 28 lines of arithmetic. We have no WebRTC producer — our
+pixels come from x11vnc over RFB — and the remaining ~1600 lines are one
+closure welded to their `<video>` element and their data channel, with no seam
+to feed a framebuffer into. So the transform came across verbatim, the page
+shape came across as a shape, and the protocol stack underneath is the noVNC
+client the dashboard has driven since the crew shipped.
+
+**Read-only is enforced where the client cannot lie about it**
+(`crew/rfb_guard.py`, and cindy's `readsPageState` for the idea of classifying
+by what a message *does*). The phone's viewer sets noVNC's `viewOnly`, which is
+a statement about itself from a device we do not control. The proxy carries an
+**allowlist** of the three RFB client→server messages a viewer needs in order
+to be sent pixels and drops the rest. An allowlist rather than a denylist for
+the reason the round before this one paid for: the host's browser-expression
+denylist catches two spellings of reading a password field and misses four.
+
+**Two divergences from `mobileHtml.ts`, both forced by what we display.** Its
+CSP says `connect-src 'none'` because frames reach it from the native layer
+over `postMessage`; ours says `'self'` because the page speaks RFB to the
+dashboard that served it — which costs an origin in the CSP and saves a native
+relay and a base64 round trip per frame. And theirs inlines its runtime where
+ours names a file, because noVNC is 285 kB and wants a cache.
 
 ## Not taken
 

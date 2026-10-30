@@ -156,11 +156,46 @@ export async function checkReachable(
 }
 
 
-export function eventsUrlFor(baseUrl: string): string {
-  // `https` must become `wss`, not `ws`, or the socket is refused on any
-  // install behind TLS. Done as one substitution so the two cannot disagree.
+/**
+ * `https` must become `wss`, not `ws`, or the socket is refused on any install
+ * behind TLS. One substitution so the two cannot disagree.
+ */
+function wsBase(baseUrl: string): string {
   const ws = baseUrl.replace(/^https?:\/\//i, (match) =>
     match.toLowerCase().startsWith("https") ? "wss://" : "ws://",
   );
-  return `${ws.replace(/\/+$/, "")}/v1/events`;
+  return ws.replace(/\/+$/, "");
+}
+
+/**
+ * A websocket URL carrying the credential in its query string.
+ *
+ * **Not an alternative to a header — the only option.** A WebSocket upgrade
+ * cannot carry `Authorization`, which is why the dashboard's own gate reads
+ * `?token=`/`?ticket=` and why its SPA mints a ticket before every connect.
+ * This app's sockets were built without either, so the server answered
+ * `no_credential` and closed them: the events stream has never actually run
+ * against a dashboard. Fixed here rather than at each call site, so the screen
+ * socket cannot repeat it.
+ *
+ * `kind` is `token` for a loopback/`--insecure` dashboard, which is what this
+ * app pairs with today. The `ticket` form exists for the gated-OAuth mode the
+ * README writes off: a ticket is single-use with a 30-second life, so it
+ * cannot be cached and must be minted per connect.
+ */
+export function socketUrlFor(
+  baseUrl: string,
+  path: string,
+  credential: { kind: "token" | "ticket"; value: string },
+): string {
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  const query = `${credential.kind}=${encodeURIComponent(credential.value)}`;
+  return `${wsBase(baseUrl)}${suffix}${suffix.includes("?") ? "&" : "?"}${query}`;
+}
+
+export function eventsUrlFor(
+  baseUrl: string,
+  credential: { kind: "token" | "ticket"; value: string },
+): string {
+  return socketUrlFor(baseUrl, "/v1/events", credential);
 }

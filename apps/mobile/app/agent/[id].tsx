@@ -6,7 +6,7 @@
  * what the server already sends rather than reshaping it for mobile.
  */
 
-import { useLocalSearchParams, useNavigation } from "expo-router";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator, FlatList, KeyboardAvoidingView, Platform,
@@ -40,8 +40,20 @@ export default function Thread() {
   const agent = crew.agents.find((candidate) => candidate.id === id);
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: agent?.name ?? "" });
-  }, [navigation, agent?.name]);
+    navigation.setOptions({
+      title: agent?.name ?? "",
+      // Only where there is something to look at. The controller has already
+      // fetched the computer for this teammate, so offering "Screen" on one
+      // that is offline would be a button whose only outcome is an apology.
+      headerRight: crew.computer?.status === "online"
+        ? () => (
+            <Pressable onPress={() => router.push(`/screen/${id}`)} hitSlop={10}>
+              <Text style={styles.headerAction}>Screen</Text>
+            </Pressable>
+          )
+        : undefined,
+    });
+  }, [navigation, agent?.name, crew.computer?.status, id]);
 
   // Until the controller has caught up, this would be the *previous*
   // teammate's messages under this one's name — which is worse than a spinner.
@@ -148,6 +160,7 @@ function MessageView({ message }: { message: Message }) {
 
 const styles = StyleSheet.create({
   centre: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: C.bg },
+  headerAction: { color: "#9aa0a6", fontSize: 15 },
   empty: { color: C.dim, padding: 24, fontSize: 15 },
   bubble: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, maxWidth: "92%" },
   // The operator right, the teammate left — the one convention a phone user
